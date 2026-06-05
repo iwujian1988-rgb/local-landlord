@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -7,10 +6,10 @@ import PropertyList from './pages/PropertyList';
 import RoomList from './pages/RoomList';
 import TenantList from './pages/TenantList';
 import RentManage from './pages/RentManage';
-import { useAdminStore } from './store/adminStore';
+import { useAuthStore } from './store/useAuthStore';
 
 function App() {
-  const isAuthenticated = useAdminStore((s) => s.isAuthenticated);
+  const isAuthenticated = useAuthStore((s) => s.isLoggedIn);
 
   return (
     <BrowserRouter>

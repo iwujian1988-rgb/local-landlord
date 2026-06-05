@@ -10,14 +10,15 @@ import {
   Link,
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { useAdminStore } from '../../store/adminStore';
+import { login as apiLogin } from '../services/auth';
+import { useAuthStore } from '../store/useAuthStore';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const login = useAdminStore((s) => s.login);
+  const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,12 +36,9 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const success = await login(username, password);
-      if (success) {
-        navigate('/', { replace: true });
-      } else {
-        setError('账号或密码错误，请重试');
-      }
+      const { token, admin } = await apiLogin(username, password);
+      setAuth(token, admin);
+      navigate('/', { replace: true });
     } catch {
       setError('登录失败，请稍后重试');
     } finally {

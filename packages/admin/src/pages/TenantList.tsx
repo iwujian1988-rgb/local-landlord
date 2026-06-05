@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -14,6 +14,10 @@ import {
   IconButton,
   Button,
   TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -25,9 +29,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
-  People as PeopleIcon,
 } from '@mui/icons-material';
-import { useAdminStore } from '../../store/adminStore';
 
 // Mock data for tenant list
 const mockTenants = [
@@ -79,11 +81,6 @@ const mockTenants = [
     deposit: 300000,
     status: 0, // 已退租
   },
-];
-
-const statusOptions = [
-  { value: 0, label: '已退租' },
-  { value: 1, label: '在租' },
 ];
 
 export default function TenantList() {

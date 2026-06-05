@@ -96,7 +96,7 @@ export default function BillManage() {
       </Box>
 
       <Tabs value={statusTab} onChange={(_, v) => setStatusTab(v)} sx={{ mb: 2 }}>
-        {statusTabs.map((label, i) => <Tab key={label} label={label} />)}
+        {statusTabs.map((label, _i) => <Tab key={label} label={label} />)}
       </Tabs>
 
       <Card>

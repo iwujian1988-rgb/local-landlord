@@ -4,7 +4,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Grid,
   List,
   ListItem,
   ListItemText,
@@ -13,13 +12,13 @@ import {
   Divider,
   Button,
 } from '@mui/material';
+import Grid2 from '@mui/material/Grid2';
 import {
   People as PeopleIcon,
   Home as HomeIcon,
   Receipt as ReceiptIcon,
   Warning as WarningIcon,
   TrendingUp as TrendingUpIcon,
-  Add as AddIcon,
   List as ListIcon,
 } from '@mui/icons-material';
 
@@ -60,8 +59,8 @@ export default function Dashboard() {
       </Typography>
 
       {/* Stats cards */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} sm={6} md={3}>
+      <Grid2 container spacing={3}>
+        <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
           <Card className="rounded-2xl shadow-card">
             <CardContent className="p-6">
               <Box className="flex items-center gap-4">
@@ -78,9 +77,9 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Grid2>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
           <Card className="rounded-2xl shadow-card">
             <CardContent className="p-6">
               <Box className="flex items-center gap-4">
@@ -96,9 +95,9 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Grid2>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
           <Card className="rounded-2xl shadow-card">
             <CardContent className="p-6">
               <Box className="flex items-center gap-4">
@@ -114,9 +113,9 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Grid2>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid2 size={{ xs: 12, sm: 6, md: 3 }}>
           <Card className="rounded-2xl shadow-card">
             <CardContent className="p-6">
               <Box className="flex items-center gap-4">
@@ -132,13 +131,13 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
 
       {/* Bottom section: pending bills + recent activity */}
-      <Grid container spacing={3}>
+      <Grid2 container spacing={3}>
         {/* Pending bills */}
-        <Grid item xs={12} md={7}>
+        <Grid2 size={{ xs: 12, md: 7 }}>
           <Card className="rounded-2xl shadow-card">
             <CardContent className="p-6">
               <Box className="flex items-center justify-between mb-4">
@@ -177,10 +176,10 @@ export default function Dashboard() {
               </List>
             </CardContent>
           </Card>
-        </Grid>
+        </Grid2>
 
         {/* Recent activity */}
-        <Grid item xs={12} md={5}>
+        <Grid2 size={{ xs: 12, md: 5 }}>
           <Card className="rounded-2xl shadow-card">
             <CardContent className="p-6">
               <Typography variant="h6" className="font-bold mb-4" style={{ color: '#4A4038' }}>
@@ -206,8 +205,8 @@ export default function Dashboard() {
               </List>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
 
       {/* Quick actions */}
       <Card className="rounded-2xl shadow-card">
@@ -215,14 +214,14 @@ export default function Dashboard() {
           <Typography variant="h6" className="font-bold mb-4" style={{ color: '#4A4038' }}>
             快捷入口
           </Typography>
-          <Grid container spacing={2}>
+          <Grid2 container spacing={2}>
             {[
               { label: '房源管理', path: '/properties', icon: <HomeIcon /> },
               { label: '房间管理', path: '/rooms', icon: <ListIcon /> },
               { label: '租客管理', path: '/tenants', icon: <PeopleIcon /> },
               { label: '收租管理', path: '/rent', icon: <ReceiptIcon /> },
             ].map((item) => (
-              <Grid item xs={6} sm={3} key={item.path}>
+              <Grid2 size={{ xs: 6, sm: 3 }} key={item.path}>
                 <Button
                   fullWidth
                   variant="outlined"
@@ -237,9 +236,9 @@ export default function Dashboard() {
                     </Typography>
                   </Box>
                 </Button>
-              </Grid>
+              </Grid2>
             ))}
-          </Grid>
+          </Grid2>
         </CardContent>
       </Card>
     </Box>

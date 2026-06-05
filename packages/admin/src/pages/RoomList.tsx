@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -29,9 +29,7 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Search as SearchIcon,
-  Hotel as HotelIcon,
 } from '@mui/icons-material';
-import { useAdminStore } from '../../store/adminStore';
 
 // Mock data for room list
 const mockRooms = [

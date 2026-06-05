@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Box, Card, Typography, Grid, ToggleButtonGroup, ToggleButton, CircularProgress } from '@mui/material';
+import { Box, Card, Typography, ToggleButtonGroup, ToggleButton, CircularProgress } from '@mui/material';
+import Grid2 from '@mui/material/Grid2';
 import { statsApi } from '../../services/api';
 
 export default function Statistics() {
@@ -67,24 +68,24 @@ export default function Statistics() {
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 10 }}>
           <CircularProgress />
         </Box>
-      ) : (<><Grid container spacing={3} mb={4}>
+      ) : (<><Grid2 container spacing={3} mb={4}>
         {[
           { label: '预计收入', value: formatCurrency(summary.expected), color: '#F5D78E' },
           { label: '已收', value: formatCurrency(summary.collected), color: '#7BA37B' },
           { label: '未收', value: formatCurrency(summary.uncollected), color: '#C97B7B' },
           { label: '收租率', value: `${summary.rate}%`, color: '#6B8FBF' },
         ].map((item) => (
-          <Grid size={{ xs: 6, md: 3 }} key={item.label}>
+          <Grid2 size={{ xs: 6, md: 3 }} key={item.label}>
             <Card sx={{ p: 3, textAlign: 'center' }}>
               <Typography variant="h4" fontWeight={700} color={item.color}>{item.value}</Typography>
               <Typography variant="body2" color="text.secondary" mt={1}>{item.label}</Typography>
             </Card>
-          </Grid>
+          </Grid2>
         ))}
-      </Grid>
+      </Grid2>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 8 }}>
+      <Grid2 container spacing={3}>
+        <Grid2 size={{ xs: 12, md: 8 }}>
           <Card sx={{ p: 3 }}>
             <Typography variant="h6" fontWeight={600} mb={2}>月度收租趋势</Typography>
             <Box>
@@ -121,27 +122,27 @@ export default function Statistics() {
               )}
             </Box>
           </Card>
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+        </Grid2>
+        <Grid2 size={{ xs: 12, md: 4 }}>
           <Card sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" fontWeight={600} mb={2}>入住率概览</Typography>
             {occupancyStats && (
               <Box sx={{ mb: 2 }}>
-                <Grid container spacing={2}>
+                <Grid2 container spacing={2}>
                   {[
                     { label: '总房间', value: occupancyStats.totalRooms ?? 0 },
                     { label: '已出租', value: occupancyStats.rentedRooms ?? 0 },
                     { label: '空置', value: occupancyStats.vacantRooms ?? 0 },
                     { label: '入住率', value: `${occupancyStats.occupancyRate ?? 0}%` },
                   ].map((item) => (
-                    <Grid size={6} key={item.label}>
+                    <Grid2 size={6} key={item.label}>
                       <Box sx={{ textAlign: 'center', p: 1.5, bgcolor: '#fafafa', borderRadius: 1 }}>
                         <Typography variant="h6" fontWeight={700}>{item.value}</Typography>
                         <Typography variant="caption" color="text.secondary">{item.label}</Typography>
                       </Box>
-                    </Grid>
+                    </Grid2>
                   ))}
-                </Grid>
+                </Grid2>
               </Box>
             )}
           </Card>
@@ -173,8 +174,8 @@ export default function Statistics() {
               )}
             </Box>
           </Card>
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
       </>)}
     </Box>
   );

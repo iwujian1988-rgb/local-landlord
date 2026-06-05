@@ -1,7 +1,7 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
-  AppBar, Toolbar, Typography, IconButton, Button,
+  AppBar, Toolbar, Typography, IconButton,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,

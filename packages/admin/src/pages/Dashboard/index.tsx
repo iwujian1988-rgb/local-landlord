@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Box, Card, Typography, Grid, CircularProgress, Alert } from '@mui/material';
+import { Box, Card, Typography, CircularProgress, Alert } from '@mui/material';
+import Grid2 from '@mui/material/Grid2';
 import { Apartment, MeetingRoom, People, TrendingUp, AccountBox } from '@mui/icons-material';
 import { dashboardApi } from '../../services/api';
 
@@ -41,34 +42,34 @@ export default function Dashboard() {
           <CircularProgress />
         </Box>
       ) : (<>
-      <Grid container spacing={3} mb={4}>
-        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+      <Grid2 container spacing={3} mb={4}>
+        <Grid2 size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard icon={<AccountBox />} label="总房东数" value={loading ? '-' : (s.totalLandlords ?? 0)} color="#D4A574" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+        </Grid2>
+        <Grid2 size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard icon={<Apartment />} label="总房源数" value={loading ? '-' : (s.totalProperties ?? 0)} color="#F5D78E" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+        </Grid2>
+        <Grid2 size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard icon={<MeetingRoom />} label="总房间数" value={loading ? '-' : (s.totalRooms ?? 0)} color="#7BA37B" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+        </Grid2>
+        <Grid2 size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard icon={<People />} label="在租租客" value={loading ? '-' : (s.totalTenants ?? 0)} color="#6B8FBF" />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
+        </Grid2>
+        <Grid2 size={{ xs: 12, sm: 6, md: 4, lg: 2.4 }}>
           <StatCard icon={<TrendingUp />} label="本月收租率" value={loading ? '-' : `${s.collectionRate ?? 0}%`} color="#C97B7B" />
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, md: 8 }}>
+      <Grid2 container spacing={3}>
+        <Grid2 size={{ xs: 12, md: 8 }}>
           <Card sx={{ p: 3 }}>
             <Typography variant="h6" fontWeight={600} mb={2}>近期收租趋势</Typography>
             <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#fafafa', borderRadius: 2 }}>
               <Typography color="text.secondary">ECharts 图表区域（安装 echarts 后激活）</Typography>
             </Box>
           </Card>
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+        </Grid2>
+        <Grid2 size={{ xs: 12, md: 4 }}>
           <Card sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" fontWeight={600} mb={2}>待处理事项</Typography>
             {[
@@ -88,8 +89,8 @@ export default function Dashboard() {
               <Typography color="text.secondary">饼图（安装 echarts 后激活）</Typography>
             </Box>
           </Card>
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
       </>)}
     </Box>
   );

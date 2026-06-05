@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -13,19 +13,20 @@ import {
   TablePagination,
   IconButton,
   Button,
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Tabs,
   Tab,
   Alert,
 } from '@mui/material';
 import {
-  Receipt as ReceiptIcon,
-  Warning as WarningIcon,
   CheckCircle as CheckCircleIcon,
   Send as SendIcon,
-  Add as AddIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
-import { useAdminStore } from '../../store/adminStore';
 
 // Mock data for bills
 const mockBills = [

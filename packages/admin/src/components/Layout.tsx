@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAdminStore } from '../store/adminStore';
+import { useAuthStore } from '../store/useAuthStore';
 import {
   Box,
   Drawer,
@@ -8,7 +8,7 @@ import {
   Toolbar,
   Typography,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Divider,
@@ -18,7 +18,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import {
-  Dasboard as DashboardIcon,
+  Dashboard as DashboardIcon,
   People as PeopleIcon,
   Home as HomeIcon,
   Hotel as HotelIcon,
@@ -28,7 +28,6 @@ import {
   Settings as SettingsIcon,
   Logout as LogoutIcon,
   Menu as MenuIcon,
-  ChevronLeft as ChevronLeftIcon,
 } from '@mui/icons-material';
 
 const drawerWidth = 240;
@@ -55,9 +54,9 @@ const menuItems: MenuItemConfig[] = [
 function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { adminUser, logout } = useAdminStore();
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
+  const { admin: adminUser, clearAuth: logout } = useAuthStore();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -94,8 +93,7 @@ function Layout() {
         {menuItems
           .filter((item) => item.allowedRoles.includes(role as 'super' | 'operator'))
           .map((item) => (
-            <ListItem
-              button
+            <ListItemButton
               key={item.key}
               component={Link}
               to={item.path}
@@ -113,7 +111,7 @@ function Layout() {
                 primary={item.label}
                 style={{ color: location.pathname === item.path ? '#4A4038' : '#8B7E74' }}
               />
-            </ListItem>
+            </ListItemButton>
           ))}
       </List>
     </div>
