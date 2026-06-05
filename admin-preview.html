@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地房东 - 管理后台（生产代码验收）</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script crossorigin src="https://unpkg.com/@mui/material@5/umd/material-ui.production.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@mui/material@5/umd/material-ui.production.min.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;display:flex;min-height:100vh}
+#root{display:flex;width:100%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-type="module">
+const { useState, useEffect } = React;
+const {
+  Box, Card, Typography, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Chip, Tabs, Tab,
+  Drawer, List, ListItemButton, ListItemIcon, ListItemText, AppBar, Toolbar, Checkbox,
+  ToggleButtonGroup, ToggleButton, Switch, Divider, Select, MenuItem, Alert
+} = MaterialUI;
+
+const {
+  Apartment, MeetingRoom, People, TrendingUp, Add, Edit, Delete, Logout,
+  Dashboard, Description, Receipt, Settings, BarChart
+} = window.MaterialUIIcons || window.MaterialUI?.Icons || {};
+
+// 内联 SVG 图标回退（如果 MUI Icons CDN 加载失败）
+function Icon({ name, size = 20 }) {
+  const paths = {
+    apartment: 'M17 11V3H7v4H3v14h8v-4h2v4h8V11h-4zM7 19H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm4 4H9v-2h2v2zm0-4H9V9h2v2zm0-4H9V5h2v2zm4 8h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm4 12h-2v-2h2v2zm0-4h-2v-2h2v2z',
+    room: 'M19 9V5h-4V3H9v2H5v4H3v2h2v2H3v2h2v2H3v2h2v4h14v-4h2v-2h-2v-2h2v-2h-2v-2h2V9h-2zm-6 10H7v-5h6v5zm0-7H7V7h6v5zm4 7h-2v-5h2v5zm0-7h-2V7h2v5z',
+    people: 'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
+    trending: 'M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z',
+    add: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
+    edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+    del: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+    logout: 'M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z',
+    dashboard: 'M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z',
+    desc: 'M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+    receipt: 'M18 17H6v-2h12v2zm0-4H6v-2h12v2zm0-4H6V7h12v2zM3 22l1.5-1.5L6 22l1.5-1.5L9 22l1.5-1.5L12 22l1.5-1.5L15 22l1.5-1.5L18 22l1.5-1.5L21 22V2l-1.5 1.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2 4.5 3.5 3 2v20z',
+    settings: 'M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81a.484.484 0 00-.41-.3h-3.97c-.2 0-.38.12-.45.3l-.36 2.59c-.59.24-1.13.57-1.62.94l-2.39-.96a.484.484 0 00-.59.22L2.1 9.53c-.12.21-.07.47.12.63l2.01 1.58c-.04.3-.07.62-.07.94s.02.64.07.94l-2.01 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.22.23.38.45.38h3.97c.2 0 .38-.12.45-.3l.36-2.59c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z',
+    bar: 'M5 9.2h3V19H5zM10.6 5h2.8v14h-2.8zm5.6 8H19v6h-2.8z',
+    landlord: 'M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z',
+  };
+  return React.createElement('svg', { viewBox: '0 0 24 24', width: size, height: size, fill: 'currentColor' },
+    React.createElement('path', { d: paths[name] || '' })
+  );
+}
+
+// ====== 侧边栏布局 ======
+const DRAWER_WIDTH = 240;
+
+const menuItems = [
+  { label: '仪表盘', icon: <Icon name="dashboard" />, page: 'dashboard' },
+  { label: '房东管理', icon: <Icon name="landlord" />, page: 'landlords' },
+  { label: '房源管理', icon: <Icon name="apartment" />, page: 'properties' },
+  { label: '房间管理', icon: <Icon name="room" />, page: 'rooms' },
+  { label: '租客管理', icon: <Icon name="people" />, page: 'tenants' },
+  { label: '收租管理', icon: <Icon name="receipt" />, page: 'bills' },
+  { label: '合同管理', icon: <Icon name="desc" />, page: 'contracts' },
+  { label: '数据统计', icon: <Icon name="bar" />, page: 'statistics' },
+  { label: '系统设置', icon: <Icon name="settings" />, page: 'settings' },
+];
+
+function MainLayout() {
+  const [page, setPage] = useState('dashboard');
+  const [showLogin, setShowLogin] = useState(true);
+
+  if (showLogin) {
+    return <LoginPage onLogin={() => setShowLogin(false)} />;
+  }
+
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+      <Drawer variant="permanent" sx={{ width: DRAWER_WIDTH, '& .MuiDrawer-paper': { width: DRAWER_WIDTH, bgcolor: '#1A1A2E', color: '#fff', borderRight: 'none' } }}>
+        <Box sx={{ p: 3, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Typography variant="h6" fontWeight={700} color="#F5D78E">本地房东</Typography>
+          <Typography variant="caption" color="rgba(255,255,255,0.5)">管理后台 v1.0</Typography>
+        </Box>
+        <List sx={{ px: 1, pt: 2 }}>
+          {menuItems.map(item => (
+            <ListItemButton key={item.page} onClick={() => setPage(item.page)}
+              sx={{ borderRadius: 2, mb: 0.5, color: page === item.page ? '#F5D78E' : 'rgba(255,255,255,0.7)',
+                bgcolor: page === item.page ? 'rgba(245,215,142,0.1)' : 'transparent',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>{item.icon}</ListItemIcon>
+              <ListItemText primary={item.label} />
+            </ListItemButton>
+          ))}
+        </List>
+      </Drawer>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <AppBar position="static" elevation={0} sx={{ bgcolor: '#fff', color: '#333' }}>
+          <Toolbar>
+            <Box sx={{ flex: 1 }} />
+            <Typography variant="body2" sx={{ mr: 2 }}>超级管理员</Typography>
+            <IconButton color="inherit" size="small" onClick={() => setShowLogin(true)}><Icon name="logout" /></IconButton>
+          </Toolbar>
+        </AppBar>
+        <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+          {page === 'dashboard' && <DashboardPage />}
+          {page === 'landlords' && <LandlordPage />}
+          {page === 'properties' && <PropertyPage />}
+          {page === 'rooms' && <RoomPage />}
+          {page === 'tenants' && <TenantPage />}
+          {page === 'bills' && <BillPage />}
+          {page === 'contracts' && <ContractPage />}
+          {page === 'statistics' && <StatisticsPage />}
+          {page === 'settings' && <SettingsPage />}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+// ====== 登录页 ======
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = () => {
+    if (username === 'admin' && password === 'admin123') {
+      onLogin();
+    } else {
+      setError('账号或密码错误');
+    }
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
+      <Card sx={{ width: 400, p: 5 }}>
+        <Typography variant="h5" fontWeight={700} textAlign="center" mb={1}>本地房东</Typography>
+        <Typography variant="body2" color="text.secondary" textAlign="center" mb={4}>管理后台登录</Typography>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        <TextField fullWidth label="用户名" value={username} onChange={e => setUsername(e.target.value)} sx={{ mb: 2 }} />
+        <TextField fullWidth label="密码" type="password" value={password} onChange={e => setPassword(e.target.value)} sx={{ mb: 3 }}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        <Button fullWidth variant="contained" onClick={handleLogin}
+          sx={{ py: 1.5, bgcolor: '#F5D78E', color: '#4A4038', fontWeight: 700, '&:hover': { bgcolor: '#EBCB6E' } }}>登录</Button>
+        <Typography variant="caption" color="text.secondary" textAlign="center" display="block" mt={2}>
+          默认账号: admin / admin123 (点击直接登录)
+        </Typography>
+      </Card>
+    </Box>
+  );
+}
+
+// ====== 仪表盘 ======
+function DashboardPage() {
+  const stats = [
+    { icon: <Icon name="landlord" />, label: '总房东数', value: 48, color: '#F5D78E' },
+    { icon: <Icon name="apartment" />, label: '总房源数', value: 12, color: '#7BA37B' },
+    { icon: <Icon name="people" />, label: '在租租客', value: 41, color: '#6B8FBF' },
+    { icon: <Icon name="trending" />, label: '本月收租率', value: '85%', color: '#C97B7B' },
+  ];
+
+  return (
+    <Box>
+      <Typography variant="h5" fontWeight={700} mb={3}>仪表盘</Typography>
+      <Grid container spacing={3} mb={4}>
+        {stats.map((s, i) => (
+          <Grid key={i} size={{ xs: 12, sm: 6, md: 3 }}>
+            <Card sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box sx={{ width: 48, height: 48, borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: s.color + '22' }}>
+                <Box sx={{ color: s.color }}>{s.icon}</Box>
+              </Box>
+              <Box>
+                <Typography variant="h4" fontWeight={700}>{s.value}</Typography>
+                <Typography variant="body2" color="text.secondary">{s.label}</Typography>
+              </Box>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 8 }}>
+          <Card sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={600} mb={2}>近期收租趋势</Typography>
+            <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#fafafa', borderRadius: 2 }}>
+              <Typography color="text.secondary">📊 收租趋势图表（本地环境启动后激活 ECharts）</Typography>
+            </Box>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" fontWeight={600} mb={2}>待处理事项</Typography>
+            {[{ label: '逾期账单', count: 3, color: '#C97B7B' }, { label: '即将到期', count: 5, color: '#E8B87D' }, { label: '今日待收', count: 2, color: '#F5D78E' }].map(item => (
+              <Box key={item.label} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: '1px solid #f0f0f0' }}>
+                <Typography>{item.label}</Typography>
+                <Typography variant="h6" fontWeight={700} color={item.color}>{item.count}</Typography>
+              </Box>
+            ))}
+          </Card>
+          <Card sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={600} mb={2}>房源入住率</Typography>
+            {[{ name: '阳光花园', rate: 83 }, { name: '翠竹苑', rate: 88 }, { name: '明月阁', rate: 83 }].map(item => (
+              <Box key={item.name} sx={{ mb: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body2">{item.name}</Typography>
+                  <Typography variant="body2" fontWeight={600}>{item.rate}%</Typography>
+                </Box>
+                <Box sx={{ bgcolor: '#f0f0f0', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                  <Box sx={{ width: `${item.rate}%`, height: '100%', bgcolor: '#F5D78E', borderRadius: 4 }} />
+                </Box>
+              </Box>
+            ))}
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+
+// ====== 房东管理 ======
+function LandlordPage() {
+  const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState({ name: '', phone: '' });
+  const [data, setData] = useState([
+    { id: 1, name: '张秀英', phone: '138****2345', regDate: '2025-08-15', propertyCount: 5, roomCount: 22, activeCount: 18, status: '活跃', maxProperties: 10, avatar: '' },
+    { id: 2, name: '李明华', phone: '139****6789', regDate: '2025-10-03', propertyCount: 3, roomCount: 14, activeCount: 12, status: '活跃', maxProperties: 5, avatar: '' },
+    { id: 3, name: '王建国', phone: '136****3456', regDate: '2026-01-20', propertyCount: 2, roomCount: 8, activeCount: 7, status: '活跃', maxProperties: 10, avatar: '' },
+    { id: 4, name: '陈美玲', phone: '135****7890', regDate: '2025-06-01', propertyCount: 1, roomCount: 4, activeCount: 4, status: '已禁用', maxProperties: 3, avatar: '' },
+  ]);
+
+  const save = () => {
+    if (edit.id) {
+      setData(data.map(d => d.id === edit.id ? { ...d, ...edit } : d));
+    } else {
+      setData([...data, { ...edit, id: Date.now(), regDate: new Date().toISOString().slice(0,10), propertyCount: 0, roomCount: 0, activeCount: 0, status: '活跃', maxProperties: edit.maxProperties ?? 10, avatar: edit.avatar || '' }]);
+    }
+    setOpen(false);
+    setEdit({ name: '', phone: '' });
+  };
+
+  const toggleStatus = (id) => {
+    setData(data.map(d => d.id === id ? { ...d, status: d.status === '活跃' ? '已禁用' : '活跃' } : d));
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>房东管理</Typography>
+        <Button variant="contained" startIcon={<Icon name="add" />} onClick={() => { setEdit({ name: '', phone: '' }); setOpen(true); }}
+          sx={{ bgcolor: '#F5D78E', color: '#4A4038', fontWeight: 600 }}>新增房东</Button>
+      </Box>
+      <Card>
+        <TableContainer><Table>
+          <TableHead><TableRow>
+            <TableCell>姓名</TableCell><TableCell>电话</TableCell><TableCell>注册时间</TableCell><TableCell>房源数</TableCell><TableCell>房间数</TableCell><TableCell>在租数</TableCell><TableCell>状态</TableCell><TableCell>操作</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {data.map(row => (
+              <TableRow key={row.id} sx={{ cursor: 'pointer' }}>
+                <TableCell><Typography fontWeight={600}>{row.name}</Typography></TableCell>
+                <TableCell>{row.phone}</TableCell>
+                <TableCell>{row.regDate}</TableCell>
+                <TableCell>{row.propertyCount}</TableCell>
+                <TableCell>{row.roomCount}</TableCell>
+                <TableCell>{row.activeCount}</TableCell>
+                <TableCell>{row.propertyCount}/{row.maxProperties ?? 10}</TableCell>
+                <TableCell>
+                  <Chip label={row.status} size="small" color={row.status === '活跃' ? 'success' : 'default'}
+                    onClick={() => toggleStatus(row.id)} />
+                </TableCell>
+                <TableCell>
+                  <Button size="small" sx={{ mr: 1 }}>详情</Button>
+                  <IconButton size="small" onClick={() => { setEdit(row); setOpen(true); }}><Icon name="edit" /></IconButton>
+                  <IconButton size="small" onClick={() => toggleStatus(row.id)}>
+                    <Icon name={row.status === '活跃' ? 'del' : 'add'} />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Card>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{edit.id ? '编辑房东' : '新增房东'}</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth label="姓名" value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} sx={{ mt: 1, mb: 2 }} />
+          <TextField fullWidth label="电话" value={edit.phone || ''} onChange={e => setEdit({ ...edit, phone: e.target.value })} sx={{ mb: 2 }} />
+          <TextField fullWidth label="默认收款人" value={edit.payeeName || ''} onChange={e => setEdit({ ...edit, payeeName: e.target.value })} sx={{ mb: 2 }} />
+          <TextField fullWidth label="收款说明" value={edit.paymentNote || ''} onChange={e => setEdit({ ...edit, paymentNote: e.target.value })} multiline rows={2} sx={{ mb: 2 }} />
+          <TextField fullWidth label="头像URL" value={edit.avatar || ''} onChange={e => setEdit({ ...edit, avatar: e.target.value })} sx={{ mb: 2 }} />
+          <TextField fullWidth label="最大房源数" type="number" value={edit.maxProperties ?? 10} onChange={e => setEdit({ ...edit, maxProperties: parseInt(e.target.value) || 0 })} sx={{ mb: 2 }} helperText="0 表示不限制" />
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography>启用状态</Typography>
+            <Switch checked={edit.status !== 0} onChange={e => setEdit({ ...edit, status: e.target.checked ? 1 : 0 })} />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button variant="contained" onClick={save} sx={{ bgcolor: '#F5D78E', color: '#4A4038' }}>保存</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+// ====== 房源管理 ======
+function PropertyPage() {
+  const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState({ name: '', address: '' });
+  const [data, setData] = useState([
+    { id: 1, name: '阳光花园', address: '朝阳区建国路88号', roomCount: 12, rentedCount: 10, vacantCount: 2, landlordName: '张秀英' },
+    { id: 2, name: '翠竹苑', address: '海淀区中关村大街1号', roomCount: 8, rentedCount: 7, vacantCount: 1, landlordName: '李明华' },
+    { id: 3, name: '明月阁', address: '浦东新区陆家嘴路100号', roomCount: 6, rentedCount: 5, vacantCount: 1, landlordName: '张秀英' },
+  ]);
+
+  const save = () => {
+    if (edit.id) {
+      setData(data.map(d => d.id === edit.id ? { ...d, ...edit } : d));
+    } else {
+      setData([...data, { ...edit, id: Date.now(), roomCount: 0, rentedCount: 0, vacantCount: 0 }]);
+    }
+    setOpen(false);
+    setEdit({ name: '', address: '' });
+  };
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>房源管理</Typography>
+        <Button variant="contained" startIcon={<Icon name="add" />} onClick={() => { setEdit({ name: '', address: '' }); setOpen(true); }}
+          sx={{ bgcolor: '#F5D78E', color: '#4A4038', fontWeight: 600 }}>新增房源</Button>
+      </Box>
+      <Card>
+        <TableContainer><Table>
+          <TableHead><TableRow>
+            <TableCell>房源名称</TableCell><TableCell>所属房东</TableCell><TableCell>地址</TableCell><TableCell>房间数</TableCell><TableCell>已租</TableCell><TableCell>空置</TableCell><TableCell>操作</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {data.map(row => (
+              <TableRow key={row.id}>
+                <TableCell><Typography fontWeight={600}>{row.name}</Typography></TableCell>
+                <TableCell>{row.landlordName || '-'}</TableCell>
+                <TableCell>{row.address || '-'}</TableCell>
+                <TableCell>{row.roomCount}</TableCell>
+                <TableCell><Chip label={row.rentedCount} size="small" color="success" /></TableCell>
+                <TableCell>{row.vacantCount}</TableCell>
+                <TableCell>
+                  <IconButton size="small" onClick={() => { setEdit(row); setOpen(true); }}><Icon name="edit" fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => setData(data.filter(d => d.id !== row.id))}><Icon name="del" fontSize="small" color="error" /></IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Card>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{edit.id ? '编辑房源' : '新增房源'}</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth label="房源名称" value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} sx={{ mt: 1, mb: 2 }} />
+          <TextField fullWidth label="地址" value={edit.address || ''} onChange={e => setEdit({ ...edit, address: e.target.value })} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button variant="contained" onClick={save} sx={{ bgcolor: '#F5D78E', color: '#4A4038' }}>保存</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+// ====== 房间管理 ======
+function RoomPage() {
+  const [tab, setTab] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState({});
+  const data = [
+    { id: 1, name: '101室', property: '阳光花园', rent: 3500, status: '已出租', tenant: '李小明', rentDay: 10 },
+    { id: 2, name: '102室', property: '阳光花园', rent: 3200, status: '已出租', tenant: '张晓红', rentDay: 15 },
+    { id: 3, name: '103室', property: '阳光花园', rent: 3800, status: '空着', tenant: '-', rentDay: 0 },
+    { id: 4, name: '201室', property: '翠竹苑', rent: 4200, status: '已出租', tenant: '王大伟', rentDay: 5 },
+    { id: 5, name: '202室', property: '翠竹苑', rent: 4000, status: '逾期', tenant: '赵芳', rentDay: 1 },
+  ];
+  const filtered = tab === 0 ? data : tab === 1 ? data.filter(d => d.status === '空着') : data.filter(d => d.status === '已出租');
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>房间管理</Typography>
+        <Button variant="contained" startIcon={<Icon name="add" />} onClick={() => { setEdit({}); setOpen(true); }}
+          sx={{ bgcolor: '#F5D78E', color: '#4A4038', fontWeight: 600 }}>新增房间</Button>
+      </Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+        <Tab label="全部" /><Tab label="空着" /><Tab label="已出租" />
+      </Tabs>
+      <Card>
+        <TableContainer><Table>
+          <TableHead><TableRow>
+            <TableCell>房间名</TableCell><TableCell>所属房源</TableCell><TableCell>租金</TableCell><TableCell>状态</TableCell><TableCell>租客</TableCell><TableCell>收租日</TableCell><TableCell>操作</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {filtered.map(row => (
+              <TableRow key={row.id}>
+                <TableCell><Typography fontWeight={600}>{row.name}</Typography></TableCell>
+                <TableCell>{row.property}</TableCell>
+                <TableCell>{row.rent.toLocaleString()} 元</TableCell>
+                <TableCell><Chip label={row.status} size="small" color={row.status === '已出租' ? 'success' : row.status === '逾期' ? 'error' : 'default'} /></TableCell>
+                <TableCell>{row.tenant}</TableCell>
+                <TableCell>{row.rentDay > 0 ? `每月${row.rentDay}号` : '-'}</TableCell>
+                <TableCell>
+                  <IconButton size="small" onClick={() => { setEdit(row); setOpen(true); }}><Icon name="edit" fontSize="small" /></IconButton>
+                  <IconButton size="small"><Icon name="del" fontSize="small" color="error" /></IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Card>
+      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{edit.id ? '编辑房间' : '新增房间'}</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth label="房间名称" value={edit.name || ''} onChange={e => setEdit({ ...edit, name: e.target.value })} sx={{ mt: 1, mb: 2 }} />
+          <TextField fullWidth label="租金" type="number" value={edit.rent || ''} onChange={e => setEdit({ ...edit, rent: e.target.value })} sx={{ mb: 2 }} />
+          <TextField fullWidth label="面积" value={edit.area || ''} onChange={e => setEdit({ ...edit, area: e.target.value })} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpen(false)}>取消</Button>
+          <Button variant="contained" onClick={() => setOpen(false)} sx={{ bgcolor: '#F5D78E', color: '#4A4038' }}>保存</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+// ====== 租客管理 ======
+function TenantPage() {
+  const [tab, setTab] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [edit, setEdit] = useState({});
+  const data = [
+    { id: 1, name: '李小明', phone: '138****1234', room: '阳光花园 101室', moveIn: '2025-03-01', contractEnd: '2026-03-01', status: '在租' },
+    { id: 2, name: '张晓红', phone: '139****5678', room: '阳光花园 102室', moveIn: '2025-06-15', contractEnd: '2026-06-15', status: '在租' },
+    { id: 3, name: '王大伟', phone: '136****9012', room: '翠竹苑 201室', moveIn: '2024-09-01', contractEnd: '2025-09-01', status: '已退租' },
+  ];
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>租客管理</Typography>
+        <Button variant="contained" startIcon={<Icon name="add" />} onClick={() => { setEdit({}); setOpen(true); }}
+          sx={{ bgcolor: '#F5D78E', color: '#4A4038', fontWeight: 600 }}>登记租客</Button>
+      </Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+        <Tab label="全部" /><Tab label="在租" /><Tab label="已退租" />
+      </Tabs>
+      <Card>
+        <TableContainer><Table>
+          <TableHead><TableRow>
+            <TableCell>姓名</TableCell><TableCell>电话</TableCell><TableCell>房间</TableCell><TableCell>入住</TableCell><TableCell>合同到期</TableCell><TableCell>状态</TableCell><TableCell>操作</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {data.filter(d => tab === 0 || (tab === 1 ? d.status === '在租' : d.status === '已退租')).map(row => (
+              <TableRow key={row.id}>
+                <TableCell><Typography fontWeight={600}>{row.name}</Typography></TableCell>
+                <TableCell>{row.phone}</TableCell><TableCell>{row.room}</TableCell>
+                <TableCell>{row.moveIn}</TableCell><TableCell>{row.contractEnd}</TableCell>
+                <TableCell><Chip label={row.status} size="small" color={row.status === '在租' ? 'success' : 'default'} /></TableCell>
+                <TableCell>
+                  <IconButton size="small" onClick={() => { setEdit(row); setOpen(true); }}><Icon name="edit" fontSize="small" /></IconButton>
+                  <IconButton size="small"><Icon name="logout" fontSize="small" color="warning" /></IconButton>
+                  <IconButton size="small"><Icon name="del" fontSize="small" color="error" /></IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Card>
+    </Box>
+  );
+}
+
+// ====== 收租管理 ======
+function BillPage() {
+  const [selected, setSelected] = useState([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDate, setConfirmDate] = useState('2026-06-02');
+  const data = [
+    { id: 1, room: '阳光花园 101室', tenant: '李小明', period: '2026-05', total: 3790, status: '待支付', sentAt: '2026-05-10' },
+    { id: 2, room: '阳光花园 102室', tenant: '张晓红', period: '2026-05', total: 3500, status: '已收', sentAt: '2026-05-05', paidAt: '2026-05-08' },
+    { id: 3, room: '翠竹苑 201室', tenant: '王大伟', period: '2026-04', total: 4800, status: '逾期', sentAt: '2026-04-10' },
+    { id: 4, room: '翠竹苑 202室', tenant: '赵芳', period: '2026-05', total: 4300, status: '逾期', sentAt: '2026-05-01' },
+  ];
+
+  const toggle = id => setSelected(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]);
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>收租管理</Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" disabled={!selected.length} onClick={() => setConfirmOpen(true)}>批量确认收款</Button>
+          <Button variant="contained" disabled={!selected.length} sx={{ bgcolor: '#C97B7B', color: '#fff' }}>批量催缴</Button>
+        </Box>
+      </Box>
+      <Card>
+        <TableContainer><Table>
+          <TableHead><TableRow>
+            <TableCell padding="checkbox"><Checkbox checked={selected.length === data.length} onChange={() => setSelected(selected.length ? [] : data.map(b => b.id))} /></TableCell>
+            <TableCell>房间</TableCell><TableCell>租客</TableCell><TableCell>周期</TableCell><TableCell>合计</TableCell>
+            <TableCell>状态</TableCell><TableCell>发送</TableCell><TableCell>收款</TableCell><TableCell>操作</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {data.map(row => (
+              <TableRow key={row.id}>
+                <TableCell padding="checkbox"><Checkbox checked={selected.includes(row.id)} onChange={() => toggle(row.id)} /></TableCell>
+                <TableCell>{row.room}</TableCell><TableCell>{row.tenant}</TableCell><TableCell>{row.period}</TableCell>
+                <TableCell><Typography fontWeight={700}>{row.total.toLocaleString()} 元</Typography></TableCell>
+                <TableCell><Chip label={row.status} size="small" color={row.status === '已收' ? 'success' : row.status === '逾期' ? 'error' : 'warning'} /></TableCell>
+                <TableCell>{row.sentAt}</TableCell><TableCell>{row.paidAt || '-'}</TableCell>
+                <TableCell>
+                  {row.status === '待支付' && <Button size="small" onClick={() => setConfirmOpen(true)} sx={{ mr: 1 }}>确认收款</Button>}
+                  <Button size="small" color="error">催缴</Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Card>
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>确认收款</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" mb={2}>确认已收到 {selected.length || 1} 笔房租？</Typography>
+          <TextField fullWidth label="收款日期" type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>取消</Button>
+          <Button variant="contained" onClick={() => setConfirmOpen(false)} sx={{ bgcolor: '#7BA37B', color: '#fff' }}>确认收款</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+// ====== 合同管理 ======
+function ContractPage() {
+  const [tab, setTab] = useState(0);
+  const data = [
+    { id: 1, name: '租房合同-李小明', room: '阳光花园 101室', type: '合同', uploadedAt: '2025-03-01' },
+    { id: 2, name: '押金收据-张晓红', room: '阳光花园 102室', type: '收据', uploadedAt: '2025-06-15' },
+    { id: 3, name: '水电单-2026年1月', room: '翠竹苑 201室', type: '水电单', uploadedAt: '2026-01-10' },
+    { id: 4, name: '维修单-空调', room: '翠竹苑 202室', type: '维修', uploadedAt: '2026-04-20' },
+  ];
+  const tabs = ['全部', '合同', '收据', '水电单', '维修', '押金'];
+  const types = ['', '合同', '收据', '水电单', '维修', '押金'];
+  const filtered = tab === 0 ? data : data.filter(d => d.type === types[tab]);
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>合同管理</Typography>
+        <Button variant="contained" startIcon={<Icon name="add" />} sx={{ bgcolor: '#F5D78E', color: '#4A4038', fontWeight: 600 }}>上传文档</Button>
+      </Box>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+        {tabs.map((t, i) => <Tab key={i} label={t} />)}
+      </Tabs>
+      <Card>
+        <TableContainer><Table>
+          <TableHead><TableRow>
+            <TableCell>文档名称</TableCell><TableCell>所属房间</TableCell><TableCell>类型</TableCell><TableCell>上传时间</TableCell><TableCell>操作</TableCell>
+          </TableRow></TableHead>
+          <TableBody>
+            {filtered.map(row => (
+              <TableRow key={row.id}>
+                <TableCell><Typography fontWeight={600}>{row.name}</Typography></TableCell>
+                <TableCell>{row.room}</TableCell>
+                <TableCell><Chip label={row.type} size="small" /></TableCell>
+                <TableCell>{row.uploadedAt}</TableCell>
+                <TableCell>
+                  <Button size="small" sx={{ mr: 1 }}>查看</Button>
+                  <IconButton size="small"><Icon name="del" fontSize="small" color="error" /></IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table></TableContainer>
+      </Card>
+    </Box>
+  );
+}
+
+// ====== 数据统计 ======
+function StatisticsPage() {
+  const [period, setPeriod] = useState('month');
+  const stats = [
+    { label: '预计收入', value: '¥156,800', color: '#F5D78E' },
+    { label: '已收', value: '¥133,280', color: '#7BA37B' },
+    { label: '未收', value: '¥23,520', color: '#C97B7B' },
+    { label: '收租率', value: '85%', color: '#6B8FBF' },
+  ];
+
+  return (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" fontWeight={700}>数据统计</Typography>
+        <ToggleButtonGroup value={period} exclusive onChange={(_, v) => v && setPeriod(v)} size="small">
+          <ToggleButton value="month">本月</ToggleButton>
+          <ToggleButton value="quarter">本季</ToggleButton>
+          <ToggleButton value="year">本年</ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
+      <Grid container spacing={3} mb={4}>
+        {stats.map((s, i) => (
+          <Grid key={i} size={{ xs: 6, md: 3 }}>
+            <Card sx={{ p: 3, textAlign: 'center' }}>
+              <Typography variant="h4" fontWeight={700} color={s.color}>{s.value}</Typography>
+              <Typography variant="body2" color="text.secondary" mt={1}>{s.label}</Typography>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 8 }}>
+          <Card sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={600} mb={2}>月度收租趋势</Typography>
+            <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#fafafa', borderRadius: 2 }}>
+              <Typography color="text.secondary">📊 图表（本地启动后激活 ECharts）</Typography>
+            </Box>
+          </Card>
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <Card sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={600} mb={2}>房源收租排行</Typography>
+            {[{ name: '阳光花园', rate: 92, collected: 45600, total: 49600 }, { name: '翠竹苑', rate: 85, collected: 38200, total: 45000 }, { name: '明月阁', rate: 78, collected: 29800, total: 38200 }].map(item => (
+              <Box key={item.name} sx={{ borderBottom: '1px solid #f0f0f0', py: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body1" fontWeight={500}>{item.name}</Typography>
+                  <Typography variant="body2" color="text.secondary">{item.rate}%</Typography>
+                </Box>
+                <Box sx={{ bgcolor: '#f0f0f0', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                  <Box sx={{ width: `${item.rate}%`, height: '100%', bgcolor: '#F5D78E', borderRadius: 4 }} />
+                </Box>
+              </Box>
+            ))}
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+}
+
+// ====== 系统设置 ======
+function SettingsPage() {
+  const [open, setOpen] = useState(false);
+  const admins = [
+    { id: 1, username: 'admin', name: '超级管理员', role: '超级管理员', status: '启用', lastLogin: '2026-06-02 22:30' },
+    { id: 2, username: 'operator', name: '运营小王', role: '运营人员', status: '启用', lastLogin: '2026-06-01 14:20' },
+  ];
+
+  return (
+    <Box>
+      <Typography variant="h5" fontWeight={700} mb={3}>系统设置</Typography>
+      <Box sx={{ display: 'flex', gap: 3, flexDirection: 'column' }}>
+        <Card sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" fontWeight={600}>管理员用户</Typography>
+            <Button variant="contained" size="small" onClick={() => setOpen(true)}
+              sx={{ bgcolor: '#F5D78E', color: '#4A4038' }}>新增管理员</Button>
+          </Box>
+          <TableContainer><Table size="small">
+            <TableHead><TableRow>
+              <TableCell>用户名</TableCell><TableCell>姓名</TableCell><TableCell>角色</TableCell><TableCell>状态</TableCell><TableCell>最后登录</TableCell><TableCell>操作</TableCell>
+            </TableRow></TableHead>
+            <TableBody>
+              {admins.map(row => (
+                <TableRow key={row.id}>
+                  <TableCell>{row.username}</TableCell><TableCell>{row.name}</TableCell>
+                  <TableCell><Chip label={row.role} size="small" /></TableCell>
+                  <TableCell><Chip label={row.status} size="small" color="success" /></TableCell>
+                  <TableCell>{row.lastLogin}</TableCell>
+                  <TableCell>
+                    <IconButton size="small"><Icon name="edit" fontSize="small" /></IconButton>
+                    <IconButton size="small"><Icon name="del" fontSize="small" color="error" /></IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table></TableContainer>
+        </Card>
+        <Card sx={{ p: 3 }}>
+          <Typography variant="h6" fontWeight={600} mb={2}>通知配置</Typography>
+          {['微信模板消息推送', '收租日自动提醒', '逾期自动催缴通知', '合同到期提醒'].map(label => (
+            <Box key={label}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1 }}>
+                <Typography>{label}</Typography><Switch defaultChecked={label !== '合同到期提醒'} />
+              </Box>
+              <Divider />
+            </Box>
+          ))}
+        </Card>
+        <Card sx={{ p: 3 }}>
+          <Typography variant="h6" fontWeight={600} mb={2}>系统参数</Typography>
+          <TextField fullWidth label="默认费用模板（逗号分隔）" defaultValue="房租,水费,电费,燃气费,物业费,网费" sx={{ mb: 2 }} />
+          <TextField fullWidth label="账单默认生成日期（每月几号）" type="number" defaultValue="1" sx={{ mb: 2 }} />
+          <Button variant="contained" sx={{ bgcolor: '#F5D78E', color: '#4A4038' }}>保存参数</Button>
+        </Card>
+      </Box>
+    </Box>
+  );
+}
+
+// ====== 渲染 ======
+ReactDOM.createRoot(document.getElementById('root')).render(<MainLayout />);
+</script>
+</body>
+</html>

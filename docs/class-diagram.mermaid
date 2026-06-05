@@ -1,0 +1,207 @@
+classDiagram
+    class User {
+        +string _id
+        +string _openid
+        +string nickName
+        +string avatarUrl
+        +string phone
+        +string createdAt
+        +string updatedAt
+        +number propertyCount
+        +number roomCount
+        +number tenantCount
+    }
+
+    class Property {
+        +string _id
+        +string _openid
+        +string name
+        +string address
+        +string coverImage
+        +string note
+        +string createdAt
+        +string updatedAt
+    }
+
+    class Room {
+        +string _id
+        +string _openid
+        +string propertyId
+        +string name
+        +number rent
+        +RoomStatus status
+        +number deposit
+        +string area
+        +string floor
+        +string orientation
+        +string[] facilities
+        +string[] images
+        +string note
+        +string createdAt
+        +string updatedAt
+    }
+
+    class Tenant {
+        +string _id
+        +string _openid
+        +string roomId
+        +string name
+        +string phone
+        +string moveInDate
+        +string contractEndDate
+        +number rentDay
+        +number deposit
+        +string note
+        +TenantStatus status
+        +string moveOutDate
+        +string createdAt
+        +string updatedAt
+    }
+
+    class FeeItem {
+        +string _id
+        +string _openid
+        +string roomId
+        +string name
+        +FeeType type
+        +number amount
+        +boolean enabled
+        +boolean isRent
+        +number sortOrder
+        +string createdAt
+        +string updatedAt
+    }
+
+    class Bill {
+        +string _id
+        +string _openid
+        +string roomId
+        +string tenantId
+        +string period
+        +number totalAmount
+        +BillStatus status
+        +BillItem[] items
+        +string[] photos
+        +string sentAt
+        +string paidAt
+        +string createdAt
+        +string updatedAt
+    }
+
+    class BillItem {
+        +string feeName
+        +number amount
+    }
+
+    class PaymentQR {
+        +string _id
+        +string _openid
+        +PaymentQRType type
+        +string imageUrl
+        +boolean isDefault
+        +string payeeName
+        +string note
+        +string createdAt
+        +string updatedAt
+    }
+
+    class RentRecord {
+        +string _id
+        +string _openid
+        +string roomId
+        +string billId
+        +RentRecordType type
+        +string title
+        +string description
+        +number amount
+        +string createdAt
+    }
+
+    class SingleCharge {
+        +string _id
+        +string _openid
+        +string roomId
+        +string tenantId
+        +string feeType
+        +number amount
+        +string note
+        +number status
+        +string paidAt
+        +string createdAt
+    }
+
+    class Document {
+        +string _id
+        +string _openid
+        +string roomId
+        +DocumentType type
+        +string name
+        +string imageUrl
+        +string note
+        +string uploadedAt
+    }
+
+    class DBService {
+        +getDB() Database
+        +getCollection(name) Collection
+        +query(collection, where, options) Promise~T[]~
+        +getById(collection, id) Promise~T~
+        +add(collection, data) Promise~string~
+        +update(collection, id, data) Promise~void~
+        +remove(collection, id) Promise~void~
+        +count(collection, where) Promise~number~
+    }
+
+    class StorageService {
+        +uploadImage(filePath, cloudPath) Promise~string~
+        +getTempURL(fileID) Promise~string~
+        +getTempURLs(fileIDs) Promise~string[]~
+        +deleteFile(fileID) Promise~void~
+        +compressImage(filePath) Promise~string~
+    }
+
+    class CloudService {
+        +callLogin(code) Promise~LoginResult~
+        +callProperty(action, params) Promise~any~
+        +callBill(action, params) Promise~any~
+        +callSubscribeMessage(params) Promise~any~
+        +callAdmin(action, params) Promise~any~
+    }
+
+    User "1" --> "n" Property : _openid
+    User "1" --> "n" Room : _openid
+    User "1" --> "n" Tenant : _openid
+    User "1" --> "n" Bill : _openid
+    User "1" --> "n" FeeItem : _openid
+    User "1" --> "n" PaymentQR : _openid
+    User "1" --> "n" RentRecord : _openid
+    User "1" --> "n" SingleCharge : _openid
+    User "1" --> "n" Document : _openid
+
+    Property "1" --> "n" Room : propertyId
+    Room "1" --> "0..1" Tenant : roomId
+    Room "1" --> "n" FeeItem : roomId
+    Room "1" --> "n" Bill : roomId
+    Room "1" --> "n" RentRecord : roomId
+    Room "1" --> "n" SingleCharge : roomId
+    Room "1" --> "n" Document : roomId
+
+    Tenant "1" --> "n" Bill : tenantId
+    Tenant "1" --> "n" SingleCharge : tenantId
+
+    Bill "1" --> "n" RentRecord : billId
+    Bill "1" --> "n" BillItem : contains
+
+    DBService --> Property : CRUD
+    DBService --> Room : CRUD
+    DBService --> Tenant : CRUD
+    DBService --> Bill : CRUD
+
+    StorageService --> Room : images
+    StorageService --> Bill : photos
+    StorageService --> Document : imageUrl
+
+    CloudService --> User : login
+    CloudService --> Bill : confirmPayment
+    CloudService --> Bill : generate
+    CloudService --> RentRecord : subscribe

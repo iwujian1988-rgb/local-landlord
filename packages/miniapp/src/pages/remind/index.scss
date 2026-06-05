@@ -1,0 +1,100 @@
+// remind - 对齐 index.html Design System
+.page-remind {
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+/* Header - 对齐 HTML inline: padding:16px 20px */
+.remind-header {
+  padding: 16px 20px;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-md);font-weight:600;margin-bottom:8px */
+.remind-header-title {
+  font-size: var(--font-md, 20px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-sm);color:var(--text-hint) */
+.remind-header-desc {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+}
+
+/* Reminder Box - 对齐 HTML: .reminder-box (L857-867) */
+.reminder-box {
+  margin: 0 16px 16px;
+  padding: 20px;
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-md, 20px);
+  font-size: var(--font-base, 17px);
+  line-height: 1.8;
+  color: var(--text-primary, #4A4038);
+  white-space: pre-line;
+}
+
+.reminder-text {
+  white-space: pre-line;
+  font-size: var(--font-base, 17px);
+  line-height: 1.8;
+}
+
+/* Action Buttons - 对齐 HTML: .btn .btn-block (L256) + inline padding:16px */
+.remind-actions {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.remind-btn {
+  width: 100%;
+  min-height: 60px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px 24px;
+  font-size: 18px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.primary {
+    background: var(--accent, #F5D78E);
+    box-shadow: 0 4px 16px rgba(245,215,142,0.4);
+  }
+
+  &.secondary {
+    background: var(--bg-soft, #F5EDE2);
+    border: 2px solid var(--bg-soft, #F5EDE2);
+  }
+
+  &.ghost {
+    background: transparent;
+  }
+}
+
+.remind-btn-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+
+  &.secondary {
+    color: var(--text-secondary, #7A6F64);
+  }
+
+  &.ghost {
+    color: var(--accent-dk, #E8C76A);
+  }
+}

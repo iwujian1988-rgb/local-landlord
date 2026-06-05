@@ -1,0 +1,233 @@
+// bill - 对齐 index.html Design System
+.page-bill {
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+.bill-scroll {
+  height: calc(100vh - 88px);
+}
+
+/* Elder Card - 对齐 HTML: .elder-card (L1095-1101) */
+.elder-card {
+  margin: 0 16px 14px;
+  padding: 20px;
+  border-radius: var(--radius-lg, 24px);
+  background: var(--cream, #FFFDF9);
+  box-shadow: var(--shadow-card, 0 4px 20px rgba(74,64,56,0.05));
+}
+
+/* 对齐 HTML: .elder-card-title (L1102): font-size 23px, font-weight 820 */
+.elder-card-title {
+  font-size: 23px;
+  font-weight: 820;
+  color: var(--text-primary, #4A4038);
+}
+
+/* 对齐 HTML: .elder-card-desc (L1103): font-size 17px, margin-top 6px */
+.elder-card-desc {
+  font-size: 17px;
+  color: var(--text-secondary, #7A6F64);
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
+/* Bill Rows - 对齐 HTML: .bill-row (L636-641) */
+.bill-items {
+  margin-top: 18px;
+}
+
+.bill-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+}
+
+/* 对齐 HTML: .bill-label (L642): color var(--text-secondary) font-size var(--font-base) */
+.bill-label {
+  font-size: var(--font-base, 17px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+/* 对齐 HTML: .bill-value (L643): font-weight 600 font-size var(--font-base) */
+.bill-value {
+  font-size: var(--font-base, 17px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+}
+
+/* Bill Input Group */
+.bill-input-group {
+  padding: 0;
+  margin: 14px 0;
+}
+
+/* 对齐 HTML: .form-label (L301-307) font-size var(--font-sm) */
+.form-label {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-secondary, #7A6F64);
+  margin-bottom: 8px;
+  font-weight: 500;
+  display: block;
+}
+
+.input-with-suffix {
+  position: relative;
+}
+
+.bill-number-input {
+  padding-right: 48px;
+}
+
+/* 对齐 HTML inline: position:absolute;right:16px;top:50%;transform:translateY(-50%);font-weight:700 */
+.input-suffix {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-hint, #A89B8C);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+/* Divider - 对齐 HTML: .divider (L461-465) */
+.bill-divider {
+  height: 1px;
+  background: rgba(74,64,56,0.06);
+  margin: 12px 0;
+}
+
+/* Total Section - 对齐 HTML inline */
+.bill-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 对齐 HTML inline (L2212): font-size 22px, font-weight 850 */
+.bill-total-label {
+  font-size: 22px;
+  font-weight: 850;
+  color: var(--text-primary, #4A4038);
+}
+
+/* 对齐 HTML inline (L2213): font-size 34px, font-weight 900 */
+.bill-total-value {
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--accent, #F5D78E);
+}
+
+/* Photo Upload - 对齐 HTML: .btn-secondary .elder-big-btn */
+.bill-photo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 24px;
+  width: 100%;
+  min-height: 68px;
+  border-radius: 999px;
+  background: var(--bg-soft, #F5EDE2);
+  margin-top: 16px;
+  border: 2px solid var(--bg-soft, #F5EDE2);
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+.bill-photo-btn-text {
+  font-size: 20px;
+  color: var(--text-secondary, #7A6F64);
+  font-weight: 800;
+}
+
+/* Photo Grid - 对齐 HTML: .bill-photo-grid (L548-553) */
+.bill-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* 对齐 HTML: .bill-photo-card (L554-564) */
+.bill-photo-card {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm, 14px);
+  overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(74,64,56,0.06);
+  background: var(--cream, #FFFDF9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bill-photo-img {
+  width: 100%;
+  height: 100%;
+}
+
+/* 对齐 HTML: .bill-photo-tag (L570-580) */
+.bill-photo-tag {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  font-size: 10px;
+  color: #fff;
+  background: rgba(74,64,56,0.72);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* Send Action Buttons - 对齐 HTML: .elder-big-btn + .btn-primary/.btn-secondary */
+.bill-action-btn {
+  width: 100%;
+  min-height: 68px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+  font-size: 20px;
+  font-weight: 800;
+  padding: 12px 24px;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.primary {
+    background: var(--accent, #F5D78E);
+    box-shadow: 0 4px 16px rgba(245,215,142,0.4);
+    margin-top: 16px;
+  }
+
+  &.secondary {
+    background: var(--bg-soft, #F5EDE2);
+    color: var(--text-secondary, #7A6F64);
+    border: 2px solid var(--bg-soft, #F5EDE2);
+  }
+
+  &.paid-btn {
+    background: var(--bg-soft, #F5EDE2);
+    border: 2px solid rgba(106,155,125,0.22);
+  }
+}
+
+.bill-action-text {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary, #4A4038);
+
+  &.secondary {
+    color: var(--text-secondary, #7A6F64);
+  }
+
+  &.paid {
+    color: var(--green, #7BA37B);
+  }
+}

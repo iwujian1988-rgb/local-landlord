@@ -1,0 +1,48 @@
+.page-terms {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #FDF8F3);
+}
+
+.content-scroll {
+  flex: 1;
+}
+
+.policy-content {
+  padding: 32px;
+}
+
+.policy-title {
+  font-size: var(--font-xl, 48px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+  display: block;
+  margin-bottom: 12px;
+}
+
+.policy-update {
+  font-size: var(--font-sm, 28px);
+  color: var(--text-hint, #A89B8C);
+  display: block;
+  margin-bottom: 40px;
+}
+
+.policy-section {
+  margin-bottom: 36px;
+}
+
+.section-title {
+  font-size: var(--font-md, 36px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+  display: block;
+  margin-bottom: 16px;
+}
+
+.section-text {
+  font-size: var(--font-base, 32px);
+  color: var(--text-secondary, #7A6F64);
+  line-height: 1.8;
+  display: block;
+}

@@ -1,0 +1,13 @@
+packages:
+  - 'packages/*'
+allowBuilds:
+  '@nestjs/core': false
+  '@parcel/watcher': false
+  '@swc/core': false
+  '@tarojs/binding': false
+  '@tarojs/cli': false
+  bcrypt: false
+  core-js: false
+  core-js-pure: false
+  esbuild: false
+  swiper: false

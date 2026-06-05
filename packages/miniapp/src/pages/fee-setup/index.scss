@@ -1,0 +1,178 @@
+.page-fee-setup {
+  min-height: 100vh;
+  padding-bottom: 100px;
+}
+
+.fee-hint {
+  padding: 8px 20px 16px;
+}
+
+.fee-hint-text {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+}
+
+.fee-list {
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Fee item - 对齐 HTML: .fee-item (L646-658) */
+.fee-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-md, 20px);
+  margin-bottom: 10px;
+}
+
+/* 对齐 HTML: .fee-info (L655) */
+.fee-info {
+  flex: 1;
+}
+
+/* 对齐 HTML: .fee-name (L656) */
+.fee-name {
+  font-weight: 600;
+  font-size: var(--font-base, 17px);
+  color: var(--text-primary, #4A4038);
+}
+
+/* 对齐 HTML: .fee-desc (L657) */
+.fee-desc {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+  margin-top: 2px;
+}
+
+/* 对齐 HTML: .fee-amount (L658) */
+.fee-amount {
+  font-size: var(--font-md, 20px);
+  font-weight: 700;
+  color: var(--accent-dk, #E8C76A);
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  &.manual {
+    color: var(--text-hint, #A89B8C);
+    margin-right: 12px;
+  }
+}
+
+.fee-amount-input {
+  width: 80px;
+  text-align: right;
+  font-size: var(--font-md, 20px);
+  font-weight: 700;
+  color: var(--accent-dk, #E8C76A);
+  background: transparent;
+}
+
+.fee-amount-unit {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+.fee-amount-placeholder {
+  margin-right: 12px;
+}
+
+/* Toggle - 对齐 HTML: .toggle (L340-361) */
+.toggle-switch {
+  width: 52px;
+  height: 30px;
+  background: #E8E0D5;
+  border-radius: 15px;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  border: none;
+
+  &::after {
+    content: '';
+    width: 26px;
+    height: 26px;
+    background: #fff;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: all 0.3s ease;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+  }
+
+  &.on {
+    background: var(--accent, #F5D78E);
+
+    &::after {
+      left: 24px;
+    }
+  }
+
+  &.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+/* Add fee button - 对齐 HTML inline (L1965-1967) */
+.add-fee-btn {
+  border: 1.5px dashed rgba(125,127,172,0.25);
+  border-radius: var(--radius-md, 20px);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.add-fee-btn-text {
+  font-size: var(--font-base, 17px);
+  color: var(--accent-dk, #E8C76A);
+  font-weight: 700;
+}
+
+/* Bottom actions - 对齐 HTML inline (L1970-1979) */
+.fee-actions {
+  padding: 20px 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.action-btn {
+  flex: 1;
+  border-radius: var(--radius-lg, 24px);
+  padding: 12px 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  font-size: var(--font-base, 17px);
+  font-weight: 700;
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.primary {
+    background: var(--accent, #F5D78E);
+    color: var(--text-primary, #4A4038);
+    box-shadow: 0 4px 16px rgba(245,215,142,0.4);
+  }
+
+  &.secondary {
+    background: var(--bg-soft, #F5EDE2);
+    color: var(--text-secondary, #7A6F64);
+    border: 2px solid var(--bg-soft, #F5EDE2);
+  }
+}

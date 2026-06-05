@@ -1,0 +1,142 @@
+.page-my {
+  min-height: 100vh;
+  padding-bottom: 120px;
+}
+
+/* Nav bar - tab page, no back */
+.nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: transparent;
+}
+
+.nav-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+/* Profile - matches HTML .profile-header L881-888 */
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 20px;
+}
+
+.avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.avatar-text {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.profile-name {
+  font-size: var(--font-lg);
+  font-weight: 700;
+}
+
+.profile-phone {
+  font-size: var(--font-sm);
+  color: var(--text-hint);
+}
+
+/* Menu list - matches HTML .menu-item L891-911 */
+.menu-list {
+  padding: 0 16px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  background: var(--cream);
+  border-radius: 20px;
+  margin: 0 16px 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.menu-item:active {
+  transform: scale(0.98);
+}
+
+.menu-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.menu-text {
+  flex: 1;
+  font-size: var(--font-base);
+  font-weight: 500;
+}
+
+.menu-arrow {
+  width: 16px;
+  height: 16px;
+  stroke: var(--text-hint);
+  stroke-width: 2;
+  fill: none;
+}
+
+/* Section header - matches HTML L276-294 */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 10px;
+}
+
+.section-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* FAQ */
+.faq-list {
+  padding: 0 16px 24px;
+}
+
+.faq-text {
+  flex: 1;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.tip-answer {
+  margin: -8px 32px 16px;
+  padding: 24px 36px;
+  background: var(--bg-primary);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-left: 4px solid var(--accent);
+}
+
+.tip-answer-text {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  line-height: 1.7;
+}

@@ -1,0 +1,317 @@
+// rent-stats - 对齐 index.html Design System
+.page-rent-stats {
+  min-height: 100vh;
+}
+
+.stats-scroll {
+  padding-bottom: 80px;
+}
+
+/* Filter Tabs - 对齐 HTML: .filter-tabs (L423-429) */
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 对齐 HTML: .filter-tab (L432-445) */
+.filter-tab {
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: var(--cream, #FFFDF9);
+  box-shadow: 0 2px 8px rgba(74,64,56,0.04);
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-family: inherit;
+  flex-shrink: 0;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.active {
+    background: var(--text-primary, #4A4038);
+  }
+}
+
+.filter-tab-text {
+  font-size: var(--font-sm, 15px);
+  font-weight: 500;
+  color: var(--text-secondary, #7A6F64);
+}
+
+.filter-tab.active .filter-tab-text {
+  color: #fff;
+}
+
+/* Card - 对齐 HTML: .card (L206-215) */
+.card {
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-lg, 24px);
+  padding: 18px;
+  margin: 0 16px 14px;
+  box-shadow: var(--shadow-card, 0 4px 20px rgba(74,64,56,0.05));
+
+  &.card-glow {
+    background: var(--cream, #FFFDF9);
+    position: relative;
+  }
+}
+
+/* Overview Card */
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-sm);color:var(--text-hint) */
+.overview-period {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+  display: block;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-lg);font-weight:800;margin-top:2px */
+.overview-title {
+  font-size: var(--font-lg, 24px);
+  font-weight: 800;
+  color: var(--text-primary, #4A4038);
+  display: block;
+  margin-top: 2px;
+}
+
+/* 对齐 HTML: .tag .tag-blue (L261-273) */
+.tag-blue {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent, #F5D78E);
+  font-size: var(--font-xs, 13px);
+  font-weight: 600;
+}
+
+.tag-blue-text {
+  font-size: var(--font-xs, 13px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+}
+
+/* Stats Grid - 对齐 HTML: .grid-3-stats (L366) */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 0;
+}
+
+/* 对齐 HTML: .stat-card (L368-375) */
+.stats-item {
+  flex: 1;
+  padding: 14px;
+  background: rgba(255,255,255,0.45);
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: var(--shadow-card, 0 4px 20px rgba(74,64,56,0.05));
+}
+
+/* 对齐 HTML: .stat-value (L376-380): font-size 28px, font-weight 800 */
+.stats-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-primary, #4A4038);
+  display: block;
+
+  &.green {
+    background: linear-gradient(135deg, var(--green, #7BA37B), #7aaa8d);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  &.orange {
+    background: linear-gradient(135deg, var(--orange, #E8B87D), #c89e6a);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+/* 对齐 HTML: .stat-label (L381-387): font-size 13px, color var(--text-secondary) */
+.stats-label {
+  font-size: 13px;
+  color: var(--text-secondary, #7A6F64);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+  display: block;
+}
+
+/* Section Header - 对齐 HTML: .section-header (L276-280) */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 10px;
+}
+
+/* 对齐 HTML: .section-title (L282-286): font-size var(--font-md), font-weight 700 */
+.section-title {
+  font-size: var(--font-md, 20px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+}
+
+/* 对齐 HTML: .section-more (L287-294): font-size var(--font-sm) */
+.section-more {
+  font-size: var(--font-sm, 15px);
+  color: var(--accent-dk, #E8C76A);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+
+/* Property Stat Card */
+.property-stat-card {
+  cursor: default;
+}
+
+.property-stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-md);font-weight:700 */
+.property-stat-name {
+  font-size: var(--font-md, 20px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+  display: block;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-sm);color:var(--text-hint);margin-top:2px */
+.property-stat-info {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+  margin-top: 2px;
+  display: block;
+}
+
+.property-stat-amount {
+  text-align: right;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-lg);font-weight:800;color:var(--accent) */
+.amount-value {
+  font-size: var(--font-lg, 24px);
+  font-weight: 800;
+  color: var(--accent, #F5D78E);
+  display: block;
+}
+
+.amount-unit {
+  font-size: var(--font-xs, 13px);
+  color: var(--text-hint, #A89B8C);
+}
+
+/* Progress Bar - 对齐 HTML inline: height 8px, border-radius 99px, margin-top 14px */
+.progress-bar {
+  height: 8px;
+  background: rgba(0,0,0,0.06);
+  border-radius: 99px;
+  margin: 14px 0 8px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, var(--green, #7BA37B), #7aaa8d);
+  border-radius: 99px;
+  transition: width 0.5s ease;
+}
+
+.property-stat-footer {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+/* Comparison Card - 对齐 HTML: .bill-row (L636-643) */
+.comparison-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+}
+
+/* 对齐 HTML: .bill-row .bill-label: color var(--text-secondary) font-size var(--font-base) */
+.comparison-label {
+  font-size: var(--font-base, 17px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+/* 对齐 HTML: .bill-row .bill-value: font-weight 600 */
+.comparison-value {
+  font-size: var(--font-base, 17px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+
+  &.green {
+    color: var(--green, #7BA37B);
+  }
+}
+
+/* Bottom Actions - 对齐 HTML inline (L2171-2174) */
+.bottom-actions {
+  padding: 0 16px 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.bottom-btn {
+  flex: 1;
+  padding: 16px;
+  border-radius: var(--radius-lg, 24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.primary {
+    background: var(--accent, #F5D78E);
+    box-shadow: 0 4px 16px rgba(245,215,142,0.4);
+    color: var(--text-primary, #4A4038);
+  }
+
+  &.secondary {
+    background: var(--bg-soft, #F5EDE2);
+    color: var(--text-secondary, #7A6F64);
+    border: 2px solid var(--bg-soft, #F5EDE2);
+  }
+}
+
+.bottom-btn-text {
+  font-size: var(--font-base, 17px);
+  font-weight: 700;
+  color: var(--text-secondary, #7A6F64);
+
+  &.primary-text {
+    color: var(--text-primary, #4A4038);
+  }
+}

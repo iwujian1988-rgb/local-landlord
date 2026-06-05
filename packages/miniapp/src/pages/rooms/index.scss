@@ -1,0 +1,35 @@
+/* ========== Rooms - 对齐 index.html CSS 属性值 ========== */
+
+.page-rooms {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.rooms-scroll {
+  flex: 1;
+}
+
+.add-property-card {
+  margin: 0 32px 28px;
+  padding: 36px;
+  border: 4px dashed rgba(125, 127, 172, 0.2);
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 200px;
+}
+
+.add-property-card:active {
+  transform: scale(0.98);
+}
+
+.add-property-text {
+  font-size: var(--font-base);
+  color: var(--text-hint);
+  font-weight: 500;
+}

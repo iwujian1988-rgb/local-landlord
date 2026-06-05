@@ -1,0 +1,110 @@
+.page-contracts {
+  min-height: 100vh;
+  position: relative;
+  padding-bottom: 100px;
+}
+
+/* Filter tabs - matches HTML .filter-tabs L422-449 */
+.contracts-filter {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contracts-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-tab {
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  background: var(--cream);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(74,64,56,0.04);
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.filter-tab.active {
+  background: var(--text-primary);
+  color: #fff;
+}
+
+/* Doc card - matches HTML .doc-card L702-724 */
+.doc-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--cream);
+  border-radius: var(--radius-md);
+  margin: 0 16px 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.doc-card:active {
+  transform: scale(0.98);
+}
+
+.doc-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-xs);
+  background: #e8e0d5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.doc-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-name {
+  font-weight: 600;
+  font-size: var(--font-base);
+  color: var(--text-primary);
+}
+
+.doc-date {
+  font-size: var(--font-xs);
+  color: var(--text-hint);
+  margin-top: 2px;
+}
+
+/* Upload button at bottom */
+.upload-footer {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.upload-footer-btn {
+  padding: 12px 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-soft);
+  border: 2px solid var(--bg-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--font-base);
+  font-weight: 700;
+  color: var(--text-secondary);
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.upload-footer-btn:active {
+  transform: scale(0.96);
+}

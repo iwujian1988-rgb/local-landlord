@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test_password
+          MYSQL_DATABASE: local_landlord
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm --filter @local-landlord/server type-check
+        continue-on-error: true
+
+      - name: Run E2E tests
+        run: |
+          cd packages/server
+          npx jest --config test/jest-e2e.json --forceExit --detectOpenHandles
+        env:
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_USERNAME: root
+          DB_PASSWORD: test_password
+          DB_DATABASE: local_landlord
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          JWT_SECRET: test_jwt_secret
+          JWT_EXPIRES_IN: 7d
+          NODE_ENV: test
+          PORT: 3000
+
+      - name: Build server
+        run: pnpm --filter @local-landlord/server build

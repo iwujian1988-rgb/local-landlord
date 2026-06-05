@@ -1,0 +1,156 @@
+.page-payment {
+  min-height: 100vh;
+  padding-bottom: 40px;
+}
+
+/* Amount Header Card - 对齐 HTML: .card (L206-215) */
+.payment-header-card {
+  margin: 8px 16px 14px;
+  padding: 18px;
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-lg, 24px);
+  box-shadow: var(--shadow-card, 0 4px 20px rgba(74,64,56,0.05));
+  text-align: center;
+}
+
+.payment-header-label {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* 对齐 HTML inline: font-size:var(--font-xxl);font-weight:800 (L2314) */
+.payment-amount {
+  font-size: var(--font-xxl, 36px);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--neon-start, #F5D78E), var(--neon-end, #E8B87D));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 对齐 HTML: .divider (L461-465) */
+.payment-divider {
+  height: 1px;
+  background: rgba(74,64,56,0.06);
+  margin: 12px 0;
+}
+
+/* Items */
+.payment-items {
+  text-align: left;
+}
+
+/* 对齐 HTML: .bill-row (L636-641) + inline padding:6px 0 */
+.payment-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+
+/* 对齐 HTML: .bill-label (L642) */
+.payment-row-label {
+  font-size: var(--font-base, 17px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+/* 对齐 HTML: .bill-value (L643) */
+.payment-row-value {
+  font-size: var(--font-base, 17px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+}
+
+/* QR Code Card */
+.payment-qr-card {
+  margin: 0 16px 14px;
+  padding: 18px;
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-lg, 24px);
+  box-shadow: var(--shadow-card, 0 4px 20px rgba(74,64,56,0.05));
+  text-align: center;
+}
+
+.payment-qr-title {
+  font-size: var(--font-md, 20px);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 16px;
+  color: var(--text-primary, #4A4038);
+}
+
+/* 对齐 HTML: .qr-placeholder (L599-611) + inline margin override */
+.payment-qr-placeholder {
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 16px;
+  background: #fff;
+  border-radius: var(--radius-md, 20px);
+  border: 2px dashed rgba(245,215,142,0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-hint, #A89B8C);
+}
+
+.payment-qr-placeholder-text {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+}
+
+.payment-payee {
+  font-size: var(--font-base, 17px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+  display: block;
+}
+
+.payment-payee-hint {
+  font-size: var(--font-sm, 15px);
+  color: var(--text-hint, #A89B8C);
+  display: block;
+  margin-top: 6px;
+}
+
+/* Action Buttons - 对齐 HTML: .btn (L223-237) + inline flex:1 */
+.payment-actions {
+  padding: 16px;
+  display: flex;
+  gap: 10px;
+}
+
+.payment-btn {
+  flex: 1;
+  border-radius: var(--radius-lg, 24px);
+  padding: 12px 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--font-base, 17px);
+  font-weight: 700;
+  border: none;
+  font-family: inherit;
+  transition: all 0.3s ease;
+  cursor: pointer;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.primary {
+    background: var(--accent, #F5D78E);
+    color: var(--text-primary, #4A4038);
+    box-shadow: 0 4px 16px rgba(245,215,142,0.4);
+  }
+
+  &.secondary {
+    background: var(--bg-soft, #F5EDE2);
+    color: var(--text-secondary, #7A6F64);
+    border: 2px solid var(--bg-soft, #F5EDE2);
+  }
+}

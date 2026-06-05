@@ -1,0 +1,243 @@
+/* ========== Room List - 对齐 index.html CSS 属性值 ========== */
+
+.page-room-list {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stats tags */
+.stats-tags {
+  display: flex;
+  gap: 20px;
+  padding: 0 32px 20px;
+  flex-wrap: wrap;
+}
+
+.stat-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 24px;
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+
+.tag-blue { background: var(--accent); color: var(--text-primary); }
+.tag-green { background: var(--blue); color: #fff; }
+.tag-gray { background: var(--bg-soft); color: var(--text-secondary); }
+.tag-red { background: #E8A8A8; color: #fff; }
+
+/* Stats row */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 0 32px;
+  margin-bottom: 28px;
+}
+
+.stat-card-item {
+  background: var(--cream);
+  border-radius: var(--radius-md);
+  padding: 32px 24px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+}
+
+.stat-card-value {
+  font-size: 56px;
+  font-weight: 800;
+  color: var(--text-primary);
+  display: block;
+}
+
+.stat-card-value.green {
+  background: linear-gradient(135deg, var(--green), #7aaa8d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.stat-card-value.red {
+  background: linear-gradient(135deg, var(--red), #c48282);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.stat-card-label {
+  font-size: 26px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 8px;
+  display: block;
+}
+
+/* Stats link button */
+.stats-link {
+  padding: 0 32px 28px;
+}
+
+.stats-link-btn {
+  background: var(--bg-soft);
+  border: 4px solid var(--bg-soft);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stats-link-btn:active {
+  transform: scale(0.98);
+}
+
+.stats-link-text {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* Filter tabs */
+.filter-tabs {
+  display: flex;
+  gap: 16px;
+  padding: 0 32px;
+  margin-bottom: 28px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filter-tab {
+  padding: 20px 40px;
+  border-radius: 999px;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  border: none;
+  background: var(--cream);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-family: inherit;
+  box-shadow: 0 4px 16px rgba(74, 64, 56, 0.04);
+}
+
+.filter-tab.active {
+  background: var(--text-primary);
+}
+
+.filter-tab.active .filter-tab-text {
+  color: #fff;
+}
+
+.filter-tab-text {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Rooms scroll */
+.rooms-scroll {
+  flex: 1;
+}
+
+/* Room card (shared with room-list) */
+.card {
+  background: var(--cream);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: all 0.3s ease;
+}
+
+.room-card {
+  cursor: pointer;
+  margin: 0 32px 28px;
+  padding: 36px;
+}
+
+.room-card:active {
+  transform: scale(0.98);
+}
+
+.room-card-body {
+  display: flex;
+  gap: 28px;
+}
+
+.room-card-img {
+  width: 144px;
+  height: 144px;
+  border-radius: var(--radius-sm);
+  background-color: #f0ebe0;
+  flex-shrink: 0;
+}
+
+.room-card-img-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-soft);
+}
+
+.room-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.room-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.room-card-name {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.room-card-rent {
+  font-size: var(--font-md);
+  font-weight: 800;
+  color: var(--accent-dk);
+  margin-top: 8px;
+}
+
+.room-card-tenant {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.room-card-vacant {
+  color: var(--text-hint);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 24px;
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tag-green {
+  background: var(--green);
+}
+
+.tag-orange {
+  background: var(--orange);
+  color: #fff;
+}
+
+.tag-red {
+  background: var(--red);
+}

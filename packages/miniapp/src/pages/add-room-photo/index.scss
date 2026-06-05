@@ -1,0 +1,86 @@
+/* ========== Add Room Photo - 对齐 index.html CSS ========== */
+
+.page-add-room-photo {
+  min-height: 100vh;
+}
+
+.photo-hint {
+  padding: 16px 40px 40px;
+}
+
+.photo-hint-main {
+  font-size: var(--font-md);
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.photo-hint-sub {
+  font-size: var(--font-sm);
+  color: var(--text-hint);
+  display: block;
+  margin-top: 8px;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 0 32px;
+}
+
+.photo-grid-item {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.photo-thumb {
+  width: 100%;
+  height: 100%;
+  background-color: #f0ebe0;
+}
+
+.photo-add-btn {
+  border: 4px dashed rgba(245, 215, 142, 0.28);
+  background: rgba(255, 253, 249, 0.36);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.photo-add-btn:active {
+  border-color: var(--accent);
+  background: rgba(245, 215, 142, 0.06);
+}
+
+.photo-add-text {
+  font-size: var(--font-xs);
+  color: var(--text-hint);
+  font-weight: 500;
+}
+
+.photo-actions {
+  padding: 48px 32px;
+}
+
+.next-btn {
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(245, 215, 142, 0.4);
+}
+
+.next-btn:active {
+  transform: scale(0.96);
+}
+
+.next-btn-text {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-primary);
+}

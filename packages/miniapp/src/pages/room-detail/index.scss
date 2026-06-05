@@ -1,0 +1,312 @@
+// room-detail - 对齐 index.html Design System
+.page-room-detail {
+  min-height: 100vh;
+}
+
+.detail-scroll {
+  padding-bottom: 80px;
+}
+
+/* Nav share button - 对齐 HTML: .nav-action-btn */
+.nav-share-btn {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: var(--bg-soft, #F5EDE2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:active {
+    transform: scale(0.92);
+  }
+}
+
+/* Breadcrumb - 对齐 HTML inline: padding:4px 20px 8px; font-size:var(--font-sm) */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 40px 16px;
+}
+
+.breadcrumb-text {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-hint, #A89B8C);
+}
+
+.breadcrumb-current {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-primary, #4A4038);
+  font-weight: 600;
+}
+
+/* Room Image - 对齐 HTML: .room-img */
+.room-image {
+  margin: 0 32px 32px;
+  height: 440px;
+  border-radius: var(--radius-lg, 48px);
+  overflow: hidden;
+}
+
+.room-image-img {
+  width: 100%;
+  height: 100%;
+}
+
+/* Detail Card - 对齐 HTML: .card */
+.detail-card {
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-lg, 48px);
+  padding: 36px;
+  margin: 0 32px 28px;
+  box-shadow: var(--shadow-card, 0 8px 40px rgba(74, 64, 56, 0.05));
+
+  &.card-glow {
+    box-shadow: var(--shadow-glow, 0 8px 40px rgba(245, 215, 142, 0.25));
+  }
+}
+
+.detail-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+/* 对齐 HTML: font-size:var(--font-xl);font-weight:800 */
+.detail-room-name {
+  font-size: var(--font-xl, 56px);
+  font-weight: 800;
+  color: var(--text-primary, #4A4038);
+}
+
+/* Status Tags - 对齐 HTML: .tag */
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 24px;
+  border-radius: 999px;
+
+  &.green { background: var(--green, #7BA37B); }
+  &.orange { background: var(--orange, #E8B87D); }
+  &.red { background: var(--red, #C97B7B); }
+  &.gray { background: var(--bg-soft, #F5EDE2); }
+  &.blue { background: var(--accent, #F5D78E); }
+}
+
+.status-tag-text {
+  font-size: var(--font-xs, 26px);
+  font-weight: 600;
+  color: #fff;
+}
+
+.status-tag.gray .status-tag-text {
+  color: var(--text-secondary, #7A6F64);
+}
+
+.status-tag.blue .status-tag-text {
+  color: var(--text-primary, #4A4038);
+}
+
+/* 对齐 HTML: font-size:var(--font-xl); font-weight:800; color:var(--accent) */
+.detail-room-rent {
+  font-size: var(--font-xl, 56px);
+  font-weight: 800;
+  color: var(--accent, #F5D78E);
+}
+
+.rent-unit {
+  font-size: var(--font-sm, 30px);
+  font-weight: 500;
+  color: var(--text-hint, #A89B8C);
+}
+
+/* Divider - 对齐 HTML: .divider */
+.detail-divider {
+  height: 2px;
+  background: rgba(74, 64, 56, 0.06);
+  margin: 24px 0;
+}
+
+/* Info grid - 对齐 HTML: grid-template-columns:1fr 1fr; gap:8px; font-size:var(--font-sm) */
+.detail-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-label {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-hint, #A89B8C);
+}
+
+.info-value {
+  font-size: var(--font-sm, 30px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+}
+
+/* Monthly Card - 对齐 HTML: .card-glow */
+.monthly-card {
+  cursor: pointer;
+}
+
+.monthly-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.monthly-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.monthly-right {
+  text-align: right;
+}
+
+.monthly-label {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-hint, #A89B8C);
+  display: block;
+}
+
+.monthly-value {
+  font-size: var(--font-xl, 56px);
+  font-weight: 800;
+  color: var(--accent, #F5D78E);
+}
+
+.monthly-breakdown {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+/* Section Header - 对齐 HTML: .section-header */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 32px 32px 20px;
+}
+
+.section-title {
+  font-size: var(--font-md, 40px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+}
+
+/* Quick Actions - 对齐 HTML: .quick-actions */
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 0 32px;
+  margin-bottom: 32px;
+}
+
+.quick-action-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 8px;
+  border-radius: var(--radius-sm, 28px);
+  background: var(--cream, #FFFDF9);
+
+  &:active {
+    transform: scale(0.94);
+  }
+
+  &.more-action {
+    grid-column: span 3;
+    flex-direction: row;
+    justify-content: center;
+    gap: 16px;
+    padding: 28px;
+    background: var(--bg-soft, #F5EDE2);
+  }
+}
+
+.quick-action-label {
+  font-size: var(--font-xs, 26px);
+  color: var(--text-secondary, #7A6F64);
+  font-weight: 500;
+}
+
+/* Hidden more actions */
+.quick-actions.more-actions {
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 0;
+  padding-bottom: 8px;
+}
+
+/* Info value hint for empty tenant */
+.info-value.hint {
+  color: var(--text-hint, #A89B8C);
+  font-weight: 400;
+}
+
+.info-action-link {
+  font-size: var(--font-xs, 26px);
+  color: var(--accent-hover, #7A6F64);
+  font-weight: 600;
+}
+
+.info-value-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* More List - 对齐 HTML: .menu-item */
+.more-list {
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 36px;
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-md, 40px);
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.more-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-xs, 16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Background colors for more icons */
+.orange-bg { background: var(--orange-soft, rgba(232, 184, 125, 0.12)); }
+.blue-bg { background: var(--blue-soft, rgba(168, 201, 168, 0.12)); }
+.red-bg { background: var(--red-soft, rgba(201, 123, 123, 0.12)); }
+.gray-bg { background: rgba(0, 0, 0, 0.04); }
+
+.more-text {
+  flex: 1;
+  font-size: var(--font-base, 34px);
+  font-weight: 500;
+  color: var(--text-primary, #4A4038);
+}

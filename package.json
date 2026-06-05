@@ -1,0 +1,24 @@
+{
+  "name": "local-landlord",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:miniapp": "pnpm --filter @local-landlord/miniapp dev:weapp",
+    "dev:admin": "pnpm --filter @local-landlord/admin dev",
+    "dev:server": "pnpm --filter @local-landlord/server start:dev",
+    "build:miniapp": "pnpm --filter @local-landlord/miniapp build:weapp",
+    "build:admin": "pnpm --filter @local-landlord/admin build",
+    "build:server": "pnpm --filter @local-landlord/server build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @local-landlord/server test:e2e",
+    "type-check": "pnpm -r type-check"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

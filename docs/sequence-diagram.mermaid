@@ -1,0 +1,105 @@
+sequenceDiagram
+    participant User as 房东用户
+    participant App as 小程序 App.tsx
+    participant WxAPI as wx.login / wx.getUserProfile
+    participant CF as 云函数 login
+    participant DB as 云数据库 users
+
+    User->>App: 打开小程序
+    App->>App: onLaunch()
+    App->>WxAPI: wx.cloud.init({ env: 'xxx' })
+    App->>WxAPI: wx.login()
+    WxAPI-->>App: code（临时凭证）
+
+    App->>CF: callFunction('login', { code })
+    CF->>WxAPI: code2Session(code)
+    WxAPI-->>CF: { openid, session_key }
+    CF->>DB: users.where({ _openid: openid }).get()
+    alt 新用户
+        DB-->>CF: { data: [] }
+        CF->>DB: users.add({ _openid, nickName: '', avatarUrl: '', ... })
+        DB-->>CF: { _id }
+    else 老用户
+        DB-->>CF: { data: [{ _id, nickName, ... }] }
+    end
+    CF-->>App: { openid, userId, isNewUser }
+
+    alt 新用户
+        App->>WxAPI: wx.getUserProfile({ desc: '用于显示昵称' })
+        WxAPI-->>App: { nickName, avatarUrl }
+        App->>DB: users.doc(userId).update({ nickName, avatarUrl })
+    end
+
+    App->>App: 存储 openid 到全局状态
+    App->>App: 加载首页数据
+
+---
+title 数据直读流程（房源列表）
+---
+sequenceDiagram
+    participant Page as 页面组件
+    participant Store as Zustand Store
+    participant DB as 云数据库
+    participant CF as 云函数
+
+    Page->>Store: loadProperties()
+    Store->>DB: db.collection('properties').where({ _openid }).orderBy('createdAt', 'desc').get()
+    DB-->>Store: { data: Property[] }
+
+    loop 每个房源 聚合房间数
+        Store->>DB: db.collection('rooms').where({ propertyId }).count()
+        DB-->>Store: { total: N }
+    end
+
+    Store-->>Page: 更新 UI
+
+---
+title 复杂逻辑（确认收款）
+---
+sequenceDiagram
+    participant Page as 页面组件
+    participant CF as 云函数 bill
+    participant DB as 云数据库
+    participant Msg as 订阅消息
+
+    Page->>CF: callFunction('bill', { action: 'confirmPayment', billId })
+    CF->>DB: bills.doc(billId).get()
+    alt 账单存在且状态为待缴
+        CF->>DB: bills.doc(billId).update({ status: 1, paidAt: new Date().toISOString() })
+        CF->>DB: records.add({ type: 1, title: '...', ... })
+        CF->>DB: rooms.doc(roomId).get()
+        opt 订阅消息可用
+            CF->>Msg: 发送「缴费成功」通知
+        end
+    end
+    CF-->>Page: { success: true }
+
+---
+title 图片上传流程
+---
+sequenceDiagram
+    participant User as 房东
+    participant Page as 小程序页面
+    participant WxAPI as wx.chooseImage
+    participant Storage as 云存储
+    participant DB as 云数据库
+
+    User->>Page: 点击「拍照/选图」
+    Page->>WxAPI: wx.chooseImage({ count: 9, sizeType: ['compressed'] })
+    WxAPI-->>Page: { tempFilePaths: [...] }
+
+    loop 每张图片
+        Page->>Page: 显示上传进度
+        Page->>Storage: wx.cloud.uploadFile({ cloudPath: 'rooms/{roomId}/photo_{i}.jpg', filePath: tempFilePath })
+        Storage-->>Page: { fileID: 'cloud://xxx' }
+        Page->>Page: 收集 fileID 到数组
+    end
+
+    Page->>DB: rooms.doc(roomId).update({ images: [fileID1, fileID2, ...] })
+    DB-->>Page: { stats: { updated: 1 } }
+
+    alt 需要展示图片
+        Page->>Storage: wx.cloud.getTempFileURL({ fileList: [fileID1, ...] })
+        Storage-->>Page: { fileList: [{ tempFileURL }] }
+        Page->>Page: 渲染 Image
+    end

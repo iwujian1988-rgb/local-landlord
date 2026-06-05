@@ -1,0 +1,192 @@
+// add-tenant - 对齐 index.html Design System
+.page-add-tenant {
+  min-height: 100vh;
+  padding-bottom: 160px;
+}
+
+/* Form Elements - 对齐 HTML: .form-group/.form-label/.form-input */
+.form-group {
+  padding: 0 32px;
+  margin-bottom: 32px;
+}
+
+.form-label {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-secondary, #7A6F64);
+  margin-bottom: 16px;
+  font-weight: 500;
+  display: block;
+}
+
+.form-input {
+  width: 100%;
+  padding: 32px;
+  border: 4px solid var(--bg-soft, #F5EDE2);
+  border-radius: 32px;
+  font-size: 34px;
+  font-family: inherit;
+  background: var(--cream, #FFFDF9);
+  color: var(--text-primary, #4A4038);
+  outline: none;
+
+  &:focus {
+    border-color: var(--accent, #F5D78E);
+    box-shadow: 0 0 0 8px rgba(245, 215, 142, 0.15);
+  }
+
+  &::placeholder {
+    color: var(--text-hint, #A89B8C);
+  }
+
+  &.error {
+    border-color: var(--red);
+  }
+}
+
+.form-error-text {
+  color: var(--red);
+  font-size: var(--font-xs);
+  margin-top: 4px;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 32px;
+  border: 4px solid var(--bg-soft, #F5EDE2);
+  border-radius: 32px;
+  font-size: 34px;
+  font-family: inherit;
+  background: var(--cream, #FFFDF9);
+  color: var(--text-primary, #4A4038);
+  min-height: 240px;
+  outline: none;
+  resize: none;
+
+  &:focus {
+    border-color: var(--accent, #F5D78E);
+    box-shadow: 0 0 0 8px rgba(245, 215, 142, 0.15);
+  }
+}
+
+/* Input with suffix (元) - 对齐 HTML inline */
+.input-with-suffix {
+  position: relative;
+}
+
+.suffix-input {
+  padding-right: 80px;
+}
+
+.input-suffix {
+  position: absolute;
+  right: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-hint, #A89B8C);
+  font-weight: 600;
+  font-size: 34px;
+}
+
+/* Date input - 对齐 HTML: .form-input 样式 */
+.date-input-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 32px;
+  border: 4px solid var(--bg-soft, #F5EDE2);
+  border-radius: 32px;
+  font-size: 34px;
+  font-family: inherit;
+  background: var(--cream, #FFFDF9);
+  color: var(--text-primary, #4A4038);
+}
+
+.date-input-text {
+  font-size: 34px;
+  color: var(--text-primary, #4A4038);
+}
+
+/* Rent day grid - 对齐 HTML: .btn-sm 样式, flex-wrap */
+.rent-day-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.rent-day-item {
+  padding: 16px 32px;
+  border-radius: 999px;
+  background: var(--bg-soft, #F5EDE2);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--text-secondary, #7A6F64);
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.active {
+    background: var(--accent, #F5D78E);
+    color: var(--text-primary, #4A4038);
+    font-weight: 700;
+  }
+}
+
+/* Custom day picker */
+.custom-day-picker {
+  margin-top: 32px;
+  padding: 40px;
+  border-radius: var(--radius-md, 40px);
+  background: var(--bg-soft, #F5EDE2);
+}
+
+.custom-day-label {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-secondary, #7A6F64);
+  margin-bottom: 24px;
+  display: block;
+}
+
+.custom-day-input {
+  text-align: center;
+}
+
+/* Form read-only */
+.form-readonly {
+  font-size: 34px;
+  color: var(--text-hint, #A89B8C);
+  display: block;
+  padding: 32px 0;
+}
+
+/* Form actions */
+.form-actions {
+  padding: 32px;
+}
+
+.save-btn {
+  background: var(--accent, #F5D78E);
+  border-radius: 999px;
+  padding: 30px 48px;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(245, 215, 142, 0.4);
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+.save-btn-text {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+}
