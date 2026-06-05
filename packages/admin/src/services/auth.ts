@@ -1,17 +1,19 @@
 import request from './request';
-import type { Admin } from '@local-landlord/shared';
+import type { Admin, ApiResponse } from '@local-landlord/shared';
 
-export async function login(username: string, password: string) {
-  const res = await request.post('/auth/admin/login', { username, password });
-  const { token, admin } = res.data;
-  localStorage.setItem('token', token);
-  localStorage.setItem('admin', JSON.stringify(admin));
-  return { token, admin };
+interface LoginResponse {
+  token: string;
+  user: Admin;
 }
 
-export async function getMe() {
-  const res = await request.get('/auth/admin/me');
-  return res.data.admin as Admin;
+export async function login(username: string, password: string): Promise<{ token: string; admin: Admin }> {
+  const res: ApiResponse<LoginResponse> = await request.post('/auth/admin/login', { username, password });
+  return { token: res.data.token, admin: res.data.user };
+}
+
+export async function getMe(): Promise<Admin> {
+  const res: ApiResponse<{ admin: Admin }> = await request.get('/auth/admin/me');
+  return res.data.admin;
 }
 
 export function logout() {

@@ -1,13 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
 import { Landlord } from '../landlord/landlord.entity';
 import { Room } from '../room/room.entity';
 
 @Entity('property')
+@Index(['landlordId'])
 export class Property {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'landlord_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'landlord_id', type: 'integer' })
   landlordId: number;
 
   @Column({ length: 64 })

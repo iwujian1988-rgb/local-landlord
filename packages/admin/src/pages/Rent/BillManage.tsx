@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Box, Card, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Checkbox, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tabs, Tab, Snackbar, Alert } from '@mui/material';
 import { billApi } from '../../services/api';
+import type { Bill } from '@local-landlord/shared';
+import { BillStatus } from '@local-landlord/shared';
 
 const STATUS_MAP: Record<number, string> = { 0: '待支付', 1: '已收', 2: '逾期' };
 const STATUS_COLOR: Record<number, 'warning' | 'success' | 'error'> = { 0: 'warning', 1: 'success', 2: 'error' };
@@ -8,7 +10,7 @@ const STATUS_COLOR: Record<number, 'warning' | 'success' | 'error'> = { 0: 'warn
 const statusTabs = ['全部', '待支付', '已收', '逾期'];
 
 export default function BillManage() {
-  const [bills, setBills] = useState<any[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [statusTab, setStatusTab] = useState(0);
   const [selected, setSelected] = useState<number[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -18,10 +20,11 @@ export default function BillManage() {
 
   const fetchList = async () => {
     try {
-      const res = await billApi.list();
-      setBills((res as any)?.data?.data ?? (res as any)?.data ?? []);
-    } catch (e) {
-      console.error('获取账单列表失败', e);
+      const result = await billApi.list();
+      setBills(result.list);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误';
+      setToast({ message: '获取账单列表失败：' + msg, severity: 'error' });
     }
   };
 
@@ -31,52 +34,84 @@ export default function BillManage() {
     setSelected(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
   };
 
-  const handleUrge = async (targetBills: any[]) => {
+  const handleUrge = async (targetBills: Bill[]) => {
     try {
       const ids = targetBills.map((b) => b.id);
-      if (ids.length === 1) {
-        await billApi.batchRemind(ids);
-      } else {
-        await billApi.batchRemind(ids);
-      }
+      await billApi.batchRemind(ids);
       setToast({ message: '催缴通知已发送', severity: 'success' });
-    } catch (e) {
-      console.error('催缴失败', e);
-      setToast({ message: '催缴失败', severity: 'error' });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误';
+      setToast({ message: '催缴失败：' + msg, severity: 'error' });
     }
   };
 
-  const handleExportOverdue = () => {
-    // 导出逾期账单的实际实现需要进一步对接导出 API
-    setToast({ message: '逾期账单已导出', severity: 'success' });
+  const handleExportOverdue = async () => {
+    try {
+      const result = await billApi.overdue();
+      const overdueList = result.list;
+      if (!overdueList || overdueList.length === 0) {
+        setToast({ message: '暂无逾期账单', severity: 'info' });
+        return;
+      }
+      // Generate CSV
+      const headers = ['房间', '租客', '周期', '合计(元)', '状态', '发送时间'];
+      const rows = overdueList.map((b: Bill) => {
+        const ext = b as unknown as Record<string, unknown>;
+        return [
+          ext.room || ext.roomName || '',
+          ext.tenant || ext.tenantName || '',
+          b.period || '',
+          b.totalAmount ?? 0,
+          STATUS_MAP[b.status] ?? '未知',
+          b.sentAt || '',
+        ];
+      });
+      const csvContent = [headers, ...rows]
+        .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `逾期账单_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setToast({ message: `已导出 ${overdueList.length} 条逾期账单`, severity: 'success' });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误';
+      setToast({ message: '导出逾期账单失败：' + msg, severity: 'error' });
+    }
   };
 
   const handleConfirmReceipt = async () => {
-    const idsToConfirm = confirmTargetId ? [confirmTargetId] : selected;
     try {
-      for (const id of idsToConfirm) {
-        await billApi.confirm(id, { paidAt: confirmDate });
+      if (confirmTargetId) {
+        // Single confirmation
+        await billApi.confirm(confirmTargetId, { paidAt: confirmDate });
+      } else {
+        // Batch confirmation
+        await billApi.batchConfirm(selected, { paidAt: confirmDate });
       }
       setToast({ message: '收款确认成功', severity: 'success' });
       setConfirmOpen(false);
       setConfirmTargetId(null);
       setSelected([]);
       fetchList();
-    } catch (e) {
-      console.error('确认收款失败', e);
-      setToast({ message: '确认收款失败', severity: 'error' });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '未知错误';
+      setToast({ message: '确认收款失败：' + msg, severity: 'error' });
     }
   };
 
   const filtered = bills.filter((b) => {
     if (statusTab === 0) return true;
-    if (statusTab === 1) return b.status === 0;
-    if (statusTab === 2) return b.status === 1;
-    if (statusTab === 3) return b.status === 2;
+    if (statusTab === 1) return b.status === BillStatus.PENDING;
+    if (statusTab === 2) return b.status === BillStatus.PAID;
+    if (statusTab === 3) return b.status === BillStatus.OVERDUE;
     return true;
   });
 
-  const overdueBills = bills.filter((b) => b.status === 2);
+  const overdueBills = bills.filter((b) => b.status === BillStatus.OVERDUE);
 
   return (
     <Box>
@@ -125,10 +160,10 @@ export default function BillManage() {
               ) : filtered.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell padding="checkbox"><Checkbox checked={selected.includes(row.id)} onChange={() => toggleSelect(row.id)} /></TableCell>
-                  <TableCell>{row.room || row.roomName || '-'}</TableCell>
-                  <TableCell>{row.tenant || row.tenantName || '-'}</TableCell>
+                  <TableCell>{String((row as unknown as Record<string, unknown>).room || (row as unknown as Record<string, unknown>).roomName || '-')}</TableCell>
+                  <TableCell>{String((row as unknown as Record<string, unknown>).tenant || (row as unknown as Record<string, unknown>).tenantName || '-')}</TableCell>
                   <TableCell>{row.period || '-'}</TableCell>
-                  <TableCell><Typography fontWeight={700}>{(row.total ?? 0).toLocaleString()} 元</Typography></TableCell>
+                  <TableCell><Typography fontWeight={700}>{(row.totalAmount ?? 0).toLocaleString()} 元</Typography></TableCell>
                   <TableCell>
                     <Chip label={STATUS_MAP[row.status] ?? '未知'} size="small"
                       color={STATUS_COLOR[row.status] ?? 'default'} />
@@ -136,10 +171,10 @@ export default function BillManage() {
                   <TableCell>{row.sentAt || '-'}</TableCell>
                   <TableCell>{row.paidAt || '-'}</TableCell>
                   <TableCell>
-                    {row.status === 0 && (
+                    {row.status === BillStatus.PENDING && (
                       <Button size="small" onClick={() => { setConfirmTargetId(row.id); setConfirmOpen(true); }} sx={{ mr: 1 }}>确认收款</Button>
                     )}
-                    {(row.status === 0 || row.status === 2) && (
+                    {(row.status === BillStatus.PENDING || row.status === BillStatus.OVERDUE) && (
                       <Button size="small" color="error" onClick={() => handleUrge([row])}>催缴</Button>
                     )}
                   </TableCell>

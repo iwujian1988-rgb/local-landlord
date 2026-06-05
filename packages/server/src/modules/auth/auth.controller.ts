@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { WechatLoginDto } from './dto/wechat-login.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
@@ -11,6 +12,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('wechat/login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async wechatLogin(@Body() dto: WechatLoginDto) {
     return this.authService.wechatLogin(dto);
   }
@@ -27,10 +29,11 @@ export class AuthController {
     @CurrentUser() user: any,
     @Body() dto: UpdateProfileDto,
   ) {
-    return this.authService.updateProfile(user.id, dto);
+    return this.authService.updateProfile(user.id, dto, user.isAdmin);
   }
 
   @Post('admin/login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async adminLogin(@Body() dto: AdminLoginDto) {
     return this.authService.adminLogin(dto);
   }

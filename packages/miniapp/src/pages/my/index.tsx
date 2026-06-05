@@ -1,7 +1,9 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import { useState } from 'react';
-import { getAppData } from '../../utils/storage';
+import { useState, useCallback } from 'react';
+import { get } from '../../services/request';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import './index.scss';
 
 interface MenuItem {
@@ -13,11 +15,30 @@ interface MenuItem {
 }
 
 export default function My() {
-  const appData = getAppData();
+  const [profileName, setProfileName] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  const loadProfile = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await get<any>('/auth/me');
+      const user = res.data || {};
+      setProfileName(user.name || '');
+      setProfilePhone(user.phone || '');
+    } catch (err) {
+      console.error('[My] 加载用户信息失败:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useDidShow(() => {
-    // 页面显示时刷新数据
+    loadProfile();
   });
 
   const goToPage = (url: string) => {
@@ -140,62 +161,68 @@ export default function My() {
         <Text className="nav-title">我的</Text>
       </View>
 
-      <View className="profile-header">
-        <View className="avatar">
-          <Text className="avatar-text">{appData.profile?.name?.charAt(0) || ''}</Text>
-        </View>
-        <View>
-          <Text className="profile-name">{appData.profile?.name || ''}</Text>
-          <Text className="profile-phone">{appData.profile?.phone || ''}</Text>
-        </View>
-      </View>
-
-      <View className="menu-list">
-        {menuItems.map((item, idx) => (
-          <View key={idx} className="menu-item" onClick={() => handleMenuItem(item)}>
-            <View className="menu-icon" style={{ background: item.bgColor }}>
-              {item.icon}
+      {loading && <Loading />}
+      {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadProfile} />}
+      {!loading && !error && (
+        <>
+          <View className="profile-header">
+            <View className="avatar">
+              <Text className="avatar-text">{profileName.charAt(0) || ''}</Text>
             </View>
-            <Text className="menu-text">{item.label}</Text>
-            <svg className="menu-arrow" viewBox="0 0 24 24">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+            <View>
+              <Text className="profile-name">{profileName || '用户'}</Text>
+              <Text className="profile-phone">{profilePhone || '未绑定手机'}</Text>
+            </View>
           </View>
-        ))}
-      </View>
 
-      <View className="section-header">
-        <Text className="section-title">常见问题</Text>
-      </View>
-      <View className="faq-list">
-        {faqItems.map((faq, idx) => (
-          <View key={idx}>
-            <View className="menu-item faq-item" onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}>
-              <Text className="faq-text">{faq.question}</Text>
-              <svg className="menu-arrow" viewBox="0 0 24 24" style={{ transform: expandedFaq === idx ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>
+          <View className="menu-list">
+            {menuItems.map((item, idx) => (
+              <View key={idx} className="menu-item" onClick={() => handleMenuItem(item)}>
+                <View className="menu-icon" style={{ background: item.bgColor }}>
+                  {item.icon}
+                </View>
+                <Text className="menu-text">{item.label}</Text>
+                <svg className="menu-arrow" viewBox="0 0 24 24">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </View>
+            ))}
+          </View>
+
+          <View className="section-header">
+            <Text className="section-title">常见问题</Text>
+          </View>
+          <View className="faq-list">
+            {faqItems.map((faq, idx) => (
+              <View key={idx}>
+                <View className="menu-item faq-item" onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}>
+                  <Text className="faq-text">{faq.question}</Text>
+                  <svg className="menu-arrow" viewBox="0 0 24 24" style={{ transform: expandedFaq === idx ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }}>
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </View>
+                {expandedFaq === idx && (
+                  <View className="tip-answer">
+                    <Text className="tip-answer-text">{faq.answer}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+
+          <View className="section-header">
+            <Text className="section-title">联系客服</Text>
+          </View>
+          <View className="faq-list">
+            <View className="menu-item faq-item" onClick={() => Taro.makePhoneCall({ phoneNumber: '400-000-0000' })}>
+              <Text className="faq-text">联系客服</Text>
+              <svg className="menu-arrow" viewBox="0 0 24 24">
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </View>
-            {expandedFaq === idx && (
-              <View className="tip-answer">
-                <Text className="tip-answer-text">{faq.answer}</Text>
-              </View>
-            )}
           </View>
-        ))}
-      </View>
-
-      <View className="section-header">
-        <Text className="section-title">联系客服</Text>
-      </View>
-      <View className="faq-list">
-        <View className="menu-item faq-item" onClick={() => Taro.makePhoneCall({ phoneNumber: '400-000-0000' })}>
-          <Text className="faq-text">联系客服</Text>
-          <svg className="menu-arrow" viewBox="0 0 24 24">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </View>
-      </View>
+        </>
+      )}
 
       <View style={{ height: '120px' }} />
     </ScrollView>

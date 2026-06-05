@@ -1,22 +1,26 @@
 import { View, Text, Input } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useState } from 'react';
+import { API_BASE } from '../../config';
 import './index.scss';
 
 export interface UploadFile {
   tempFilePath: string;
   size: number;
+  serverUrl?: string;
 }
 
 interface UploadModalProps {
   visible: boolean;
   onClose: () => void;
   onUpload: (file: UploadFile, note: string) => void;
+  entityType?: string;
 }
 
 export default function UploadModal({ visible, onClose, onUpload }: UploadModalProps) {
   const [selectedFile, setSelectedFile] = useState<UploadFile | null>(null);
   const [note, setNote] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   if (!visible) return null;
 
@@ -42,8 +46,31 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
       Taro.showToast({ title: '请先选择图片', icon: 'none' });
       return;
     }
-    onUpload(selectedFile, note);
-    reset();
+    if (uploading) return;
+
+    setUploading(true);
+    Taro.uploadFile({
+      url: `${API_BASE}/upload`,
+      filePath: selectedFile.tempFilePath,
+      name: 'file',
+      header: { Authorization: `Bearer ${Taro.getStorageSync('auth_token') || ''}` },
+      success: (uploadRes) => {
+        try {
+          const data = JSON.parse(uploadRes.data);
+          const serverUrl = data.data?.url || data.data?.fileID || data.url || '';
+          onUpload({ ...selectedFile, serverUrl }, note);
+          reset();
+        } catch {
+          Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
+        }
+      },
+      fail: () => {
+        Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
+      },
+      complete: () => {
+        setUploading(false);
+      },
+    });
   };
 
   const handleCancel = () => {
@@ -111,7 +138,7 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
             <Text className="upload-btn-text">取消</Text>
           </View>
           <View className="upload-btn confirm" onClick={handleConfirm}>
-            <Text className="upload-btn-text confirm-text">确认上传</Text>
+            <Text className="upload-btn-text confirm-text">{uploading ? '上传中...' : '确认上传'}</Text>
           </View>
         </View>
       </View>

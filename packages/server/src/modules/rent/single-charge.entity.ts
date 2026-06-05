@@ -1,16 +1,18 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Room } from '../room/room.entity';
 import { Tenant } from '../tenant/tenant.entity';
 
 @Entity('single_charge')
+@Index(['roomId'])
+@Index(['tenantId'])
 export class SingleCharge {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'room_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'room_id', type: 'integer' })
   roomId: number;
 
-  @Column({ name: 'tenant_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'tenant_id', type: 'integer' })
   tenantId: number;
 
   @Column({ name: 'fee_type', length: 32 })
@@ -25,7 +27,7 @@ export class SingleCharge {
   @Column({ type: 'tinyint', unsigned: true, default: 0 })
   status: number;
 
-  @Column({ name: 'paid_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'paid_at', type: 'datetime', nullable: true })
   paidAt: Date;
 
   @CreateDateColumn({ name: 'created_at' })

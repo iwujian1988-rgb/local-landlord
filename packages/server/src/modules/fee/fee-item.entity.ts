@@ -1,12 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Room } from '../room/room.entity';
 
 @Entity('fee_item')
+@Index(['roomId'])
 export class FeeItem {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'room_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'room_id', type: 'integer' })
   roomId: number;
 
   @Column({ length: 32 })

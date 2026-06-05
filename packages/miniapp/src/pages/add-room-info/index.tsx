@@ -1,8 +1,8 @@
-import { View, Text, Input, Textarea } from '@tarojs/components';
+import { View, Text, Input, Textarea, Picker } from '@tarojs/components';
 import Taro, { useDidHide } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import { useState, useCallback, useEffect } from 'react';
-import { fetchRooms, createRoom, updateRoom } from '../../services/cloudDb';
+import { get, post, put } from '../../services/request';
 import './index.scss';
 
 const facilityOptions = ['有空调', '有独卫', '能做饭', '可养宠'];
@@ -10,6 +10,7 @@ const facilityOptions = ['有空调', '有独卫', '能做饭', '可养宠'];
 export default function AddRoomInfo() {
   const routerParams = Taro.getCurrentInstance().router?.params || {};
   const roomId = Number(routerParams.roomId) || 0;
+  const routePropertyId = Number(routerParams.propertyId) || 0;
 
   const [name, setName] = useState('');
   const [rent, setRent] = useState('');
@@ -22,54 +23,57 @@ export default function AddRoomInfo() {
   const [status, setStatus] = useState<'vacant' | 'rented'>('vacant');
   const [availableType, setAvailableType] = useState<'anytime' | 'date'>('anytime');
   const [availableDate, setAvailableDate] = useState('');
-  const [propertyId, setPropertyId] = useState<number>(0);
+  const [propertyId, setPropertyId] = useState<number>(routePropertyId);
 
   const [showMore, setShowMore] = useState(false);
-
   const [isEdit, setIsEdit] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const params = Taro.getCurrentInstance().router?.params;
-    if (params?.propertyId) {
-      const pid = Number(params.propertyId);
-      if (!pid || isNaN(pid)) {
+    if (routePropertyId) {
+      if (!routePropertyId || isNaN(routePropertyId)) {
         Taro.showToast({ title: '页面打开失败，请返回重试', icon: 'none', duration: 1500 });
         setTimeout(() => Taro.navigateBack(), 1500);
         return;
       }
-      setPropertyId(pid);
+      setPropertyId(routePropertyId);
     }
-  }, []);
+  }, [routePropertyId]);
 
   // Pre-fill for edit mode
   useEffect(() => {
-    if (roomId) {
-      // 从云数据库加载房间数据
-      fetchRooms().then(rooms => {
-        const found = rooms.find((r: any) => String(r._id) === String(roomId));
-        if (found) {
-          setIsEdit(true);
-          setName(found.name || '');
-          setRent(String(found.rent || ''));
-          setDeposit(found.deposit ? String(found.deposit) : '');
-          setArea(found.area || '');
-          setFloor(found.floor || '');
-          setOrientation(found.orientation || '');
-          setSelectedFacilities(found.facilities || []);
-          setNote(found.note || '');
-          setStatus(found.status === 1 ? 'rented' : 'vacant');
-          setAvailableDate(found.availableDate && found.availableDate !== '随时可入住' ? found.availableDate : '');
-          setAvailableType(found.availableDate && found.availableDate !== '随时可入住' ? 'date' : 'anytime');
-          setPropertyId(found.propertyId || '');
-        }
-      }).catch(err => {
-        console.error('[AddRoomInfo] 加载房间失败:', err);
-        Taro.showToast({ title: '加载失败', icon: 'none' });
-      });
+    if (roomId && routePropertyId) {
+      loadRoomForEdit(roomId);
     }
-  }, [roomId]);
+  }, [roomId, routePropertyId]);
 
-  // 检查草稿
+  const loadRoomForEdit = async (rid: number) => {
+    try {
+      const res = await get<any>(`/rooms/${rid}`);
+      const found = res.data?.room || res.data;
+      if (found && res.code === 0) {
+        setIsEdit(true);
+        setName(found.name || '');
+        setRent(String(found.rent || ''));
+        setDeposit(found.deposit ? String(found.deposit) : '');
+        setArea(found.area || '');
+        setFloor(found.floor || '');
+        setOrientation(found.orientation || '');
+        setSelectedFacilities(found.facilities || []);
+        setNote(found.note || '');
+        setStatus(found.status === 1 || found.status === 'rented' ? 'rented' : 'vacant');
+        setAvailableDate(found.availableDate && found.availableDate !== '随时可入住' ? found.availableDate : '');
+        setAvailableType(found.availableDate && found.availableDate !== '随时可入住' ? 'date' : 'anytime');
+        setPropertyId(found.propertyId || routePropertyId);
+      }
+    } catch (err) {
+      console.error('[AddRoomInfo] 加载房间失败:', err);
+      Taro.showToast({ title: '加载失败', icon: 'none' });
+    }
+  };
+
+  // Check draft
   useEffect(() => {
     if (roomId <= 0) {
       const draft: any = Taro.getStorageSync('draft_room_info');
@@ -90,14 +94,10 @@ export default function AddRoomInfo() {
     }
   }, []);
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-
   const goBack = useCallback(() => {
     Taro.navigateBack();
   }, []);
 
-  // 自动保存草稿
   useDidHide(() => {
     if (roomId <= 0) {
       const formData = {
@@ -116,7 +116,7 @@ export default function AddRoomInfo() {
     );
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (saving) return;
     setErrors({});
     if (!name.trim()) {
@@ -128,13 +128,9 @@ export default function AddRoomInfo() {
       return;
     }
     setSaving(true);
-    const now = new Date().toISOString();
     const tempPhotos = Taro.getStorageSync('tempRoomPhotos') || [];
-    const appData = getAppData();
 
-    const roomData = {
-      id: isEdit ? roomId : Date.now(),
-      propertyId: propertyId,
+    const roomData: any = {
       name: name.trim(),
       rent: Number(rent),
       status: status === 'rented' ? 1 : 0,
@@ -146,37 +142,42 @@ export default function AddRoomInfo() {
       facilities: selectedFacilities.length > 0 ? selectedFacilities : undefined,
       images: tempPhotos.length > 0 ? tempPhotos : [],
       note: note.trim() || undefined,
-      createdAt: isEdit ? undefined : now,
-      updatedAt: now,
     };
 
-    if (isEdit) {
-      const idx = appData.rooms.findIndex((r: any) => r.id === roomId);
-      if (idx !== -1) {
-        appData.rooms[idx] = { ...appData.rooms[idx], ...roomData };
-      }
-    } else {
-      appData.rooms.push(roomData);
-    }
-
-    setAppData(appData);
-    Taro.removeStorageSync('draft_room_info');
-    Taro.removeStorageSync('tempRoomPhotos');
-    setSaving(false);
-    const savedRoomId = roomData.id;
-    Taro.showModal({
-      title: '房间已保存',
-      content: '要现在登记租客吗？',
-      confirmText: '现在登记',
-      cancelText: '稍后再说',
-      success: (res: any) => {
-        if (res.confirm) {
-          Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${savedRoomId}` });
-        } else {
-          Taro.navigateBack();
+    try {
+      let savedRoomId = roomId;
+      if (isEdit) {
+        await put(`/rooms/${roomId}`, roomData);
+      } else {
+        const createRes = await post<any>(`/properties/${propertyId}/rooms`, roomData);
+        if (createRes.code !== 0) {
+          throw new Error(createRes.message || '创建失败');
         }
-      },
-    });
+        savedRoomId = createRes.data?.id || createRes.data?._id || 0;
+      }
+
+      Taro.removeStorageSync('draft_room_info');
+      Taro.removeStorageSync('tempRoomPhotos');
+      setSaving(false);
+
+      Taro.showModal({
+        title: '房间已保存',
+        content: '要现在登记租客吗？',
+        confirmText: '现在登记',
+        cancelText: '稍后再说',
+        success: (res: any) => {
+          if (res.confirm) {
+            Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${savedRoomId}` });
+          } else {
+            Taro.navigateBack();
+          }
+        },
+      });
+    } catch (err) {
+      console.error('[AddRoomInfo] 保存房间失败:', err);
+      Taro.showToast({ title: '保存失败', icon: 'none' });
+      setSaving(false);
+    }
   }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, deposit, area, floor, orientation, selectedFacilities, note]);
 
   return (
@@ -247,15 +248,11 @@ export default function AddRoomInfo() {
           </View>
         </View>
         {availableType === 'date' && (
-          <Input
-            className="form-input"
-            type="text"
-            placeholder="请选择可入住日期"
-            value={availableDate}
-            onInput={(e) => setAvailableDate(e.detail.value)}
-            placeholderStyle="color: #B5A99A"
-            style={{ marginTop: '16px' }}
-          />
+          <Picker mode="date" value={availableDate} onChange={e => setAvailableDate(e.detail.value)}>
+            <View className="form-input" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', color: availableDate ? 'var(--text-primary)' : 'var(--text-hint)' }}>
+              {availableDate || '请选择可入住日期'}
+            </View>
+          </Picker>
         )}
       </View>
 

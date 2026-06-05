@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -7,10 +7,12 @@ import { Admin } from '../system/admin.entity';
 import { WechatLoginDto } from './dto/wechat-login.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly jwtService: JwtService,
     @InjectRepository(Landlord)
@@ -20,24 +22,41 @@ export class AuthService {
   ) {}
 
   /**
-   * 微信登录：调用微信 code2Session 接口换取 openid，查找或创建 landlord，签发 JWT
+   * WeChat login: call code2Session to get openid, find or create landlord, issue JWT
    */
   async wechatLogin(dto: WechatLoginDto) {
     const { code, nickname, avatar } = dto;
 
-    // 1. 调微信 code2Session 获取 openid
-    const appid = process.env.WX_APPID || 'wx5c21ac52560dcb27';
-    const secret = process.env.WX_SECRET || '';
+    // 1. Call WeChat code2Session with 5s timeout
+    const appid = process.env.WX_APPID;
+    const secret = process.env.WX_SECRET;
+    if (!appid || !secret) {
+      throw new BadRequestException('微信登录服务未配置');
+    }
     const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
 
-    const resp = await fetch(url);
-    const wxData = await resp.json() as { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
+    let wxData: { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
-    if (wxData.errcode || !wxData.openid) {
+      const resp = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+
+      // Destructure openid only, explicitly discard session_key
+      const raw = await resp.json() as { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
+      const { openid } = raw;
+      wxData = { openid };
+    } catch (error) {
+      this.logger.error('WeChat code2Session request failed', error);
+      throw new UnauthorizedException('微信登录服务暂时不可用，请稍后重试');
+    }
+
+    if (!wxData.openid) {
       throw new UnauthorizedException(wxData.errmsg || '微信登录失败');
     }
 
-    // 2. 用 openid 查找或创建 landlord
+    // 2. Find or create landlord by openid
     let landlord = await this.landlordRepository.findOne({ where: { openId: wxData.openid } });
     if (!landlord) {
       landlord = this.landlordRepository.create({
@@ -53,12 +72,12 @@ export class AuthService {
       landlord = await this.landlordRepository.save(landlord);
     }
 
-    // 3. 检查账户状态
+    // 3. Check account status
     if (landlord.status === 0) {
       throw new ForbiddenException('账户已被禁用，请联系管理员');
     }
 
-    // 4. 签发 JWT
+    // 4. Issue JWT
     const payload = { sub: landlord.id, role: 1 };
     const token = this.jwtService.sign(payload);
 
@@ -76,14 +95,14 @@ export class AuthService {
     };
   }
 
-  /** 管理员登录：用户名 admin 密码 admin123 */
+  /** Admin login */
   async adminLogin(dto: AdminLoginDto) {
     const { username, password } = dto;
 
-    // 首次运行自动创建默认管理员
+    // Auto-create default admin on first run
     let admin = await this.adminRepository.findOne({ where: { username } });
     if (!admin && username === 'admin') {
-      const hashedPwd = crypto.createHash('sha256').update('admin123').digest('hex');
+      const hashedPwd = await bcrypt.hash('admin123', 10);
       admin = this.adminRepository.create({
         username: 'admin',
         password: hashedPwd,
@@ -102,12 +121,12 @@ export class AuthService {
       throw new UnauthorizedException('账号已被禁用');
     }
 
-    const hashedInput = crypto.createHash('sha256').update(password).digest('hex');
-    if (hashedInput !== admin.password) {
+    const passwordValid = await bcrypt.compare(password, admin.password);
+    if (!passwordValid) {
       throw new UnauthorizedException('用户名或密码错误');
     }
 
-    // 更新最后登录时间
+    // Update last login time
     admin.lastLoginAt = new Date();
     await this.adminRepository.save(admin);
 
@@ -125,7 +144,7 @@ export class AuthService {
     };
   }
 
-  /** 获取当前用户信息 */
+  /** Get current user info */
   async getMe(user: any) {
     if (user.isAdmin) {
       const admin = await this.adminRepository.findOne({ where: { id: user.id } });
@@ -144,7 +163,6 @@ export class AuthService {
     if (!landlord) throw new UnauthorizedException('User not found');
     return {
       id: landlord.id,
-      openId: landlord.openId,
       name: landlord.name,
       phone: landlord.phone,
       avatar: landlord.avatar,
@@ -154,8 +172,17 @@ export class AuthService {
     };
   }
 
-  /** 更新房东信息 */
-  async updateProfile(userId: number, dto: UpdateProfileDto) {
+  /** Update profile - supports both landlord and admin */
+  async updateProfile(userId: number, dto: UpdateProfileDto, isAdmin: boolean) {
+    if (isAdmin) {
+      const admin = await this.adminRepository.findOne({ where: { id: userId } });
+      if (!admin) throw new BadRequestException('用户不存在');
+
+      if (dto.name !== undefined) admin.name = dto.name;
+      // Admin can only update name via this endpoint
+      return this.adminRepository.save(admin);
+    }
+
     const landlord = await this.landlordRepository.findOne({ where: { id: userId } });
     if (!landlord) throw new BadRequestException('用户不存在');
 

@@ -1,10 +1,12 @@
 import {
   Controller, Post, UseInterceptors, UploadedFile,
-  UseGuards,
+  UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UploadService } from './upload.service';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { MulterError } = require('multer');
 
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
@@ -14,6 +16,13 @@ export class UploadController {
   @Post()
   @UseInterceptors(FileInterceptor('file', UploadService.getMulterOptions()))
   async uploadFile(@UploadedFile() file: any) {
-    return this.uploadService.formatUploadResponse(file);
+    try {
+      return await this.uploadService.formatUploadResponse(file);
+    } catch (err: any) {
+      if (err?.name === 'MulterError' || err instanceof MulterError) {
+        throw new BadRequestException(`上传失败: ${err.message}`);
+      }
+      throw err;
+    }
   }
 }

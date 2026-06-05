@@ -2,7 +2,9 @@ import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import ConfirmModal from '../../components/ConfirmModal';
-import { useState, useCallback, useEffect } from 'react';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
+import { useState, useCallback } from 'react';
 import { get, put, del } from '../../services/request';
 import './index.scss';
 
@@ -46,10 +48,12 @@ export default function RoomDetail() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!roomId) return;
     setLoading(true);
+    setError(false);
     try {
       const res = await get<any>(`/rooms/${roomId}`);
       if (res.code === 0 && res.data) {
@@ -64,14 +68,11 @@ export default function RoomDetail() {
       }
     } catch (err) {
       console.error('[RoomDetail] 加载房间失败:', err);
+      setError(true);
     } finally {
       setLoading(false);
     }
   }, [roomId]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   useDidShow(() => {
     loadData();
@@ -127,7 +128,7 @@ export default function RoomDetail() {
     ? (tenant.rentDay === 0 ? '月底' : `每月 ${tenant.rentDay} 号`)
     : '-';
 
-  const placeholderImage = 'https://images.unsplash.com/photo-1523755231516-e43fd2e8dca5?w=800&h=500&fit=crop&auto=format';
+  const placeholderImage = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" fill="#f0ebe3"><rect width="800" height="500"/><text x="400" y="250" text-anchor="middle" fill="#c4b8a8" font-size="32" font-family="sans-serif">暂无图片</text></svg>');
 
   return (
     <View className="page-room-detail">
@@ -148,6 +149,10 @@ export default function RoomDetail() {
       />
 
       <ScrollView className="detail-scroll" scrollY>
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && room && (
+          <>
         {/* Breadcrumb */}
         <View className="breadcrumb">
           <svg width="14" height="14" viewBox="0 0 24 24" stroke="var(--text-muted)" strokeWidth="1.8" fill="none">
@@ -380,6 +385,8 @@ export default function RoomDetail() {
         </View>
 
         <View style={{ height: '40px' }} />
+          </>
+        )}
       </ScrollView>
 
       <ConfirmModal

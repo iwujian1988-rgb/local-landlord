@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { join } from 'path';
@@ -9,20 +9,32 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const logger = new Logger('Bootstrap');
+
+  app.enableShutdownHooks();
 
   app.setGlobalPrefix('api');
-  app.enableCors();
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN?.split(',') || false,
+    credentials: true,
+  });
 
-  // 静态文件服务（上传的文件）
+  // Static file serving (uploaded files)
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
-  // 全局管道
-  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+  // Global pipes
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
-  // 全局过滤器
+  // Global filters
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // 全局拦截器
+  // Global interceptors
   app.useGlobalInterceptors(new TransformInterceptor());
 
   if (process.env.NODE_ENV === 'production') {
@@ -34,6 +46,6 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`Server running on http://localhost:${port}`);
+  logger.log(`Server running on http://localhost:${port}`);
 }
 bootstrap();

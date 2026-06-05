@@ -7,9 +7,10 @@ import { RentRecord } from './rent-record.entity';
 import { Room } from '../room/room.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { Bill } from '../bill/bill.entity';
+import { Property } from '../property/property.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SingleCharge, RentRecord, Room, Tenant, Bill])],
+  imports: [TypeOrmModule.forFeature([SingleCharge, RentRecord, Room, Tenant, Bill, Property])],
   controllers: [RentController],
   providers: [RentService],
   exports: [RentService],

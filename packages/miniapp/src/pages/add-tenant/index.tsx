@@ -1,8 +1,8 @@
-import { View, Text, Input, Textarea, PickerView, PickerViewColumn } from '@tarojs/components';
+import { View, Text, Input, Textarea, Picker } from '@tarojs/components';
 import Taro, { useDidHide } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import { useState, useCallback, useEffect } from 'react';
-import { getAppData, setAppData } from '../../utils/storage';
+import { get, post, put } from '../../services/request';
 import './index.scss';
 
 const rentDayOptions = [
@@ -21,10 +21,6 @@ export default function AddTenant() {
   const urlRoomId = Number(routerParams.roomId) || 0;
   const tenantId = Number(routerParams.tenantId) || 0;
 
-  // Load existing tenant for edit mode
-  const storedRooms: Array<{ id: number; propertyId: number; name: string }> = getAppData().rooms || [];
-  const currentRoom = storedRooms.find((r) => r.id === urlRoomId);
-
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [moveInDate, setMoveInDate] = useState('');
@@ -38,34 +34,48 @@ export default function AddTenant() {
   const [customDay, setCustomDay] = useState(1);
   const [isEdit, setIsEdit] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [currentRoomName, setCurrentRoomName] = useState('');
+
+  // Load room info
+  useEffect(() => {
+    if (urlRoomId > 0) {
+      get<any>(`/rooms/${urlRoomId}`).then((res) => {
+        if (res.code === 0 && res.data) {
+          const room = res.data.room || res.data;
+          setCurrentRoomName(room.name || '');
+        }
+      }).catch(() => {});
+    }
+  }, [urlRoomId]);
 
   // Pre-fill for edit mode
   useEffect(() => {
     if (tenantId > 0) {
-      const appData = getAppData();
-      const found = appData.tenants.find((t: any) => t.id === tenantId);
-      if (found) {
-        setIsEdit(true);
-        setName(found.name || '');
-        setPhone(found.phone || '');
-        setMoveInDate(found.moveInDate || '');
-        setContractEndDate(found.contractEndDate || '');
-        setDeposit(found.deposit ? String(found.deposit) : '');
-        setNote(found.note || '');
-        const day = found.rentDay;
-        if (day !== undefined) {
-          setRentDay(day);
-          const opt = rentDayOptions.find(o => o.value === day);
-          setRentDayLabel(opt ? opt.label : `${day}号`);
-          if (day > 0 && !rentDayOptions.find(o => o.value === day)) {
-            setCustomDay(day);
+      get<any>(`/tenants/${tenantId}`).then((res) => {
+        if (res.code === 0 && res.data) {
+          const found = res.data.tenant || res.data;
+          setIsEdit(true);
+          setName(found.name || '');
+          setPhone(found.phone || '');
+          setMoveInDate(found.moveInDate || '');
+          setContractEndDate(found.contractEndDate || '');
+          setDeposit(found.deposit ? String(found.deposit) : '');
+          setNote(found.note || '');
+          const day = found.rentDay;
+          if (day !== undefined) {
+            setRentDay(day);
+            const opt = rentDayOptions.find(o => o.value === day);
+            setRentDayLabel(opt ? opt.label : `${day}号`);
+            if (day > 0 && !rentDayOptions.find(o => o.value === day)) {
+              setCustomDay(day);
+            }
           }
         }
-      }
+      }).catch(() => {});
     }
   }, [tenantId]);
 
-  // 检查草稿
+  // Check draft
   useEffect(() => {
     if (tenantId <= 0) {
       const draft: any = Taro.getStorageSync('draft_tenant');
@@ -88,7 +98,6 @@ export default function AddTenant() {
     Taro.navigateBack();
   }, []);
 
-  // 自动保存草稿
   useDidHide(() => {
     if (tenantId <= 0) {
       const formData = {
@@ -101,13 +110,7 @@ export default function AddTenant() {
     }
   });
 
-  const handleDatePick = useCallback((field: 'moveIn' | 'contractEnd') => {
-    Taro.showToast({ title: '请选择日期', icon: 'none', duration: 1000 });
-    // In mini-program, use a date picker to select date
-    // For now, use text input with pattern hint
-  }, []);
-
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (saving) return;
     setErrors({});
     if (!name.trim()) {
@@ -125,12 +128,8 @@ export default function AddTenant() {
 
     setSaving(true);
     const rentDayNum = rentDay === -1 ? customDay : rentDay;
-    const now = new Date().toISOString();
-    const appData = getAppData();
 
     const tenantData: any = {
-      id: isEdit ? tenantId : Date.now(),
-      roomId: urlRoomId,
       name: name.trim(),
       phone: phone.trim(),
       moveInDate: moveInDate.trim(),
@@ -139,47 +138,39 @@ export default function AddTenant() {
       deposit: deposit ? Number(deposit) : undefined,
       note: note.trim() || undefined,
       status: 1,
-      updatedAt: now,
     };
-    if (!isEdit) {
-      tenantData.createdAt = now;
-    }
 
-    if (isEdit) {
-      const idx = appData.tenants.findIndex((t: any) => t.id === tenantId);
-      if (idx !== -1) {
-        appData.tenants[idx] = { ...appData.tenants[idx], ...tenantData };
+    try {
+      if (isEdit) {
+        await put(`/tenants/${tenantId}`, tenantData);
+      } else {
+        await post(`/rooms/${urlRoomId}/tenant`, tenantData);
       }
-    } else {
-      appData.tenants.push(tenantData);
-    }
-
-    // Update room status to rented
-    appData.rooms = appData.rooms.map((r: any) =>
-      r.id === urlRoomId ? { ...r, status: 1 } : r
-    );
-
-    setAppData(appData);
-    Taro.removeStorageSync('draft_tenant');
-    Taro.showToast({ title: '租客信息已保存', icon: 'none', duration: 2000 });
-    setTimeout(() => {
+      Taro.removeStorageSync('draft_tenant');
+      Taro.showToast({ title: '租客信息已保存', icon: 'none', duration: 2000 });
+      setTimeout(() => {
+        setSaving(false);
+        Taro.navigateBack();
+      }, 800);
+    } catch (err) {
+      console.error('[AddTenant] 保存租客失败:', err);
+      Taro.showToast({ title: '保存失败', icon: 'none' });
       setSaving(false);
-      Taro.navigateBack();
-    }, 800);
+    }
   }, [saving, isEdit, tenantId, name, phone, urlRoomId, rentDay, customDay, moveInDate, contractEndDate, deposit, note]);
 
   return (
     <View className="page-add-tenant">
       <NavBar title={isEdit ? '编辑租客' : '登记租客'} onBack={goBack} />
 
-      {currentRoom && (
+      {currentRoomName && (
         <View className="form-group">
           <Text className="form-label">关联房间</Text>
-          <Text className="form-readonly">{currentRoom.name}</Text>
+          <Text className="form-readonly">{currentRoomName}</Text>
         </View>
       )}
 
-      {!currentRoom && urlRoomId > 0 && (
+      {!currentRoomName && urlRoomId > 0 && (
         <View className="form-group">
           <Text className="form-label">关联房间</Text>
           <Text className="form-readonly">房间 #{urlRoomId}</Text>
@@ -215,26 +206,30 @@ export default function AddTenant() {
 
       <View className="form-group">
         <Text className="form-label">入住时间</Text>
-        <View className="date-input-wrap" onClick={() => handleDatePick('moveIn')}>
-          <Text className="date-input-text" style={{ color: moveInDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-            {moveInDate || '如：2024-08-10'}
-          </Text>
-          <svg width="20" height="20" viewBox="0 0 24 24" stroke="var(--text-muted)" strokeWidth="1.8" fill="none">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-        </View>
+        <Picker mode="date" value={moveInDate} onChange={e => setMoveInDate(e.detail.value)}>
+          <View className="date-input-wrap">
+            <Text className="date-input-text" style={{ color: moveInDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {moveInDate || '选择入住日期'}
+            </Text>
+            <svg width="20" height="20" viewBox="0 0 24 24" stroke="var(--text-muted)" strokeWidth="1.8" fill="none">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </View>
+        </Picker>
       </View>
 
       <View className="form-group">
         <Text className="form-label">合同到期时间</Text>
-        <View className="date-input-wrap" onClick={() => handleDatePick('contractEnd')}>
-          <Text className="date-input-text" style={{ color: contractEndDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-            {contractEndDate || '如：2026-08-10'}
-          </Text>
-          <svg width="20" height="20" viewBox="0 0 24 24" stroke="var(--text-muted)" strokeWidth="1.8" fill="none">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-        </View>
+        <Picker mode="date" value={contractEndDate} onChange={e => setContractEndDate(e.detail.value)}>
+          <View className="date-input-wrap">
+            <Text className="date-input-text" style={{ color: contractEndDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {contractEndDate || '选择到期日期'}
+            </Text>
+            <svg width="20" height="20" viewBox="0 0 24 24" stroke="var(--text-muted)" strokeWidth="1.8" fill="none">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+          </View>
+        </Picker>
       </View>
 
       <View className="form-group">
@@ -264,21 +259,20 @@ export default function AddTenant() {
         {showCustomPicker && (
           <View className="custom-day-picker">
             <Text className="custom-day-label">选择具体日期</Text>
-            <Input
-              className="form-input custom-day-input"
-              type="number"
-              placeholder="输入日期（1-31）"
-              value={String(customDay)}
-              onInput={(e) => {
-                const val = Number(e.detail.value);
-                if (val >= 1 && val <= 31) {
-                  setCustomDay(val);
-                  setRentDayLabel(`${val}号`);
-                }
+            <Picker
+              mode="selector"
+              range={Array.from({ length: 31 }, (_, i) => `${i + 1}号`)}
+              value={customDay - 1}
+              onChange={(e) => {
+                const val = Number(e.detail.value) + 1;
+                setCustomDay(val);
+                setRentDayLabel(`${val}号`);
               }}
-              placeholderStyle="color: #B5A99A"
-              maxlength={2}
-            />
+            >
+              <View className="form-input" style={{ color: 'var(--text-primary)' }}>
+                {customDay}号
+              </View>
+            </Picker>
           </View>
         )}
       </View>

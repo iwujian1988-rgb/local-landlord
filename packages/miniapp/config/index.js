@@ -8,7 +8,9 @@ const config = {
   sourceRoot: 'src',
   outputRoot: 'dist',
   plugins: ['@tarojs/plugin-framework-react'],
-  defineConstants: {},
+  defineConstants: {
+    API_BASE: '"http://localhost:3000"',
+  },
   copy: { patterns: [], options: {} },
   framework: 'react',
   compiler: 'webpack5',

@@ -2,14 +2,14 @@ import { View, Text } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import { useCallback, useState, useEffect } from 'react';
-import { uploadImage, getTempFileURL } from '../../services/cloudStorage';
+import { API_BASE } from '../../config';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import './index.scss';
 
 interface PhotoItem {
-  fileID: string;
-  tempURL?: string;
+  url: string;
+  fileID?: string;
 }
 
 export default function AddRoomPhoto() {
@@ -22,32 +22,20 @@ export default function AddRoomPhoto() {
     Taro.navigateBack();
   }, []);
 
-  // 页面显示时恢复已上传的照片 fileID 列表
   useDidShow(() => {
     const saved = Taro.getStorageSync('tempRoomPhotos') || [];
     if (saved.length > 0 && photos.length === 0) {
-      setPhotos(saved.map((fileID: string) => ({ fileID, tempURL: '' })));
+      setPhotos(saved.map((item: any) => {
+        if (typeof item === 'string') {
+          return { url: item, fileID: item };
+        }
+        return item;
+      }));
     }
   });
 
-  // 解析所有照片的临时访问链接
-  useEffect(() => {
-    photos.forEach((p) => {
-      if (p.fileID && !p.tempURL) {
-        getTempFileURL(p.fileID).then((url) => {
-          setPhotos((prev) =>
-            prev.map((item) =>
-              item.fileID === p.fileID ? { ...item, tempURL: url } : item,
-            ),
-          );
-        }).catch(() => {});
-      }
-    });
-  }, [photos]);
-
   const goNext = useCallback(() => {
-    // 持久化 fileID 列表供下一页使用
-    Taro.setStorageSync('tempRoomPhotos', photos.map((p) => p.fileID));
+    Taro.setStorageSync('tempRoomPhotos', photos.map((p) => p.fileID || p.url));
     Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${propertyId}` });
   }, [photos, propertyId]);
 
@@ -59,13 +47,32 @@ export default function AddRoomPhoto() {
       sourceType: ['camera', 'album'],
       success: (res) => {
         setUploading(true);
-        const uploads = res.tempFiles.map((file: any) =>
-          uploadImage(file.path, 'room')
-            .then((result) => ({
-              fileID: result.fileID,
-              tempURL: '',
-            }))
-        );
+        const uploads = res.tempFiles.map((file: any) => {
+          return new Promise<PhotoItem>((resolve, reject) => {
+            Taro.uploadFile({
+              url: `${API_BASE}/upload`,
+              filePath: file.path,
+              name: 'file',
+              success: (uploadRes: any) => {
+                try {
+                  const data = JSON.parse(uploadRes.data);
+                  if (data.code === 0) {
+                    resolve({
+                      url: data.data?.url || '',
+                      fileID: data.data?.fileID || data.data?.url || '',
+                    });
+                  } else {
+                    reject(new Error(data.message || '上传失败'));
+                  }
+                } catch {
+                  reject(new Error('解析失败'));
+                }
+              },
+              fail: (err) => reject(err),
+            });
+          });
+        });
+
         Promise.all(uploads)
           .then((newPhotos) => {
             setPhotos((prev) => [...prev, ...newPhotos]);
@@ -103,7 +110,7 @@ export default function AddRoomPhoto() {
           <View key={photo.fileID || idx} className="photo-grid-item">
             <View
               className="photo-thumb"
-              style={{ backgroundImage: `url(${photo.tempURL})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+              style={{ backgroundImage: `url(${photo.url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
             />
           </View>
         ))}

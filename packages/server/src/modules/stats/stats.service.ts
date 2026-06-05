@@ -15,7 +15,7 @@ interface RentStatsItem {
   collectionRate: number;
 }
 
-interface PeriodStats {
+export interface PeriodStats {
   period: string;
   totalExpected: number;
   totalCollected: number;
@@ -24,7 +24,7 @@ interface PeriodStats {
   properties: RentStatsItem[];
 }
 
-interface HomeStats {
+export interface HomeStats {
   greeting: string;
   todoCount: number;
   pendingTenantCount: number;

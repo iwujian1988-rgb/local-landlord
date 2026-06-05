@@ -2,6 +2,10 @@ import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max, IsDateString } fr
 import { Type } from 'class-transformer';
 
 export class CreateTenantDto {
+  @IsNumber()
+  @IsNotEmpty()
+  roomId: number;
+
   @IsString()
   @IsNotEmpty()
   name: string;

@@ -8,7 +8,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
 
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-    const message = exception instanceof HttpException ? exception.message : 'Internal server error';
+    const isProd = process.env.NODE_ENV === 'production';
+
+    let message: string;
+    if (exception instanceof HttpException) {
+      message = exception.message;
+    } else if (isProd) {
+      message = 'Internal server error';
+    } else {
+      message = exception instanceof Error ? exception.message : 'Internal server error';
+    }
 
     response.status(status).json({
       code: status,

@@ -1,12 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Index } from 'typeorm';
 import { Property } from '../property/property.entity';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
 
 @Entity('landlord')
 export class Landlord {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
+  @Index({ unique: true })
   @Column({ name: 'open_id', length: 64, unique: true })
   openId: string;
 
@@ -29,7 +30,7 @@ export class Landlord {
   paymentNote: string;
 
   @Column({ type: 'tinyint', unsigned: true, default: 1 })
-  status: number; // 0=禁用, 1=启用
+  status: number;
 
   @Column({ name: 'max_properties', type: 'tinyint', unsigned: true, default: 10 })
   maxProperties: number;

@@ -1,24 +1,52 @@
 import { View, Text } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useCallback, useState } from 'react';
-import { getAppData } from '../../utils/storage';
+import { get } from '../../services/request';
+import { useAuthStore } from '../../store/useAuthStore';
 import './index.scss';
 
 export default function Onboarding() {
   const [fading, setFading] = useState(false);
+  const [authVisible, setAuthVisible] = useState(false);
 
-  const handleStart = useCallback(() => {
-    Taro.setStorageSync('hasOnboarded', true);
+  const handleStartClick = useCallback(() => {
+    setAuthVisible(true);
+  }, []);
+
+  const handleAuthConfirm = useCallback(async () => {
+    setAuthVisible(false);
     setFading(true);
-    setTimeout(() => {
-      const appData = getAppData();
-      const hasRooms = appData.rooms && appData.rooms.length > 0;
-      if (hasRooms) {
+
+    try {
+      await useAuthStore.getState().login();
+    } catch (err) {
+      console.error('[Onboarding] 登录失败:', err);
+      Taro.showToast({ title: '登录失败，请重试', icon: 'none', duration: 2000 });
+      setFading(false);
+      return;
+    }
+
+    Taro.setStorageSync('hasOnboarded', true);
+
+    setTimeout(async () => {
+      try {
+        const res = await get<any[]>('/rooms');
+        const rooms = res.data || [];
+        const hasRooms = rooms.length > 0;
+        if (hasRooms) {
+          Taro.switchTab({ url: '/pages/home/index' });
+        } else {
+          Taro.reLaunch({ url: '/pages/home-empty/index' });
+        }
+      } catch (err) {
+        // If rooms fetch fails, go to home anyway
         Taro.switchTab({ url: '/pages/home/index' });
-      } else {
-        Taro.reLaunch({ url: '/pages/home-empty/index' });
       }
     }, 500);
+  }, []);
+
+  const handleAuthCancel = useCallback(() => {
+    setAuthVisible(false);
   }, []);
 
   return (
@@ -73,11 +101,38 @@ export default function Onboarding() {
       </View>
 
       {/* Start button */}
-      <View className="start-btn" onClick={handleStart}>
+      <View className="start-btn" onClick={handleStartClick}>
         <Text className="start-btn-text">开始使用</Text>
       </View>
 
       <Text className="onboarding-footer">完全免费，无需注册</Text>
+
+      {/* Auth confirmation dialog */}
+      <View className={`confirm-overlay${authVisible ? ' show' : ''}`} onClick={handleAuthCancel}>
+        <View className="confirm-content" onClick={(e) => e.stopPropagation()}>
+          <View className="confirm-handle" />
+
+          <View className="confirm-text">
+            <Text className="confirm-title">授权确认</Text>
+            <Text className="confirm-desc">
+              使用本小程序需要以下权限：{'\n\n'}
+              1. 微信登录 — 用于识别您的身份{'\n'}
+              2. 保存房源和租客信息 — 数据将安全存储在服务器上{'\n'}
+              3. 相册/相机 — 用于拍照上传房源照片{'\n\n'}
+              我们会妥善保护您的数据安全。
+            </Text>
+          </View>
+
+          <View className="confirm-actions">
+            <View className="confirm-btn cancel-btn" onClick={handleAuthCancel}>
+              暂不使用
+            </View>
+            <View className="confirm-btn ok-btn" onClick={handleAuthConfirm}>
+              同意并继续
+            </View>
+          </View>
+        </View>
+      </View>
     </View>
   );
 }

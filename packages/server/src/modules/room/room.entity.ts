@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
 import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { FeeItem } from '../fee/fee-item.entity';
@@ -8,11 +8,13 @@ import { Document } from '../document/document.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 
 @Entity('room')
+@Index(['propertyId'])
+@Index(['status'])
 export class Room {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'property_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'property_id', type: 'integer' })
   propertyId: number;
 
   @Column({ length: 64 })
@@ -24,8 +26,8 @@ export class Room {
   @Column({ type: 'tinyint', unsigned: true, default: 0 })
   status: number;
 
-  @Column({ name: 'available_date', length: 32, nullable: true })
-  availableDate: string;
+  @Column({ name: 'available_date', type: 'date', nullable: true })
+  availableDate: Date;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   deposit: number;

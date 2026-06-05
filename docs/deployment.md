@@ -55,11 +55,11 @@ pnpm dev:server
 pnpm dev:admin
 ```
 
-管理后台运行在 `http://localhost:5173`，Vite 自动代理 `/api` 到后端。
+管理后台运行在 `http://localhost:3001`，Vite 自动代理 `/api` 到后端。
 
 ### 7. 登录管理后台
 
-- 地址：`http://localhost:5173`
+- 地址：`http://localhost:3001`
 - 默认账号：`admin`
 - 默认密码：`admin123`
 

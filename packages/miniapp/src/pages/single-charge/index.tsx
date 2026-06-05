@@ -1,6 +1,8 @@
 import { View, Text, Input, Textarea, Picker } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import { useState, useCallback } from 'react';
 import { get, post } from '../../services/request';
 import './index.scss';
@@ -22,18 +24,29 @@ export default function SingleCharge() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const loadData = useCallback(async () => {
-    const res = await get<any[]>('/rooms');
-    const allRooms = res.data || [];
-    const opts: RoomOption[] = allRooms.map((r: any) => {
-      const tenant = (r.tenants || []).find((t: any) => t.status !== 0);
-      const label = tenant ? `${r.name} · ${tenant.name}` : `${r.name} (空房)`;
-      return { id: r.id, label };
-    });
-    setRooms(opts);
-    if (preRoomId > 0 && !selectedRoomId) {
-      setSelectedRoomId(preRoomId);
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await get<any[]>('/rooms');
+      const allRooms = res.data || [];
+      const opts: RoomOption[] = allRooms.map((r: any) => {
+        const tenant = (r.tenants || []).find((t: any) => t.status !== 0);
+        const label = tenant ? `${r.name} · ${tenant.name}` : `${r.name} (空房)`;
+        return { id: r.id, label };
+      });
+      setRooms(opts);
+      if (preRoomId > 0 && !selectedRoomId) {
+        setSelectedRoomId(preRoomId);
+      }
+    } catch (err) {
+      console.error('[SingleCharge] 加载房间失败:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
     }
   }, [preRoomId, selectedRoomId]);
 
@@ -56,23 +69,18 @@ export default function SingleCharge() {
     }
     if (submitting) return;
     setSubmitting(true);
-    try {
-      await post(`/rooms/${selectedRoomId}/single-charge`, {
-        feeType,
-        amount: Number(amount),
-        note,
-      });
-      Taro.showToast({ title: '收款通知已生成', icon: 'none', duration: 2000 });
-      setTimeout(() => {
-        setSubmitting(false);
-        Taro.navigateTo({
-          url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${feeType}&note=${encodeURIComponent(note)}`
-        });
-      }, 1500);
-    } catch (_) {
+    await post(`/rooms/${selectedRoomId}/single-charge`, {
+      feeType,
+      amount: Number(amount),
+      note,
+    });
+    Taro.showToast({ title: '收款通知已生成', icon: 'none', duration: 2000 });
+    setTimeout(() => {
       setSubmitting(false);
-      Taro.showToast({ title: '生成失败了，再试一次', icon: 'none', duration: 2000 });
-    }
+      Taro.navigateTo({
+        url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${feeType}&note=${encodeURIComponent(note)}`
+      });
+    }, 1500);
   }, [selectedRoomId, feeType, amount, note, submitting]);
 
   const selectedRoomLabel = rooms.find(r => r.id === selectedRoomId)?.label || '请选择房间';
@@ -81,6 +89,10 @@ export default function SingleCharge() {
     <View className="page-single-charge">
       <NavBar title="单独收一笔钱" onBack={goBack} />
 
+      {loading && <Loading />}
+      {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+      {!loading && !error && (
+        <>
       <View className="sc-tip">
         <Text className="sc-tip-text">适合单独收水电费、维修费、押金等</Text>
       </View>
@@ -164,7 +176,8 @@ export default function SingleCharge() {
           </View>
         </View>
       </View>
-
+        </>
+      )}
     </View>
   );
 }

@@ -2,6 +2,8 @@ import { View, Text, Input, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import EmptyState from '../../components/EmptyState';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import { get, post, put, del } from '../../services/request';
 import { API_BASE } from '../../config';
 import { useState, useCallback } from 'react';
@@ -25,8 +27,13 @@ export default function QrCode() {
   const [codes, setCodes] = useState<QRItem[]>([]);
   const [payeeName, setPayeeName] = useState('');
   const [payeeNote, setPayeeNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
     const res = await get<any>('/payment-qr');
     const data = res.data || {};
     // Merge API data with default templates
@@ -46,6 +53,12 @@ export default function QrCode() {
     setCodes(merged);
     setPayeeName(data.payeeName || '');
     setPayeeNote(data.payeeNote || '');
+    } catch (err) {
+      console.error('[QrCode] 加载数据失败:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useDidShow(() => { loadData(); });
@@ -145,6 +158,10 @@ export default function QrCode() {
       <NavBar title="我的收款码" onBack={goBack} />
 
       <ScrollView className="qr-scroll" scrollY>
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && (
+          <>
         <View className="qr-hint">
           <Text className="qr-hint-text">
             上传您的微信、支付宝或银行收款码。租客扫码后，会按您的方式付款。本小程序不直接收钱。
@@ -237,6 +254,8 @@ export default function QrCode() {
         </View>
 
         <View style={{ height: '100px' }} />
+          </>
+        )}
       </ScrollView>
 
       <View className="qr-bottom-actions">

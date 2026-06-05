@@ -13,5 +13,5 @@ export const DOCUMENT_TYPE_FILTER_OPTIONS = [
   { label: '收据', value: 1 },
   { label: '水电单', value: 3 },
   { label: '维修', value: 4 },
-  { label: '押金', value: 1 },
+  { label: '押金', value: 6 },
 ] as const;

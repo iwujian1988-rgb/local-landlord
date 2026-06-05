@@ -52,6 +52,9 @@ export class JwtAuthGuard {
         if (!landlord) {
           throw new UnauthorizedException('User not found');
         }
+        if (landlord.status !== 1) {
+          throw new UnauthorizedException('账户已被禁用，请联系管理员');
+        }
         request.user = {
           id: landlord.id,
           openId: landlord.openId,

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository, InjectEntityManager } from '@nestjs/typeorm';
 import { Repository, EntityManager, Like, Between, In } from 'typeorm';
-import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { Admin } from './admin.entity';
 import { SystemConfig } from './system-config.entity';
 import { Property } from '../property/property.entity';
@@ -17,7 +17,6 @@ import { Landlord } from '../landlord/landlord.entity';
 
 @Injectable()
 export class SystemService {
-  // 默认系统参数
   private readonly defaultSystemParams: Record<string, any> = {
     appName: '本地房东',
     maxRoomPerProperty: 100,
@@ -60,7 +59,7 @@ export class SystemService {
     private readonly entityManager: EntityManager,
   ) {}
 
-  // ========== 房源管理 ==========
+  // ========== Property management ==========
 
   async findProperties(page: number, pageSize: number, keyword?: string) {
     const where: any = {};
@@ -69,12 +68,19 @@ export class SystemService {
     }
     const [list, total] = await this.propertyRepository.findAndCount({
       where,
-      relations: ['landlord'],
+      relations: ['landlord', 'rooms'],
       skip: (page - 1) * pageSize,
       take: pageSize,
       order: { createdAt: 'DESC' },
     });
-    return { list, total, page, pageSize };
+    const result = list.map(p => ({
+      ...p,
+      landlordName: p.landlord?.name || '',
+      roomCount: p.rooms?.length || 0,
+      rentedCount: p.rooms?.filter(r => r.status === 1).length || 0,
+      vacantCount: p.rooms?.filter(r => r.status === 0).length || 0,
+    }));
+    return { list: result, total, page, pageSize };
   }
 
   async createProperty(data: Partial<Property>) {
@@ -107,7 +113,6 @@ export class SystemService {
       const property = await manager.findOne(Property, { where: { id } });
       if (!property) throw new NotFoundException('房源不存在');
 
-      // 检查是否有在租房间
       const rentedCount = await manager.count(Room, {
         where: { propertyId: id, status: 1 },
       });
@@ -115,7 +120,6 @@ export class SystemService {
         throw new BadRequestException('该房源下有在租房间，无法删除');
       }
 
-      // 获取该房源下所有房间ID
       const rooms = await manager.find(Room, {
         where: { propertyId: id },
         select: ['id'],
@@ -146,7 +150,7 @@ export class SystemService {
     });
   }
 
-  // ========== 房间管理 ==========
+  // ========== Room management ==========
 
   async findRooms(page: number, pageSize: number, keyword?: string, status?: number) {
     const qb = this.roomRepository.createQueryBuilder('room')
@@ -157,7 +161,7 @@ export class SystemService {
       qb.where('room.name LIKE :keyword', { keyword: `%${keyword}%` });
     }
 
-    if (status !== undefined && status !== null) {
+    if (status !== undefined && status !== null && !isNaN(status)) {
       qb.andWhere('room.status = :status', { status });
     }
 
@@ -192,7 +196,7 @@ export class SystemService {
     await this.roomRepository.remove(room);
   }
 
-  // ========== 租客管理 ==========
+  // ========== Tenant management ==========
 
   async findTenants(page: number, pageSize: number, keyword?: string) {
     const qb = this.tenantRepository.createQueryBuilder('tenant')
@@ -229,7 +233,6 @@ export class SystemService {
     tenant.status = 0;
     tenant.moveOutDate = moveOutDate || new Date().toISOString().slice(0, 10);
 
-    // 更新房间状态
     const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
     if (room) {
       room.status = 0;
@@ -245,7 +248,7 @@ export class SystemService {
     await this.tenantRepository.remove(tenant);
   }
 
-  // ========== 管理员用户管理 ==========
+  // ========== Admin user management ==========
 
   async findAdmins(page: number, pageSize: number) {
     const [list, total] = await this.adminRepository.findAndCount({
@@ -253,7 +256,6 @@ export class SystemService {
       take: pageSize,
       order: { createdAt: 'DESC' },
     });
-    // 不返回密码
     const safeList = list.map(a => {
       const { password, ...rest } = a;
       return rest;
@@ -265,7 +267,7 @@ export class SystemService {
     const existing = await this.adminRepository.findOne({ where: { username: data.username } });
     if (existing) throw new BadRequestException('用户名已存在');
 
-    const hashedPwd = crypto.createHash('sha256').update(data.password).digest('hex');
+    const hashedPwd = await bcrypt.hash(data.password, 10);
     const admin = this.adminRepository.create({
       username: data.username,
       password: hashedPwd,
@@ -290,13 +292,13 @@ export class SystemService {
   async resetAdminPassword(id: number, newPassword: string) {
     const admin = await this.adminRepository.findOne({ where: { id } });
     if (!admin) throw new NotFoundException('管理员不存在');
-    admin.password = crypto.createHash('sha256').update(newPassword).digest('hex');
+    admin.password = await bcrypt.hash(newPassword, 10);
     const saved = await this.adminRepository.save(admin);
     const { password, ...rest } = saved;
     return rest;
   }
 
-  // ========== 仪表盘统计 ==========
+  // ========== Dashboard statistics ==========
 
   async getDashboardSummary() {
     const totalLandlords = await this.landlordRepository.count();
@@ -311,7 +313,7 @@ export class SystemService {
     const totalTenants = await this.tenantRepository.count({ where: { status: 1 } as any });
 
     const now = new Date();
-    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const bills = await this.billRepository.find();
     const monthBills = bills.filter(b => b.period === monthStart);
     const monthExpected = monthBills.reduce((sum, b) => sum + Number(b.totalAmount), 0);
@@ -335,7 +337,7 @@ export class SystemService {
     };
   }
 
-  // ========== 账单管理（管理员视角） ==========
+  // ========== Bill management (admin view) ==========
 
   async getAdminBills(
     page: number,
@@ -349,7 +351,7 @@ export class SystemService {
       .leftJoinAndSelect('room.property', 'property')
       .leftJoinAndSelect('bill.tenant', 'tenant');
 
-    if (status !== undefined && status !== null) {
+    if (status !== undefined && status !== null && !isNaN(status)) {
       qb.andWhere('bill.status = :status', { status });
     }
     if (propertyId) {
@@ -375,7 +377,6 @@ export class SystemService {
       bill.paidAt = paidAt ? new Date(paidAt) : new Date();
       const savedBill = await manager.save(bill);
 
-      // 创建收租记录
       const rentRecord = manager.create(RentRecord, {
         roomId: bill.roomId,
         billId: bill.id,
@@ -390,16 +391,19 @@ export class SystemService {
     });
   }
 
-  async batchConfirmAdminBills(ids: number[]) {
+  async batchConfirmAdminBills(ids: number[], paidAt?: string) {
     return this.entityManager.transaction(async (manager) => {
-      const paidAt = new Date();
+      const resolvedPaidAt = paidAt ? new Date(paidAt) : new Date();
+      let confirmedCount = 0;
       for (const id of ids) {
         const bill = await manager.findOne(Bill, { where: { id } });
         if (bill) {
+          if (bill.status === 1) {
+            continue;
+          }
           bill.status = 1;
-          bill.paidAt = paidAt;
+          bill.paidAt = resolvedPaidAt;
           await manager.save(bill);
-          // 创建收租记录
           const rentRecord = manager.create(RentRecord, {
             roomId: bill.roomId,
             billId: bill.id,
@@ -409,9 +413,10 @@ export class SystemService {
             amount: bill.totalAmount,
           });
           await manager.save(rentRecord);
+          confirmedCount++;
         }
       }
-      return { success: true, count: ids.length };
+      return { success: true, count: confirmedCount, total: ids.length };
     });
   }
 
@@ -427,7 +432,6 @@ export class SystemService {
         results.push({ billId: id, reminded: false, reason: '账单状态不是待支付' });
         continue;
       }
-      // 创建催缴提醒记录
       const title = `催缴提醒-${bill.period}`;
       const existing = await this.rentRecordRepository.findOne({
         where: { billId: bill.id, type: 3, title },
@@ -436,7 +440,7 @@ export class SystemService {
         const rentRecord = this.rentRecordRepository.create({
           roomId: bill.roomId,
           billId: bill.id,
-          type: 3, // 催缴提醒
+          type: 3,
           title,
           description: `管理员催缴: 账单 ${bill.period}，金额 ${bill.totalAmount}`,
           amount: 0,
@@ -456,7 +460,7 @@ export class SystemService {
     return { success: true, results };
   }
 
-  // ========== 数据统计（管理员视角） ==========
+  // ========== Statistics (admin view) ==========
 
   async getAdminRentStats(period?: string) {
     const allBills = await this.billRepository.find();
@@ -560,7 +564,7 @@ export class SystemService {
     return { list: activity, total: activity.length };
   }
 
-  // ========== 系统设置（持久化到 system_config 表） ==========
+  // ========== System settings ==========
 
   async getNotifications() {
     const config = await this.configRepo.findOne({ where: { key: 'notifications' } });
@@ -596,7 +600,7 @@ export class SystemService {
     return saved.value;
   }
 
-  // ========== 房东管理 ==========
+  // ========== Landlord management ==========
 
   async getLandlords(page = 1, pageSize = 20, keyword?: string) {
     const where: any = {};
@@ -633,12 +637,12 @@ export class SystemService {
     return { ...landlord, properties };
   }
 
-  async createLandlord(data: { name: string; phone: string; defaultPayeeName?: string; paymentNote?: string; avatar?: string; maxProperties?: number }) {
+  async createLandlord(data: { name: string; phone: string; defaultPayeeName?: string; paymentNote?: string; avatar?: string; maxProperties?: number; status?: number }) {
     const landlord = this.landlordRepository.create({
       ...data,
       openId: `admin_${Date.now()}`,
-      status: 1,
-      avatar: data.avatar || null,
+      status: data.status ?? 1,
+      avatar: data.avatar ?? undefined,
       maxProperties: data.maxProperties ?? 10,
     });
     return this.landlordRepository.save(landlord);
@@ -658,25 +662,30 @@ export class SystemService {
     return this.landlordRepository.save(landlord);
   }
 
-  // ========== 合同管理（管理员视角） ==========
+  // ========== Contract management (admin view) ==========
 
   async findContracts(page: number, pageSize: number, type?: number, roomId?: number) {
-    const qb = this.documentRepository.createQueryBuilder('doc')
-      .leftJoinAndSelect('doc.room', 'room');
+    try {
+      const qb = this.documentRepository.createQueryBuilder('doc')
+        .leftJoinAndSelect('doc.room', 'room');
 
-    if (type !== undefined && type !== null) {
-      qb.andWhere('doc.type = :type', { type });
-    } else {
-      qb.andWhere('doc.type = :type', { type: 1 }); // 默认合同
+      if (type !== undefined && type !== null && !isNaN(type)) {
+        qb.andWhere('doc.type = :type', { type });
+      } else {
+        qb.andWhere('doc.type = :type', { type: 1 });
+      }
+
+      if (roomId) {
+        qb.andWhere('doc.roomId = :roomId', { roomId });
+      }
+
+      qb.skip((page - 1) * pageSize).take(pageSize).orderBy('doc.uploadedAt', 'DESC');
+      const [list, total] = await qb.getManyAndCount();
+      return { list, total, page, pageSize };
+    } catch (e: any) {
+      console.error('findContracts error:', e.message, e.stack);
+      throw e;
     }
-
-    if (roomId) {
-      qb.andWhere('doc.roomId = :roomId', { roomId });
-    }
-
-    qb.skip((page - 1) * pageSize).take(pageSize).orderBy('doc.uploadedAt', 'DESC');
-    const [list, total] = await qb.getManyAndCount();
-    return { list, total, page, pageSize };
   }
 
   async createContract(data: { roomId: number; name: string; imageUrl: string; note?: string }) {

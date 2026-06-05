@@ -49,9 +49,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
+      - name: Type check shared
+        run: pnpm --filter @local-landlord/shared exec tsc --noEmit
+
+      - name: Type check admin
+        run: pnpm --filter @local-landlord/admin exec tsc --noEmit
+
+      - name: Type check server
         run: pnpm --filter @local-landlord/server type-check
-        continue-on-error: true
 
       - name: Run E2E tests
         run: |
@@ -72,3 +77,46 @@ jobs:
 
       - name: Build server
         run: pnpm --filter @local-landlord/server build
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Uncomment and configure the registry you want to push to:
+      # - name: Log in to Container Registry
+      #   uses: docker/login-action@v3
+      #   with:
+      #     registry: ghcr.io
+      #     username: ${{ github.actor }}
+      #     password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.server
+          push: false
+          tags: |
+            local-landlord-server:${{ github.sha }}
+            local-landlord-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Uncomment to push to registry:
+      # - name: Push Docker image
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: .
+      #     file: docker/Dockerfile.server
+      #     push: true
+      #     tags: |
+      #       ghcr.io/${{ github.repository }}/server:${{ github.sha }}
+      #       ghcr.io/${{ github.repository }}/server:latest
+      #     cache-from: type=gha
+      #     cache-to: type=gha,mode=max

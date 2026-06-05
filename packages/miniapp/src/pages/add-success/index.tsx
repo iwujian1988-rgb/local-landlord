@@ -7,21 +7,17 @@ import './index.scss';
 export default function AddSuccess() {
   const propertyId = Taro.getCurrentInstance().router?.params?.propertyId;
 
-  const goBack = useCallback(() => {
-    Taro.navigateBack({ delta: 3 });
+  const goToRoomList = useCallback(() => {
+    Taro.reLaunch({ url: '/pages/rooms/index' });
   }, []);
 
   const goToAddNext = useCallback(() => {
     Taro.navigateTo({ url: `/pages/add-room-photo/index?propertyId=${propertyId}` });
   }, [propertyId]);
 
-  const goToRoomList = useCallback(() => {
-    Taro.navigateBack({ delta: 3 });
-  }, []);
-
   return (
     <View className="page-add-success">
-      <NavBar title="添加成功" onBack={goBack} />
+      <NavBar title="添加成功" onBack={goToRoomList} />
 
       <View className="success-content">
         <View className="success-icon">

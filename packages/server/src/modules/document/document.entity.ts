@@ -1,12 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Room } from '../room/room.entity';
 
 @Entity('document')
+@Index(['roomId'])
 export class Document {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'room_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'room_id', type: 'integer' })
   roomId: number;
 
   @Column({ type: 'tinyint', unsigned: true })

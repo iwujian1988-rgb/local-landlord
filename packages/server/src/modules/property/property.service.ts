@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { Property } from './property.entity';
@@ -14,7 +14,7 @@ import { SingleCharge } from '../rent/single-charge.entity';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 
-interface PropertyWithStats extends Property {
+export interface PropertyWithStats extends Property {
   roomCount?: number;
   rentedCount?: number;
   vacantCount?: number;
@@ -47,14 +47,13 @@ export class PropertyService {
     private readonly billItemRepository: Repository<BillItem>,
   ) {}
 
-  /** 获取房源列表（按 landlord_id 过滤） */
+  /** Get properties for a landlord */
   async findAll(landlordId: number): Promise<PropertyWithStats[]> {
     const properties = await this.propertyRepository.find({
       where: { landlordId },
       order: { createdAt: 'DESC' },
     });
 
-    // 为每个房源附加统计数据
     const result: PropertyWithStats[] = [];
     for (const property of properties) {
       const stats = await this.getPropertyStats(property.id);
@@ -63,19 +62,23 @@ export class PropertyService {
     return result;
   }
 
-  /** 获取房源详情（含统计） */
-  async findOne(id: number): Promise<PropertyWithStats> {
+  /** Get property detail with ownership check */
+  async findOne(id: number, userId?: number, isAdmin?: boolean): Promise<PropertyWithStats> {
     const property = await this.propertyRepository.findOne({
       where: { id },
-      relations: ['landlord'],
     });
     if (!property) throw new NotFoundException('房源不存在');
+
+    // Ownership check: non-admin users can only access their own properties
+    if (userId && !isAdmin && property.landlordId !== userId) {
+      throw new ForbiddenException('无权访问该房源');
+    }
 
     const stats = await this.getPropertyStats(id);
     return { ...property, ...stats };
   }
 
-  /** 创建房源 */
+  /** Create property */
   async create(landlordId: number, dto: CreatePropertyDto): Promise<Property> {
     const count = await this.propertyRepository.count({ where: { landlordId } });
     const landlord = await this.landlordRepository.findOne({ where: { id: landlordId } });
@@ -96,22 +99,35 @@ export class PropertyService {
     return this.propertyRepository.save(property);
   }
 
-  /** 更新房源 */
-  async update(id: number, dto: UpdatePropertyDto): Promise<Property> {
+  /** Update property with ownership check */
+  async update(id: number, dto: UpdatePropertyDto, userId?: number, isAdmin?: boolean): Promise<Property> {
     const property = await this.propertyRepository.findOne({ where: { id } });
     if (!property) throw new NotFoundException('房源不存在');
+
+    // Ownership check
+    if (userId && !isAdmin && property.landlordId !== userId) {
+      throw new ForbiddenException('无权修改该房源');
+    }
 
     Object.assign(property, dto);
     return this.propertyRepository.save(property);
   }
 
-  /** 删除房源（级联删除所有关联数据） */
-  async remove(id: number): Promise<void> {
-    await this.propertyRepository.manager.transaction(async (manager) => {
-      const property = await manager.findOne(Property, { where: { id } });
-      if (!property) throw new NotFoundException('房源不存在');
+  /** Delete property with ownership check */
+  async remove(id: number, userId?: number, isAdmin?: boolean): Promise<void> {
+    // Verify ownership first
+    const property = await this.propertyRepository.findOne({ where: { id } });
+    if (!property) throw new NotFoundException('房源不存在');
 
-      // 检查是否有在租房间
+    if (userId && !isAdmin && property.landlordId !== userId) {
+      throw new ForbiddenException('无权删除该房源');
+    }
+
+    await this.propertyRepository.manager.transaction(async (manager) => {
+      const prop = await manager.findOne(Property, { where: { id } });
+      if (!prop) throw new NotFoundException('房源不存在');
+
+      // Check for rented rooms
       const rentedCount = await manager.count(Room, {
         where: { propertyId: id, status: 1 },
       });
@@ -119,7 +135,7 @@ export class PropertyService {
         throw new BadRequestException('该房源下有在租房间，无法删除');
       }
 
-      // 获取该房源下所有房间ID
+      // Get all room IDs under this property
       const rooms = await manager.find(Room, {
         where: { propertyId: id },
         select: ['id'],
@@ -127,56 +143,38 @@ export class PropertyService {
       const roomIds = rooms.map(r => r.id);
 
       if (roomIds.length > 0) {
-        // 获取所有相关账单ID
         const bills = await manager.find(Bill, {
           where: { roomId: In(roomIds) },
           select: ['id'],
         });
         const billIds = bills.map(b => b.id);
 
-        // 1. 删除 bill_item（依赖 bill）
         if (billIds.length > 0) {
           await manager.delete(BillItem, { billId: In(billIds) });
         }
 
-        // 2. 删除 rent_record
         await manager.delete(RentRecord, { roomId: In(roomIds) });
-
-        // 3. 删除 single_charge
         await manager.delete(SingleCharge, { roomId: In(roomIds) });
-
-        // 4. 删除 bill
         await manager.delete(Bill, { roomId: In(roomIds) });
-
-        // 5. 删除 document
         await manager.delete(Document, { roomId: In(roomIds) });
-
-        // 6. 删除 fee_item
         await manager.delete(FeeItem, { roomId: In(roomIds) });
-
-        // 7. 删除 tenant
         await manager.delete(Tenant, { roomId: In(roomIds) });
-
-        // 8. 删除 room
         await manager.delete(Room, { propertyId: id });
       }
 
-      // 9. 删除 property
-      await manager.remove(Property, property);
+      await manager.remove(Property, prop);
     });
   }
 
-  /** 计算房源统计数据 */
+  /** Calculate property statistics */
   private async getPropertyStats(propertyId: number) {
     const rooms = await this.roomRepository.find({ where: { propertyId } });
     const roomCount = rooms.length;
 
-    // 已租房间（status=1 已出租）
     const rentedCount = rooms.filter(r => r.status === 1).length;
-    // 空置房间（status=0 空置）
     const vacantCount = rooms.filter(r => r.status === 0).length;
 
-    // 逾期账单数
+    // Overdue bills
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const overdueCount = await this.billRepository
@@ -187,7 +185,7 @@ export class PropertyService {
       .andWhere('bill.period <= :period', { period: monthStr })
       .getCount();
 
-    // 月预期收入：所有房间的租金 + 已启用的费用项
+    // Monthly expected income
     let monthlyExpectedIncome = 0;
     for (const room of rooms) {
       monthlyExpectedIncome += Number(room.rent) || 0;

@@ -25,7 +25,9 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@local-landlord/shared": ["../shared/src"],
+      "@local-landlord/shared/*": ["../shared/src/*"]
     }
   },
   "include": ["src"]

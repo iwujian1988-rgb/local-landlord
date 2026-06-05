@@ -3,10 +3,10 @@ import { Bill } from './bill.entity';
 
 @Entity('bill_item')
 export class BillItem {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'bill_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'bill_id', type: 'integer' })
   billId: number;
 
   @Column({ name: 'fee_name', length: 32 })

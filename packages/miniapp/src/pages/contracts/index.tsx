@@ -2,6 +2,9 @@ import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import EmptyState from '../../components/EmptyState';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
+import ConfirmModal from '../../components/ConfirmModal';
 import UploadModal, { UploadFile } from '../../components/UploadModal';
 import { get, post, del } from '../../services/request';
 import { API_BASE } from '../../config';
@@ -45,22 +48,35 @@ export default function Contracts() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [showUpload, setShowUpload] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (roomId === 0) {
       Taro.showToast({ title: '没有找到对应房间，请返回重新进入', icon: 'none', duration: 2000 });
       return;
     }
-    const res = await get<any[]>(`/rooms/${roomId}/documents`);
-    const documents = (res.data || []).map((d: any) => ({
-      id: d.id || d._id,
-      type: d.type || 'other',
-      name: d.name || '未命名文件',
-      date: d.date || d.createdAt || '',
-      imageUrl: d.imageUrl || d.imageTempURL || d.fileUrl || '',
-      roomId: d.roomId || roomId,
-    }));
-    setDocs(documents);
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await get<any[]>(`/rooms/${roomId}/documents`);
+      const documents = (res.data || []).map((d: any) => ({
+        id: d.id || d._id,
+        type: d.type || 'other',
+        name: d.name || '未命名文件',
+        date: d.date || d.createdAt || '',
+        imageUrl: d.imageUrl || d.imageTempURL || d.fileUrl || '',
+        roomId: d.roomId || roomId,
+      }));
+      setDocs(documents);
+    } catch (err) {
+      console.error('[Contracts] 加载文档失败:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [roomId]);
 
   useDidShow(() => { loadData(); });
@@ -103,11 +119,23 @@ export default function Contracts() {
     });
   }, [roomId]);
 
-  const handleDelete = useCallback(async (docId: string) => {
-    await del(`/rooms/${roomId}/documents/${docId}`);
-    setDocs((prev) => prev.filter((d) => d.id !== docId));
-    Taro.showToast({ title: '已删除', icon: 'none', duration: 2000 });
-  }, [roomId]);
+  const handleDeleteRequest = useCallback((docId: string) => {
+    setDeleteTargetId(docId);
+    setDeleteVisible(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTargetId) return;
+    setDeleteVisible(false);
+    try {
+      await del(`/rooms/${roomId}/documents/${deleteTargetId}`);
+      setDocs((prev) => prev.filter((d) => d.id !== deleteTargetId));
+      Taro.showToast({ title: '已删除', icon: 'none', duration: 2000 });
+    } catch (err) {
+      console.error('[Contracts] 删除失败:', err);
+      Taro.showToast({ title: '删除失败', icon: 'none' });
+    }
+  }, [roomId, deleteTargetId]);
 
   const filteredDocs = useMemo(() => {
     let list = docs;
@@ -147,32 +175,38 @@ export default function Contracts() {
       </ScrollView>
 
       <ScrollView className="contracts-scroll" scrollY>
-        {filteredDocs.length === 0 && docs.length === 0 ? (
-          <EmptyState title="还没有合同或收据" description="上传租房合同、押金收据、水电单等资料，方便随时查看" actionText="去上传资料" onAction={() => setShowUpload(true)} />
-        ) : filteredDocs.length === 0 && docs.length > 0 ? (
-          <EmptyState title="没有匹配的合同收据" description="换个筛选条件试试" />
-        ) : (
-          filteredDocs.map((doc) => (
-            <View key={doc.id} className="doc-card" onClick={() => handleDelete(doc.id)}>
-              <View className="doc-thumb" style={{ background: docThumbColors[doc.type] || docThumbColors.other }}>
-                {doc.imageUrl ? (
-                  <Image src={doc.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-xs)' }} />
-                ) : (
-                  <svg width="24" height="24" viewBox="0 0 24 24" stroke="var(--accent-dk)" strokeWidth="1.8" fill="none" opacity="0.5">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && (
+          <>
+            {filteredDocs.length === 0 && docs.length === 0 ? (
+              <EmptyState title="还没有合同或收据" description="上传租房合同、押金收据、水电单等资料，方便随时查看" actionText="去上传资料" onAction={() => setShowUpload(true)} />
+            ) : filteredDocs.length === 0 && docs.length > 0 ? (
+              <EmptyState title="没有匹配的合同收据" description="换个筛选条件试试" />
+            ) : (
+              filteredDocs.map((doc) => (
+                <View key={doc.id} className="doc-card" onClick={() => handleDeleteRequest(doc.id)}>
+                  <View className="doc-thumb" style={{ background: docThumbColors[doc.type] || docThumbColors.other }}>
+                    {doc.imageUrl ? (
+                      <Image src={doc.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-xs)' }} />
+                    ) : (
+                      <svg width="24" height="24" viewBox="0 0 24 24" stroke="var(--accent-dk)" strokeWidth="1.8" fill="none" opacity="0.5">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg>
+                    )}
+                  </View>
+                  <View className="doc-info">
+                    <Text className="doc-name">{doc.name}</Text>
+                    <Text className="doc-date">{doc.date} 上传</Text>
+                  </View>
+                  <svg width="16" height="16" viewBox="0 0 24 24" stroke="var(--text-hint)" strokeWidth="1.8" fill="none" style={{ flexShrink: 0 }}>
+                    <polyline points="9 18 15 12 9 6" />
                   </svg>
-                )}
-              </View>
-              <View className="doc-info">
-                <Text className="doc-name">{doc.name}</Text>
-                <Text className="doc-date">{doc.date} 上传</Text>
-              </View>
-              <svg width="16" height="16" viewBox="0 0 24 24" stroke="var(--text-hint)" strokeWidth="1.8" fill="none" style="flex-shrink:0">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </View>
-          ))
+                </View>
+              ))
+            )}
+          </>
         )}
         <View style={{ height: '120px' }} />
       </ScrollView>
@@ -190,6 +224,14 @@ export default function Contracts() {
         onClose={() => setShowUpload(false)}
         onUpload={handleUpload}
         entityType="contract"
+      />
+
+      <ConfirmModal
+        visible={deleteVisible}
+        title="确认删除该文件？"
+        confirmText="确认删除"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteVisible(false)}
       />
     </View>
   );

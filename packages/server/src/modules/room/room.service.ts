@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as dayjs from 'dayjs';
+import dayjs from 'dayjs';
 import { Room } from './room.entity';
+import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { FeeItem } from '../fee/fee-item.entity';
 import { Bill } from '../bill/bill.entity';
@@ -10,38 +11,33 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
 /**
- * computeRoomDisplayStatus - 根据房间原始状态、租约日期、rentDay计算展示状态
- * 状态码：
- *   0: 空置（vacant）
- *   1: 已出租（rented）
- *   2: 即将到期（expiring - 距合同结束<30天）
- *   3: 已逾期（overdue - today > rentDay）
+ * computeRoomDisplayStatus - compute display status based on room status, contract dates, rentDay
+ * Status codes:
+ *   0: vacant
+ *   1: rented
+ *   2: expiring (contract end < 30 days)
+ *   3: overdue (today > rentDay)
  */
 export function computeRoomDisplayStatus(
   roomStatus: number,
   contractEndDate: string | null,
   rentDay: number | undefined,
 ): number {
-  // 空置的房间
   if (roomStatus === 0) return 0;
 
-  // 已出租的房间
   if (roomStatus === 1) {
-    // rentDay 逾期判断
     if (rentDay !== undefined && rentDay !== null) {
       const today = dayjs();
       let dueDay: number;
 
-      // rentDay=0 当作月底，取当月最后一天
       if (rentDay === 0) {
         dueDay = today.endOf('month').date();
       } else {
         dueDay = rentDay;
       }
 
-      // today > rentDay → 逾期
       if (today.date() > dueDay) {
-        return 3; // 已逾期
+        return 3;
       }
     }
 
@@ -49,16 +45,16 @@ export function computeRoomDisplayStatus(
       const endDate = dayjs(contractEndDate);
       const now = dayjs();
       const diffDays = endDate.diff(now, 'day');
-      if (diffDays <= 30) return 2; // 即将到期
+      if (diffDays <= 30) return 2;
     }
 
-    return 1; // 正常已出租
+    return 1;
   }
 
   return roomStatus;
 }
 
-interface RoomStatusSummary {
+export interface RoomStatusSummary {
   total: number;
   vacant: number;
   rented: number;
@@ -71,6 +67,8 @@ export class RoomService {
   constructor(
     @InjectRepository(Room)
     private readonly roomRepository: Repository<Room>,
+    @InjectRepository(Property)
+    private readonly propertyRepository: Repository<Property>,
     @InjectRepository(Tenant)
     private readonly tenantRepository: Repository<Tenant>,
     @InjectRepository(FeeItem)
@@ -79,7 +77,28 @@ export class RoomService {
     private readonly billRepository: Repository<Bill>,
   ) {}
 
-  /** 获取房源下的房间列表（支持 status 筛选） */
+  /** Verify that a property belongs to the given landlord */
+  async verifyPropertyOwnership(propertyId: number, landlordId: number): Promise<void> {
+    const property = await this.propertyRepository.findOne({ where: { id: propertyId } });
+    if (!property) throw new NotFoundException('房源不存在');
+    if (property.landlordId !== landlordId) {
+      throw new ForbiddenException('无权访问该房源下的房间');
+    }
+  }
+
+  /** Verify that a room belongs to a property owned by the given landlord */
+  async verifyRoomOwnership(roomId: number, landlordId: number): Promise<void> {
+    const room = await this.roomRepository.findOne({
+      where: { id: roomId },
+      relations: ['property'],
+    });
+    if (!room) throw new NotFoundException('房间不存在');
+    if (!room.property || room.property.landlordId !== landlordId) {
+      throw new ForbiddenException('无权访问该房间');
+    }
+  }
+
+  /** Get rooms under a property (supports status filter) */
   async findByProperty(
     propertyId: number,
     status?: number,
@@ -95,7 +114,6 @@ export class RoomService {
       relations: ['tenants'],
     });
 
-    // 计算展示状态
     const enrichedRooms: any[] = [];
     for (const room of rooms) {
       const activeTenant = room.tenants?.find(t => t.status === 1) || null;
@@ -117,7 +135,6 @@ export class RoomService {
       });
     }
 
-    // 统计汇总
     const summary: RoomStatusSummary = {
       total: enrichedRooms.length,
       vacant: enrichedRooms.filter(r => r.displayStatus === 0).length,
@@ -129,7 +146,7 @@ export class RoomService {
     return { list: enrichedRooms, summary };
   }
 
-  /** 获取房间详情（聚合 property + tenant + feeItems + latestBill） */
+  /** Get room detail (aggregated property + tenant + feeItems + latestBill) */
   async findOne(id: number): Promise<any> {
     const room = await this.roomRepository.findOne({
       where: { id },
@@ -168,17 +185,17 @@ export class RoomService {
     };
   }
 
-  /** 创建房间 */
+  /** Create room */
   async create(propertyId: number, dto: CreateRoomDto): Promise<Room> {
     const room = this.roomRepository.create({
       ...dto,
       propertyId,
-      status: 0, // 默认空置
+      status: 0,
     });
     return this.roomRepository.save(room);
   }
 
-  /** 更新房间 */
+  /** Update room */
   async update(id: number, dto: UpdateRoomDto): Promise<Room> {
     const room = await this.roomRepository.findOne({ where: { id } });
     if (!room) throw new NotFoundException('房间不存在');
@@ -186,12 +203,11 @@ export class RoomService {
     return this.roomRepository.save(room);
   }
 
-  /** 删除房间 */
+  /** Delete room */
   async remove(id: number): Promise<void> {
     const room = await this.roomRepository.findOne({ where: { id } });
     if (!room) throw new NotFoundException('房间不存在');
 
-    // 检查是否有在租租客
     const activeTenant = await this.tenantRepository.findOne({
       where: { roomId: id, status: 1 },
     });
@@ -201,5 +217,4 @@ export class RoomService {
 
     await this.roomRepository.remove(room);
   }
-
 }

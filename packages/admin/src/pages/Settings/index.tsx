@@ -32,7 +32,7 @@ export default function Settings() {
     setAdminsLoading(true);
     try {
       const res = await adminApi.list();
-      setAdmins(res.data?.list || []);
+      setAdmins(res.list || []);
     } catch {
       setError('加载管理员列表失败');
     } finally {
@@ -61,7 +61,7 @@ export default function Settings() {
   const handleSaveAdmin = async () => {
     try {
       if (editData.id) {
-        await adminApi.update(editData.id, { name: editData.name, role: editData.role, status: editData.status });
+        await adminApi.update(editData.id, { name: editData.name, role: editData.role } as any);
         if (editData.password) {
           await adminApi.resetPassword(editData.id, editData.password);
         }

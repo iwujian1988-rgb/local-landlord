@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.github
+.env
+.env.local
+.env.*.local
+*.log
+.pnpm-store
+.DS_Store
+admin-preview.html
+docs
+.claude
+*.md

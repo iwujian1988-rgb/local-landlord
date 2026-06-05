@@ -5,3 +5,10 @@ dist/
 *.log
 .env
 .env.local
+.env.*.local
+data/
+uploads/
+.pnpm-store/
+*.sqlite
+*.sqlite3
+.claude/

@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeeItem } from './fee-item.entity';
+import { Room } from '../room/room.entity';
+import { Property } from '../property/property.entity';
 import { CreateFeeItemDto } from './dto/create-fee-item.dto';
 import { UpdateFeeItemDto } from './dto/update-fee-item.dto';
 
@@ -10,9 +12,30 @@ export class FeeService {
   constructor(
     @InjectRepository(FeeItem)
     private readonly feeItemRepository: Repository<FeeItem>,
+    @InjectRepository(Room)
+    private readonly roomRepository: Repository<Room>,
+    @InjectRepository(Property)
+    private readonly propertyRepository: Repository<Property>,
   ) {}
 
-  /** 获取房间的费用项列表 */
+  /** Verify room belongs to landlord */
+  async verifyRoomOwnership(roomId: number, landlordId: number): Promise<void> {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+    const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
+    if (!property || property.landlordId !== landlordId) {
+      throw new ForbiddenException('无权访问该房间');
+    }
+  }
+
+  /** Verify fee item belongs to landlord (via room -> property chain) */
+  async verifyFeeItemOwnership(feeItemId: number, landlordId: number): Promise<void> {
+    const feeItem = await this.feeItemRepository.findOne({ where: { id: feeItemId } });
+    if (!feeItem) throw new NotFoundException('费用项不存在');
+    await this.verifyRoomOwnership(feeItem.roomId, landlordId);
+  }
+
+  /** Get fee items for a room */
   async findByRoom(roomId: number): Promise<FeeItem[]> {
     return this.feeItemRepository.find({
       where: { roomId },
@@ -20,9 +43,8 @@ export class FeeService {
     });
   }
 
-  /** 添加费用项 */
+  /** Add fee item */
   async create(roomId: number, dto: CreateFeeItemDto): Promise<FeeItem> {
-    // 获取当前最大排序值
     const maxOrder = await this.feeItemRepository
       .createQueryBuilder('fi')
       .where('fi.roomId = :roomId', { roomId })
@@ -41,7 +63,7 @@ export class FeeService {
     return this.feeItemRepository.save(feeItem);
   }
 
-  /** 更新费用项 */
+  /** Update fee item */
   async update(id: number, dto: UpdateFeeItemDto): Promise<FeeItem> {
     const feeItem = await this.feeItemRepository.findOne({ where: { id } });
     if (!feeItem) throw new NotFoundException('费用项不存在');
@@ -49,14 +71,14 @@ export class FeeService {
     return this.feeItemRepository.save(feeItem);
   }
 
-  /** 删除费用项 */
+  /** Delete fee item */
   async remove(id: number): Promise<void> {
     const feeItem = await this.feeItemRepository.findOne({ where: { id } });
     if (!feeItem) throw new NotFoundException('费用项不存在');
     await this.feeItemRepository.remove(feeItem);
   }
 
-  /** 排序：接收 id 数组，按顺序重新设置 sortOrder */
+  /** Sort: reorder fee items by given id array */
   async sortByRoom(roomId: number, ids: number[]): Promise<void> {
     for (let i = 0; i < ids.length; i++) {
       await this.feeItemRepository.update({ id: ids[i], roomId }, { sortOrder: i });

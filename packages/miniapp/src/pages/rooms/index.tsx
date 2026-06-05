@@ -5,6 +5,8 @@ import PropertyCard from '../../components/PropertyCard';
 import type { Property } from '@local-landlord/shared';
 import EmptyState from '../../components/EmptyState';
 import ConfirmModal from '../../components/ConfirmModal';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import { get, del } from '../../services/request';
 import { useState } from 'react';
 import './index.scss';
@@ -14,9 +16,11 @@ export default function Rooms() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
+    setError(false);
     try {
       const res = await get<Property[]>('/properties');
       if (res.code === 0) {
@@ -24,6 +28,7 @@ export default function Rooms() {
       }
     } catch (err) {
       console.error('[Rooms] 加载房源失败:', err);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -72,27 +77,33 @@ export default function Rooms() {
       />
 
       <ScrollView className="rooms-scroll" scrollY>
-        {!loading && properties.length === 0 && (
-          <EmptyState title="还没有房源" description="添加第一套房源，开始管理您的房子" actionText="去添加房源" onAction={goToAddProperty} />
-        )}
-        {properties.map((property) => (
-          <PropertyCard
-            key={property.id}
-            property={property}
-            onClick={() => goToRoomList(property.id)}
-            onLongPress={() => { setDeleteTarget(property.id); setDeleteVisible(true); }}
-          />
-        ))}
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && (
+          <>
+            {properties.length === 0 && (
+              <EmptyState title="还没有房源" description="添加第一套房源，开始管理您的房子" actionText="去添加房源" onAction={goToAddProperty} />
+            )}
+            {properties.map((property) => (
+              <PropertyCard
+                key={property.id}
+                property={property}
+                onClick={() => goToRoomList(property.id)}
+                onLongPress={() => { setDeleteTarget(property.id); setDeleteVisible(true); }}
+              />
+            ))}
 
-        {/* Add Property Card */}
-        <View className="add-property-card" onClick={goToAddProperty}>
-          <svg width="28" height="28" viewBox="0 0 24 24" stroke="var(--accent)" strokeWidth="1.8" fill="none" opacity="0.4">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          <Text className="add-property-text">添加新房源</Text>
-        </View>
-        <View style={{ height: '160px' }} />
+            {/* Add Property Card */}
+            <View className="add-property-card" onClick={goToAddProperty}>
+              <svg width="28" height="28" viewBox="0 0 24 24" stroke="var(--accent)" strokeWidth="1.8" fill="none" opacity="0.4">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <Text className="add-property-text">添加新房源</Text>
+            </View>
+            <View style={{ height: '160px' }} />
+          </>
+        )}
       </ScrollView>
 
       <ConfirmModal

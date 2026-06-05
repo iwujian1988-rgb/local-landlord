@@ -3,23 +3,20 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
 import ConfirmModal from '../../components/ConfirmModal';
 import EmptyState from '../../components/EmptyState';
-import { useCallback, useState, useEffect, useMemo } from 'react';
-import { getAppData, setAppData } from '../../utils/storage';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
+import { useCallback, useState, useMemo } from 'react';
+import { get, post } from '../../services/request';
 import './index.scss';
 
 interface RentItem {
+  id: number;
   roomId: number;
   roomName: string;
   tenantId: number;
   tenantName: string;
   amount: number;
   rentDay: number;
-  month: number;
-  year: number;
-  paidMonth?: number;
-}
-
-interface RentItemComputed extends RentItem {
   status: 'today' | 'overdue' | 'soon' | 'paid';
   statusLabel: string;
   tagClass: string;
@@ -28,116 +25,60 @@ interface RentItemComputed extends RentItem {
   description: string;
 }
 
-function computeStatus(item: RentItem): RentItemComputed {
-  const today = new Date();
-  const todayDay = today.getDate();
-  const todayMonth = today.getMonth() + 1;
-  const todayYear = today.getFullYear();
-
-  if (item.tenantName === '-' || item.amount === 0) {
-    return { ...item, status: 'paid', statusLabel: '完成', tagClass: 'green', description: '此房间暂无租客' };
-  }
-
-  // Check appData.bills for current month paid record
-  const appData = getAppData();
-  const bills = appData.bills || [];
-  const currentPeriod = `${todayYear}年${todayMonth}月`;
-  const hasPaidInBills = bills.some(
-    (b: any) => b.roomId === item.roomId && b.status === 1 && b.period === currentPeriod
-  );
-
-  if ((item.month && item.paidMonth && item.paidMonth === todayMonth) || hasPaidInBills) {
-    return { ...item, status: 'paid', statusLabel: '完成', tagClass: 'green', description: '已收到，本月不再提醒' };
-  }
-
-  if (item.rentDay === todayDay || item.rentDay === 0 && todayDay >= 28) {
-    return { ...item, status: 'today', statusLabel: '今天该收', tagClass: 'orange', description: `今天 ${item.rentDay || '月底'} 号该收，这个月还没通知` };
-  }
-
-  const daysUntil = item.rentDay > todayDay ? item.rentDay - todayDay : 999;
-  if (daysUntil <= 3 && daysUntil > 0) {
-    return { ...item, status: 'soon', statusLabel: '快到日子', tagClass: 'blue', description: `还有 ${daysUntil} 天到收租日，可提前通知` };
-  }
-
-  if (item.rentDay < todayDay) {
-    const overdueDays = todayDay - item.rentDay;
-    return { ...item, status: 'overdue', statusLabel: '没交', tagClass: 'red', description: `已晚 ${overdueDays} 天，还没收到`, overdueDays };
-  }
-
-  return { ...item, status: 'soon', statusLabel: '快到日子', tagClass: 'blue', description: `还有 ${daysUntil} 天到收租日` };
-}
-
 export default function RentList() {
   const [confirmVisible, setConfirmVisible] = useState(false);
-  const [confirmItem, setConfirmItem] = useState<RentItemComputed | null>(null);
+  const [confirmItem, setConfirmItem] = useState<RentItem | null>(null);
   const [rentItems, setRentItems] = useState<RentItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
-  const loadData = useCallback(() => {
-    const appData = getAppData();
-    const today = new Date();
-    const todayMonth = today.getMonth() + 1;
-    const todayYear = today.getFullYear();
-
-    if (appData.tenants && appData.tenants.length > 0 && appData.rooms && appData.rooms.length > 0) {
-      const items: RentItem[] = appData.tenants
-        .filter((t: any) => t.status !== 0)
-        .map((t: any) => {
-          const room = appData.rooms.find((r: any) => r.id === t.roomId);
-          return {
-            roomId: t.roomId,
-            roomName: room?.name || `房间${t.roomId}`,
-            tenantId: t.id,
-            tenantName: t.name || '-',
-            amount: room?.rent || 0,
-            rentDay: t.rentDay || 1,
-            month: todayMonth,
-            year: todayYear,
-          };
-        });
-      if (items.length > 0) {
-        setRentItems(items);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await get<RentItem[]>('/rent/pending');
+      if (res.code === 0) {
+        setRentItems(res.data || []);
       }
+    } catch (err) {
+      console.error('[RentList] 加载数据失败:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
   useDidShow(() => { loadData(); });
 
-  const computedItems: RentItemComputed[] = useMemo(() => rentItems.map(computeStatus), [rentItems]);
-
-  // Sort: overdue > today > soon
   const activeItems = useMemo(() => {
     const order: Record<string, number> = { overdue: 0, today: 1, soon: 2 };
-    return computedItems
+    return rentItems
       .filter(r => r.status !== 'paid')
       .sort((a, b) => (order[a.status] || 99) - (order[b.status] || 99));
-  }, [computedItems]);
+  }, [rentItems]);
 
-  const paidItems = computedItems.filter(r => r.status === 'paid');
+  const paidItems = rentItems.filter(r => r.status === 'paid');
 
-  const totalActive = activeItems.length;
-
-  const handleConfirm = useCallback((item: RentItemComputed) => {
+  const handleConfirm = useCallback((item: RentItem) => {
     setConfirmItem(item);
     setConfirmVisible(true);
   }, []);
 
-  const handleConfirmSubmit = useCallback(() => {
+  const handleConfirmSubmit = useCallback(async () => {
     if (!confirmItem) return;
     setConfirmVisible(false);
 
-    const appData = getAppData();
-    appData.billSettings = appData.billSettings || {};
-    appData.billSettings.paidRooms = appData.billSettings.paidRooms || [];
-    const now = new Date();
-    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
-    if (!appData.billSettings.paidRooms.find((p: any) => p.roomId === confirmItem.roomId && p.month === monthKey)) {
-      appData.billSettings.paidRooms.push({ roomId: confirmItem.roomId, month: monthKey, amount: confirmItem.amount, paidAt: now.toISOString() });
+    try {
+      await post(`/rent/${confirmItem.id}/confirm`, {
+        roomId: confirmItem.roomId,
+        amount: confirmItem.amount,
+      });
+      Taro.showToast({ title: '已标记为收到', icon: 'none', duration: 2000 });
+      loadData();
+    } catch (err) {
+      console.error('[RentList] 标记失败:', err);
+      Taro.showToast({ title: '操作失败', icon: 'none' });
     }
-    setAppData(appData);
-
-    Taro.showToast({ title: '已标记为收到', icon: 'none', duration: 2000 });
-    loadData();
   }, [confirmItem, loadData]);
 
   const navigateTo = (pageId: string, params: string) => {
@@ -164,6 +105,10 @@ export default function RentList() {
       />
 
       <ScrollView className="rent-scroll" scrollY>
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && (
+          <>
         {/* Explanation */}
         <View className="elder-card">
           <Text className="elder-card-title">收租提醒</Text>
@@ -289,11 +234,13 @@ export default function RentList() {
           </View>
         ))}
 
-        {activeItems.length === 0 && paidItems.length === 0 && (
-          <EmptyState icon="🏠" title="还没有收租数据" description="添加房间和租客后，这里会自动帮您算该收哪些租" actionText="去添加房间" onAction={() => Taro.switchTab({ url: '/pages/rooms/index' })} />
+        {!loading && activeItems.length === 0 && paidItems.length === 0 && (
+          <EmptyState icon="&#127968;" title="还没有收租数据" description="添加房间和租客后，这里会自动帮您算该收哪些租" actionText="去添加房间" onAction={() => Taro.switchTab({ url: '/pages/rooms/index' })} />
         )}
 
         <View style={{ height: '160px' }} />
+          </>
+        )}
       </ScrollView>
 
       <ConfirmModal

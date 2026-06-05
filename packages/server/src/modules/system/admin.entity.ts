@@ -1,10 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 @Entity('admin')
 export class Admin {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
+  @Index({ unique: true })
   @Column({ length: 32, unique: true })
   username: string;
 
@@ -20,7 +21,7 @@ export class Admin {
   @Column({ type: 'tinyint', unsigned: true, default: 1 })
   status: number;
 
-  @Column({ name: 'last_login_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'last_login_at', type: 'datetime', nullable: true })
   lastLoginAt: Date;
 
   @CreateDateColumn({ name: 'created_at' })

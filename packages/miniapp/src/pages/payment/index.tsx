@@ -1,6 +1,8 @@
 import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import NavBar from '../../components/NavBar';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import { useState, useCallback, useMemo } from 'react';
 import { get } from '../../services/request';
 import './index.scss';
@@ -23,6 +25,8 @@ export default function Payment() {
   const [qrImageUrl, setQrImageUrl] = useState('');
   const [items, setItems] = useState<PaymentItem[]>([]);
   const [totalAmount, setTotalAmount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const period = useMemo(() => {
     const now = new Date();
@@ -30,35 +34,43 @@ export default function Payment() {
   }, []);
 
   const loadData = useCallback(async () => {
-    // Fetch QR code settings
-    const qrRes = await get<any>('/payment-qr');
-    const qrData = qrRes.data || {};
-    if (qrData.payeeName) setPayeeName(qrData.payeeName);
-    if (qrData.wechatQr) setQrImageUrl(qrData.wechatQr);
-    else if (qrData.alipayQr) setQrImageUrl(qrData.alipayQr);
+    setLoading(true);
+    setError(false);
+    try {
+      // Fetch QR code settings
+      const qrRes = await get<any>('/payment-qr');
+      const qrData = qrRes.data || {};
+      if (qrData.payeeName) setPayeeName(qrData.payeeName);
+      if (qrData.wechatQr) setQrImageUrl(qrData.wechatQr);
+      else if (qrData.alipayQr) setQrImageUrl(qrData.alipayQr);
 
-    // Fetch room name if not provided via params
-    if (roomNameParam) {
-      setRoomName(roomNameParam);
-    } else if (roomId > 0) {
-      const roomRes = await get<any[]>(`/rooms`);
-      const rooms = roomRes.data || [];
-      const room = rooms.find((r: any) => r.id === roomId);
-      if (room) setRoomName(room.name);
-    }
+      // Fetch room name if not provided via params
+      if (roomNameParam) {
+        setRoomName(roomNameParam);
+      } else if (roomId > 0) {
+        // TODO: Use /rooms/${roomId} endpoint instead of /rooms when available
+        const roomRes = await get<any[]>(`/rooms`);
+        const rooms = roomRes.data || [];
+        const room = rooms.find((r: any) => r.id === roomId);
+        if (room) setRoomName(room.name);
+      }
 
-    // Build payment items
-    if (feeType && paramAmount > 0) {
-      // Single charge scenario
-      setItems([{ name: feeType, amount: paramAmount }]);
-      setTotalAmount(paramAmount);
-    } else if (paramAmount > 0) {
-      // Amount passed from bill page
-      setItems([{ name: '房租及杂费', amount: paramAmount }]);
-      setTotalAmount(paramAmount);
-    } else {
-      setItems([]);
-      setTotalAmount(0);
+      // Build payment items
+      if (feeType && paramAmount > 0) {
+        setItems([{ name: feeType, amount: paramAmount }]);
+        setTotalAmount(paramAmount);
+      } else if (paramAmount > 0) {
+        setItems([{ name: '房租及杂费', amount: paramAmount }]);
+        setTotalAmount(paramAmount);
+      } else {
+        setItems([]);
+        setTotalAmount(0);
+      }
+    } catch (err) {
+      console.error('[Payment] 加载数据失败:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
     }
   }, [roomId, paramAmount, feeType, note, roomNameParam]);
 
@@ -83,6 +95,10 @@ export default function Payment() {
       <NavBar title="付款页面" onBack={goBack} />
 
       <ScrollView className="payment-scroll" scrollY>
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && (
+          <>
         {/* Amount Header Card */}
         <View className="payment-header-card">
           <Text className="payment-header-label">{headerLabel}</Text>
@@ -144,6 +160,8 @@ export default function Payment() {
         </View>
 
         <View style={{ height: 60 }} />
+          </>
+        )}
       </ScrollView>
     </View>
   );

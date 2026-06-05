@@ -14,6 +14,7 @@
     "@tarojs/cli": "3.6.40",
     "@tarojs/components": "3.6.40",
     "@tarojs/plugin-framework-react": "3.6.40",
+    "@tarojs/plugin-platform-h5": "^4.2.0",
     "@tarojs/plugin-platform-weapp": "3.6.40",
     "@tarojs/react": "3.6.40",
     "@tarojs/runtime": "3.6.40",

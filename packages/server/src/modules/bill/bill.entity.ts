@@ -1,17 +1,21 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
 import { Room } from '../room/room.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { BillItem } from './bill-item.entity';
 
 @Entity('bill')
+@Index(['roomId'])
+@Index(['tenantId'])
+@Index(['status'])
+@Index(['period'])
 export class Bill {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'room_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'room_id', type: 'integer' })
   roomId: number;
 
-  @Column({ name: 'tenant_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'tenant_id', type: 'integer' })
   tenantId: number;
 
   @Column({ length: 7 })
@@ -26,10 +30,10 @@ export class Bill {
   @Column({ type: 'json', nullable: true })
   photos: string[];
 
-  @Column({ name: 'sent_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'sent_at', type: 'datetime', nullable: true })
   sentAt: Date;
 
-  @Column({ name: 'paid_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'paid_at', type: 'datetime', nullable: true })
   paidAt: Date;
 
   @CreateDateColumn({ name: 'created_at' })

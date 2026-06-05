@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,7 +14,28 @@ const allowedMimes = [
 
 @Injectable()
 export class UploadService {
+  private readonly logger = new Logger(UploadService.name);
+  private readonly uploadMode: string;
+  private readonly cosBucket: string;
+  private readonly cosRegion: string;
+
+  constructor() {
+    this.uploadMode = process.env.UPLOAD_MODE || 'local';
+    this.cosBucket = process.env.COS_BUCKET || '';
+    this.cosRegion = process.env.COS_REGION || '';
+  }
+
   static getMulterOptions() {
+    const uploadMode = process.env.UPLOAD_MODE || 'local';
+
+    if (uploadMode === 'cloudbase') {
+      return {
+        storage: multer.memoryStorage(),
+        limits: { fileSize: 10 * 1024 * 1024 },
+        fileFilter: UploadService.fileFilter,
+      };
+    }
+
     return {
       storage: UploadService.getDiskStorage(),
       limits: { fileSize: 10 * 1024 * 1024 },
@@ -47,14 +68,61 @@ export class UploadService {
   }
 
   getFileUrl(filename: string): string {
+    if (this.uploadMode === 'cloudbase' && this.cosBucket && this.cosRegion) {
+      return `https://${this.cosBucket}.cos.${this.cosRegion}.myqcloud.com/${filename}`;
+    }
     const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
     return `${baseUrl}/uploads/${filename}`;
   }
 
-  formatUploadResponse(file: any) {
+  async uploadToCos(file: any): Promise<string> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const COS = require('cos-nodejs-sdk-v5');
+    const cos = new COS({
+      SecretId: process.env.COS_SECRET_ID,
+      SecretKey: process.env.COS_SECRET_KEY,
+    });
+
+    const filename = `${uuidv4()}${extname(file.originalname)}`;
+    const key = `uploads/${filename}`;
+
+    return new Promise((resolve, reject) => {
+      cos.putObject(
+        {
+          Bucket: this.cosBucket,
+          Region: this.cosRegion,
+          Key: key,
+          Body: file.buffer,
+          ContentLength: file.size,
+        },
+        (err: Error | null, _data: any) => {
+          if (err) {
+            this.logger.error('COS upload failed', err);
+            reject(new BadRequestException('文件上传到云存储失败'));
+            return;
+          }
+          resolve(filename);
+        },
+      );
+    });
+  }
+
+  async formatUploadResponse(file: any) {
     if (!file) {
       throw new BadRequestException('请选择要上传的文件');
     }
+
+    if (this.uploadMode === 'cloudbase') {
+      const filename = await this.uploadToCos(file);
+      return {
+        filename,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        url: this.getFileUrl(filename),
+      };
+    }
+
     return {
       filename: file.filename,
       originalname: file.originalname,

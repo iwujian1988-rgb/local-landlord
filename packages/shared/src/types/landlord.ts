@@ -8,6 +8,7 @@ export interface Landlord {
   defaultPayeeName?: string;
   paymentNote?: string;
   maxProperties: number;
+  status: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -4,6 +4,8 @@ import NavBar from '../../components/NavBar';
 import RoomCard from '../../components/RoomCard';
 import { get } from '../../services/request';
 import EmptyState from '../../components/EmptyState';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import { useState, useCallback, useMemo } from 'react';
 import './index.scss';
 
@@ -58,11 +60,13 @@ export default function RoomList() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [propertyName, setPropertyName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
   const propertyId = Number(Taro.getCurrentInstance().router?.params?.propertyId) || 0;
 
   const loadData = async () => {
     if (!propertyId) return;
     setLoading(true);
+    setError(false);
     try {
       const res = await get<{ rooms: ApiRoom[]; propertyName: string }>(`/properties/${propertyId}/rooms`);
       if (res.code === 0 && res.data) {
@@ -75,6 +79,7 @@ export default function RoomList() {
       }
     } catch (err) {
       console.error('[RoomList] 加载房间失败:', err);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -175,28 +180,34 @@ export default function RoomList() {
 
       {/* Room list */}
       <ScrollView className="rooms-scroll" scrollY>
-        {!loading && filteredRooms.length === 0 && rooms.length === 0 && (
-          <EmptyState title="还没有房间" description="这处房源还没有房间，先添加一个吧" actionText="添加房间" onAction={goToAddRoom} />
+        {loading && <Loading />}
+        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!loading && !error && (
+          <>
+            {filteredRooms.length === 0 && rooms.length === 0 && (
+              <EmptyState title="还没有房间" description="这处房源还没有房间，先添加一个吧" actionText="添加房间" onAction={goToAddRoom} />
+            )}
+            {filteredRooms.length === 0 && rooms.length > 0 && (
+              <EmptyState
+                title={
+                  activeFilter === 'all' ? '暂无房间' :
+                  activeFilter === 'vacant' ? '所有房间都已租出' :
+                  activeFilter === 'rented' ? '没有已出租的房间' :
+                  activeFilter === 'overdue' ? '没有欠租的房间，太棒了！' :
+                  '暂无匹配的房间'
+                }
+                description="换个筛选条件试试"
+              />
+            )}
+            {filteredRooms.map((room) => (
+              <RoomCard
+                key={room.id}
+                room={room as any}
+                onClick={() => goToRoomDetail(room.id)}
+              />
+            ))}
+          </>
         )}
-        {filteredRooms.length === 0 && rooms.length > 0 && (
-          <EmptyState
-            title={
-              activeFilter === 'all' ? '暂无房间' :
-              activeFilter === 'vacant' ? '所有房间都已租出' :
-              activeFilter === 'rented' ? '没有已出租的房间' :
-              activeFilter === 'overdue' ? '没有欠租的房间，太棒了！' :
-              '暂无匹配的房间'
-            }
-            description="换个筛选条件试试"
-          />
-        )}
-        {filteredRooms.map((room) => (
-          <RoomCard
-            key={room.id}
-            room={room as any}
-            onClick={() => goToRoomDetail(room.id)}
-          />
-        ))}
 
         <View style={{ height: '120px' }} />
       </ScrollView>

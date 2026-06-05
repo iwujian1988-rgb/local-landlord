@@ -1,15 +1,16 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThanOrEqual, LessThanOrEqual } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { SingleCharge } from './single-charge.entity';
 import { RentRecord } from './rent-record.entity';
 import { Room } from '../room/room.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { Bill } from '../bill/bill.entity';
+import { Property } from '../property/property.entity';
 import { CreateSingleChargeDto } from './dto/create-single-charge.dto';
 import { RemindTenantDto } from './dto/remind-tenant.dto';
 
-interface PendingRentGroup {
+export interface PendingRentGroup {
   today: any[];
   expiringSoon: any[];
   overdue: any[];
@@ -29,14 +30,16 @@ export class RentService {
     private readonly tenantRepository: Repository<Tenant>,
     @InjectRepository(Bill)
     private readonly billRepository: Repository<Bill>,
+    @InjectRepository(Property)
+    private readonly propertyRepository: Repository<Property>,
   ) {}
 
   /**
-   * 待处理收租列表：按 today/expiringSoon/overdue/completed 分组
-   * 获取所有已出租房间，根据账单状态分类
+   * Pending rent list: grouped by today/expiringSoon/overdue/completed
+   * Optimized with batch loading instead of N+1 queries.
    */
   async getPendingRent(landlordId: number): Promise<PendingRentGroup> {
-    // 获取该房东的所有已出租房间
+    // 1. Get all rented rooms for this landlord in one query
     const rentedRooms = await this.roomRepository
       .createQueryBuilder('room')
       .innerJoin('room.property', 'property')
@@ -44,10 +47,46 @@ export class RentService {
       .andWhere('room.status = 1')
       .getMany();
 
+    if (rentedRooms.length === 0) {
+      return { today: [], expiringSoon: [], overdue: [], completed: [] };
+    }
+
+    const roomIds = rentedRooms.map(r => r.id);
+
+    // 2. Batch load all active tenants for these rooms
+    const allTenants = await this.tenantRepository.find({
+      where: { roomId: In(roomIds), status: 1 },
+    });
+    const tenantMap = new Map<number, Tenant>();
+    for (const t of allTenants) {
+      tenantMap.set(t.roomId, t);
+    }
+
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // 3. Batch load current month bills for these rooms
+    const currentBills = await this.billRepository.find({
+      where: { roomId: In(roomIds), period: monthStr },
+      relations: ['items'],
+    });
+    const currentBillMap = new Map<number, Bill>();
+    for (const b of currentBills) {
+      currentBillMap.set(b.roomId, b);
+    }
+
+    // 4. Batch load all unpaid bills for overdue detection
+    const unpaidBills = await this.billRepository.find({
+      where: { roomId: In(roomIds), status: 0 },
+    });
+    const overdueBillsMap = new Map<number, Bill[]>();
+    for (const b of unpaidBills) {
+      if (b.period < monthStr) {
+        const list = overdueBillsMap.get(b.roomId) || [];
+        list.push(b);
+        overdueBillsMap.set(b.roomId, list);
+      }
+    }
 
     const todayList: any[] = [];
     const expiringSoonList: any[] = [];
@@ -55,21 +94,9 @@ export class RentService {
     const completedList: any[] = [];
 
     for (const room of rentedRooms) {
-      const activeTenant = await this.tenantRepository.findOne({
-        where: { roomId: room.id, status: 1 },
-      });
-
-      // 获取本月账单
-      const currentBill = await this.billRepository.findOne({
-        where: { roomId: room.id, period: monthStr },
-        relations: ['items'],
-      });
-
-      // 获取上月或更早的逾期账单
-      const overdueBills = await this.billRepository.find({
-        where: { roomId: room.id, status: 0 },
-      });
-      const trulyOverdue = overdueBills.filter(b => b.period < monthStr);
+      const activeTenant = tenantMap.get(room.id) || null;
+      const currentBill = currentBillMap.get(room.id) || null;
+      const trulyOverdue = overdueBillsMap.get(room.id) || [];
 
       const rentEntry = {
         roomId: room.id,
@@ -86,13 +113,10 @@ export class RentService {
       };
 
       if (currentBill && currentBill.status === 1) {
-        // 已支付 -> completed
         completedList.push(rentEntry);
       } else if (trulyOverdue.length > 0) {
-        // 有逾期账单
         overdueList.push(rentEntry);
       } else if (currentBill && currentBill.status === 0) {
-        // 当月已发账单未付
         const rentDay = activeTenant?.rentDay || 10;
         const dayOfMonth = now.getDate();
         if (dayOfMonth === rentDay) {
@@ -100,11 +124,9 @@ export class RentService {
         } else if (dayOfMonth > rentDay) {
           overdueList.push(rentEntry);
         } else {
-          // 不到交租日
           todayList.push(rentEntry);
         }
       } else {
-        // 未生成账单
         const contractEnd = activeTenant?.contractEndDate;
         if (contractEnd) {
           const diffDays = Math.ceil(
@@ -129,10 +151,15 @@ export class RentService {
     };
   }
 
-  /** 创建单独收款 */
+  /** Create single charge */
   async createSingleCharge(roomId: number, landlordId: number, dto: CreateSingleChargeDto): Promise<SingleCharge> {
+    // Verify room ownership
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
     if (!room) throw new NotFoundException('房间不存在');
+    const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
+    if (!property || property.landlordId !== landlordId) {
+      throw new BadRequestException('无权操作该房间');
+    }
 
     const tenant = await this.tenantRepository.findOne({
       where: { roomId, status: 1 },
@@ -150,7 +177,7 @@ export class RentService {
     return this.singleChargeRepository.save(charge);
   }
 
-  /** 确认单独收款 */
+  /** Confirm single charge */
   async confirmSingleCharge(id: number): Promise<SingleCharge> {
     const charge = await this.singleChargeRepository.findOne({
       where: { id },
@@ -166,7 +193,6 @@ export class RentService {
     charge.paidAt = new Date();
     const saved = await this.singleChargeRepository.save(charge);
 
-    // 创建收租记录（type=2 单独收款）
     const rentRecord = this.rentRecordRepository.create({
       roomId: charge.roomId,
       type: 2,
@@ -179,7 +205,7 @@ export class RentService {
     return saved;
   }
 
-  /** 收租记录列表 */
+  /** Get rent records for a room */
   async getRecords(roomId: number): Promise<RentRecord[]> {
     return this.rentRecordRepository.find({
       where: { roomId },
@@ -188,14 +214,14 @@ export class RentService {
     });
   }
 
-  /** 提醒租客（创建提醒记录 type=4） */
+  /** Remind tenant (create reminder record type=4) */
   async remindTenant(roomId: number, dto: RemindTenantDto): Promise<RentRecord> {
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
     if (!room) throw new NotFoundException('房间不存在');
 
     const rentRecord = this.rentRecordRepository.create({
       roomId,
-      type: 4, // 提醒类型
+      type: 4,
       title: dto.title,
       description: dto.description || '',
       amount: 0,

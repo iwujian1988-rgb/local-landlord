@@ -6,6 +6,284 @@ import { SystemService } from './system.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CreateTenantDto } from '../tenant/dto/create-tenant.dto';
+import { UpdateTenantDto } from '../tenant/dto/update-tenant.dto';
+import { CreatePropertyDto } from '../property/dto/create-property.dto';
+import { UpdatePropertyDto } from '../property/dto/update-property.dto';
+import { IsOptional, IsString, IsNumber, IsInt, IsArray, IsDateString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+/** DTOs for admin endpoints that previously used `any` */
+
+class CreateAdminDto {
+  @IsString()
+  username: string;
+
+  @IsString()
+  password: string;
+
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  role?: number;
+}
+
+class UpdateAdminDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  role?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  status?: number;
+}
+
+class ResetPasswordDto {
+  @IsString()
+  password: string;
+}
+
+class UpdateRoomBodyDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  rent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  deposit?: number;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  floor?: string;
+
+  @IsOptional()
+  @IsString()
+  orientation?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  status?: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  propertyId?: number;
+}
+
+class CreateRoomBodyDto {
+  @IsString()
+  name: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  rent?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  deposit?: number;
+
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @IsOptional()
+  @IsString()
+  floor?: string;
+
+  @IsOptional()
+  @IsString()
+  orientation?: string;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  propertyId?: number;
+}
+
+class UpdateRoomStatusDto {
+  @IsInt()
+  @Type(() => Number)
+  status: number;
+}
+
+class MoveOutTenantDto {
+  @IsOptional()
+  @IsDateString()
+  moveOutDate?: string;
+}
+
+class BatchConfirmDto {
+  @IsArray()
+  @IsInt({ each: true })
+  @Type(() => Number)
+  ids: number[];
+
+  @IsOptional()
+  @IsDateString()
+  paidAt?: string;
+}
+
+class BatchRemindDto {
+  @IsArray()
+  @IsInt({ each: true })
+  @Type(() => Number)
+  ids: number[];
+}
+
+class CreateLandlordDto {
+  @IsString()
+  name: string;
+
+  @IsString()
+  phone: string;
+
+  @IsOptional()
+  @IsString()
+  defaultPayeeName?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentNote?: string;
+
+  @IsOptional()
+  @IsString()
+  avatar?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  maxProperties?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  status?: number;
+}
+
+class UpdateLandlordBodyDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  defaultPayeeName?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentNote?: string;
+
+  @IsOptional()
+  @IsString()
+  avatar?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  maxProperties?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  status?: number;
+}
+
+class UpdateLandlordStatusDto {
+  @IsInt()
+  @Type(() => Number)
+  status: number;
+}
+
+class UpdateNotificationsDto {
+  @IsOptional()
+  rentRemind?: Record<string, any>;
+
+  @IsOptional()
+  overdueRemind?: Record<string, any>;
+
+  @IsOptional()
+  welcomeMsg?: Record<string, any>;
+}
+
+class UpdateSystemParamsDto {
+  @IsOptional()
+  @IsString()
+  appName?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  maxRoomPerProperty?: number;
+
+  @IsOptional()
+  enableAutoRemind?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  remindDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  dataRetentionDays?: number;
+}
+
+class UploadContractDto {
+  @IsInt()
+  @Type(() => Number)
+  roomId: number;
+
+  @IsString()
+  name: string;
+
+  @IsString()
+  imageUrl: string;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+class PaidAtDto {
+  @IsOptional()
+  @IsDateString()
+  paidAt?: string;
+}
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -13,7 +291,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 export class SystemController {
   constructor(private readonly systemService: SystemService) {}
 
-  // ========== 房源管理 ==========
+  // ========== Property management ==========
 
   @Get('properties')
   async findProperties(
@@ -25,12 +303,12 @@ export class SystemController {
   }
 
   @Post('properties')
-  async createProperty(@Body() body: any) {
+  async createProperty(@Body() body: CreatePropertyDto) {
     return this.systemService.createProperty(body);
   }
 
   @Put('properties/:id')
-  async updateProperty(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  async updateProperty(@Param('id', ParseIntPipe) id: number, @Body() body: UpdatePropertyDto) {
     return this.systemService.updateProperty(id, body);
   }
 
@@ -40,7 +318,7 @@ export class SystemController {
     return null;
   }
 
-  // ========== 房间管理 ==========
+  // ========== Room management ==========
 
   @Get('rooms')
   async findRooms(
@@ -49,23 +327,24 @@ export class SystemController {
     @Query('keyword') keyword?: string,
     @Query('status') status?: number,
   ) {
-    return this.systemService.findRooms(page || 1, pageSize || 20, keyword, status !== undefined ? Number(status) : undefined);
+    const statusNum = Number(status);
+    return this.systemService.findRooms(page || 1, pageSize || 20, keyword, !isNaN(statusNum) ? statusNum : undefined);
   }
 
   @Post('rooms')
-  async createRoom(@Body() body: any) {
+  async createRoom(@Body() body: CreateRoomBodyDto) {
     return this.systemService.createRoom(body);
   }
 
   @Put('rooms/:id')
-  async updateRoom(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  async updateRoom(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateRoomBodyDto) {
     return this.systemService.updateRoom(id, body);
   }
 
   @Put('rooms/:id/status')
   async updateRoomStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { status: number },
+    @Body() body: UpdateRoomStatusDto,
   ) {
     return this.systemService.updateRoomStatus(id, body.status);
   }
@@ -76,7 +355,7 @@ export class SystemController {
     return null;
   }
 
-  // ========== 租客管理 ==========
+  // ========== Tenant management ==========
 
   @Get('tenants')
   async findTenants(
@@ -88,19 +367,19 @@ export class SystemController {
   }
 
   @Post('tenants')
-  async createTenant(@Body() body: any) {
+  async createTenant(@Body() body: CreateTenantDto) {
     return this.systemService.createTenant(body);
   }
 
   @Put('tenants/:id')
-  async updateTenant(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  async updateTenant(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateTenantDto) {
     return this.systemService.updateTenant(id, body);
   }
 
   @Put('tenants/:id/move-out')
   async moveOutTenant(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { moveOutDate?: string },
+    @Body() body: MoveOutTenantDto,
   ) {
     return this.systemService.moveOutTenant(id, body?.moveOutDate);
   }
@@ -111,7 +390,7 @@ export class SystemController {
     return null;
   }
 
-  // ========== 管理员用户管理 ==========
+  // ========== Admin user management ==========
 
   @Get('admins')
   async findAdmins(
@@ -122,14 +401,14 @@ export class SystemController {
   }
 
   @Post('admins')
-  async createAdmin(@Body() body: { username: string; password: string; name: string; role?: number }) {
+  async createAdmin(@Body() body: CreateAdminDto) {
     return this.systemService.createAdmin(body);
   }
 
   @Put('admins/:id')
   async updateAdmin(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { name?: string; role?: number; status?: number },
+    @Body() body: UpdateAdminDto,
   ) {
     return this.systemService.updateAdmin(id, body);
   }
@@ -137,19 +416,19 @@ export class SystemController {
   @Put('admins/:id/reset-password')
   async resetPassword(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { password: string },
+    @Body() body: ResetPasswordDto,
   ) {
     return this.systemService.resetAdminPassword(id, body.password);
   }
 
-  // ========== 仪表盘 ==========
+  // ========== Dashboard ==========
 
   @Get('dashboard/summary')
   async getDashboardSummary() {
     return this.systemService.getDashboardSummary();
   }
 
-  // ========== 账单管理（管理员视角） ==========
+  // ========== Bill management (admin view) ==========
 
   @Get('bills')
   async getAdminBills(
@@ -176,22 +455,22 @@ export class SystemController {
   @Put('bills/:id/confirm')
   async confirmAdminBill(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { paidAt?: string },
+    @Body() body: PaidAtDto,
   ) {
     return this.systemService.confirmAdminBill(id, body?.paidAt);
   }
 
   @Post('bills/batch-confirm')
-  async batchConfirmAdminBills(@Body() body: { ids: number[] }) {
-    return this.systemService.batchConfirmAdminBills(body.ids);
+  async batchConfirmAdminBills(@Body() body: BatchConfirmDto) {
+    return this.systemService.batchConfirmAdminBills(body.ids, body.paidAt);
   }
 
   @Post('bills/batch-remind')
-  async batchRemindAdminBills(@Body() body: { ids: number[] }) {
+  async batchRemindAdminBills(@Body() body: BatchRemindDto) {
     return this.systemService.batchRemindAdminBills(body.ids);
   }
 
-  // ========== 数据统计 ==========
+  // ========== Statistics ==========
 
   @Get('stats/rent')
   async getAdminRentStats(@Query('period') period?: string) {
@@ -208,7 +487,7 @@ export class SystemController {
     return this.systemService.getAdminLandlordActivity();
   }
 
-  // ========== 房东管理 ==========
+  // ========== Landlord management ==========
 
   @Get('landlords')
   async getLandlords(
@@ -225,25 +504,24 @@ export class SystemController {
   }
 
   @Post('landlords')
-  // body 支持字段：name, phone, defaultPayeeName, paymentNote, avatar, maxProperties
-  async createLandlord(@Body() body: { name: string; phone: string; defaultPayeeName?: string; paymentNote?: string; avatar?: string; maxProperties?: number }) {
+  async createLandlord(@Body() body: CreateLandlordDto) {
     return this.systemService.createLandlord(body);
   }
 
   @Put('landlords/:id')
-  async updateLandlord(@Param('id', ParseIntPipe) id: number, @Body() body: any) {
+  async updateLandlord(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateLandlordBodyDto) {
     return this.systemService.updateLandlord(id, body);
   }
 
   @Put('landlords/:id/status')
   async updateLandlordStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() body: { status: number },
+    @Body() body: UpdateLandlordStatusDto,
   ) {
     return this.systemService.updateLandlordStatus(id, body.status);
   }
 
-  // ========== 系统设置 ==========
+  // ========== System settings ==========
 
   @Get('settings/notifications')
   async getNotifications() {
@@ -251,7 +529,7 @@ export class SystemController {
   }
 
   @Put('settings/notifications')
-  async updateNotifications(@Body() body: any) {
+  async updateNotifications(@Body() body: UpdateNotificationsDto) {
     return this.systemService.updateNotifications(body);
   }
 
@@ -261,11 +539,11 @@ export class SystemController {
   }
 
   @Put('settings/params')
-  async updateSystemParams(@Body() body: any) {
+  async updateSystemParams(@Body() body: UpdateSystemParamsDto) {
     return this.systemService.updateSystemParams(body);
   }
 
-  // ========== 合同管理 ==========
+  // ========== Contract management ==========
 
   @Get('contracts')
   async findContracts(
@@ -274,16 +552,18 @@ export class SystemController {
     @Query('type') type?: number,
     @Query('roomId') roomId?: number,
   ) {
+    const contractType = type !== undefined && type !== null ? Number(type) : NaN;
+    const contractRoomId = roomId !== undefined && roomId !== null ? Number(roomId) : NaN;
     return this.systemService.findContracts(
       page || 1,
       pageSize || 20,
-      type !== undefined ? Number(type) : undefined,
-      roomId ? Number(roomId) : undefined,
+      !isNaN(contractType) ? contractType : undefined,
+      !isNaN(contractRoomId) ? contractRoomId : undefined,
     );
   }
 
   @Post('contracts/upload')
-  async uploadContract(@Body() body: { roomId: number; name: string; imageUrl: string; note?: string }) {
+  async uploadContract(@Body() body: UploadContractDto) {
     return this.systemService.createContract(body);
   }
 

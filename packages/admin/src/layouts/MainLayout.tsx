@@ -7,10 +7,10 @@ import {
   Dashboard as DashboardIcon,
   Apartment as PropertyIcon,
   MeetingRoom as RoomIcon,
-  People as TenantIcon,
-  Receipt as RentIcon,
-  Description as ContractIcon,
-  BarChart as StatsIcon,
+  People as PeopleIcon,
+  Receipt as ReceiptIcon,
+  Description as DescriptionIcon,
+  BarChart as BarChartIcon,
   Settings as SettingsIcon,
   Logout,
 } from '@mui/icons-material';
@@ -19,15 +19,15 @@ import { useAuthStore } from '../store/useAuthStore';
 const drawerWidth = 240;
 
 const menuItems = [
-  { path: '/dashboard', label: '仪表盘', icon: <DashboardIcon /> },
-  { path: '/landlords', label: '房东管理', icon: <TenantIcon /> },
+  { path: '/dashboard', label: '数据看板', icon: <DashboardIcon /> },
+  { path: '/landlords', label: '房东管理', icon: <PeopleIcon /> },
   { path: '/properties', label: '房源管理', icon: <PropertyIcon /> },
   { path: '/rooms', label: '房间管理', icon: <RoomIcon /> },
-  { path: '/tenants', label: '租客管理', icon: <TenantIcon /> },
-  { path: '/bills', label: '收租管理', icon: <RentIcon /> },
-  { path: '/contracts', label: '合同管理', icon: <ContractIcon /> },
-  { path: '/statistics', label: '数据统计', icon: <StatsIcon /> },
-  { path: '/settings', label: '系统设置', icon: <SettingsIcon /> },
+  { path: '/tenants', label: '租客管理', icon: <PeopleIcon /> },
+  { path: '/rent', label: '收租管理', icon: <ReceiptIcon /> },
+  { path: '/contracts', label: '合同管理', icon: <DescriptionIcon /> },
+  { path: '/statistics', label: '数据统计', icon: <BarChartIcon /> },
+  { path: '/settings', label: '系统设置', icon: <SettingsIcon />, superAdminOnly: true },
 ];
 
 export default function MainLayout() {
@@ -59,7 +59,7 @@ export default function MainLayout() {
         </Box>
         <List sx={{ px: 1, pt: 2 }}>
           {menuItems
-            .filter((item) => item.path !== '/settings' || isSuperAdmin)
+            .filter((item) => !item.superAdminOnly || isSuperAdmin)
             .map((item) => (
             <ListItemButton
               key={item.path}

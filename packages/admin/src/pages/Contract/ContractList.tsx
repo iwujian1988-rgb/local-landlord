@@ -7,15 +7,15 @@ import {
 } from '@mui/material';
 import { CloudUpload, Delete } from '@mui/icons-material';
 import { contractApi } from '../../services/api';
+import type { Document } from '@local-landlord/shared';
 
 const docTypes = ['合同', '收据', '水电单', '维修', '押金'];
 
-interface ContractItem {
-  id: number;
-  name: string;
-  roomName: string;
-  type: string;
-  uploadTime: string;
+/** Document with extra display fields from the API */
+interface ContractItem extends Omit<Document, 'type'> {
+  type: number | string;
+  roomName?: string;
+  uploadTime?: string;
 }
 
 export default function ContractList() {
@@ -36,7 +36,7 @@ export default function ContractList() {
     setLoading(true);
     try {
       const res = await contractApi.list();
-      setData(res.data?.list || []);
+      setData(res.list || []);
     } catch {
       setError('加载文档列表失败，请稍后重试');
     } finally {
@@ -54,10 +54,10 @@ export default function ContractList() {
     if (!uploadData.roomId || !uploadData.name || !uploadData.imageUrl) return;
     try {
       await contractApi.upload({
-        roomId: Number(uploadData.roomId),
+        type: 0,
         name: uploadData.name,
         imageUrl: uploadData.imageUrl,
-        note: uploadData.note,
+        note: uploadData.note || undefined,
       });
       setUploadOpen(false);
       setUploadData({ roomId: '', name: '', imageUrl: '', note: '' });

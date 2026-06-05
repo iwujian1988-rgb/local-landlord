@@ -1,12 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Landlord } from '../landlord/landlord.entity';
 
 @Entity('payment_qr')
+@Index(['landlordId'])
 export class PaymentQr {
-  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Column({ name: 'landlord_id', type: 'bigint', unsigned: true })
+  @Column({ name: 'landlord_id', type: 'integer' })
   landlordId: number;
 
   @Column({ type: 'tinyint', unsigned: true })

@@ -6,6 +6,7 @@
     "rootDir": "src",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
+    "strictPropertyInitialization": false,
     "paths": {
       "@local-landlord/shared": ["../shared/src"],
       "@local-landlord/shared/*": ["../shared/src/*"]

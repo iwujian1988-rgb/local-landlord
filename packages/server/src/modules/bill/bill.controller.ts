@@ -3,40 +3,60 @@ import { BillService } from './bill.service';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(1)
 export class BillController {
   constructor(private readonly billService: BillService) {}
 
   @Post('rooms/:roomId/bills')
   async create(
+    @CurrentUser() user: any,
     @Param('roomId', ParseIntPipe) roomId: number,
     @Body() dto: CreateBillDto,
   ) {
+    await this.billService.verifyRoomOwnership(roomId, user.id);
     return this.billService.create(roomId, dto);
   }
 
   @Get('rooms/:roomId/bills')
-  async findByRoom(@Param('roomId', ParseIntPipe) roomId: number) {
+  async findByRoom(
+    @CurrentUser() user: any,
+    @Param('roomId', ParseIntPipe) roomId: number,
+  ) {
+    await this.billService.verifyRoomOwnership(roomId, user.id);
     return this.billService.findByRoom(roomId);
   }
 
   @Get('bills/:id')
-  async findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.billService.verifyBillOwnership(id, user.id);
     return this.billService.findOne(id);
   }
 
   @Put('bills/:id/confirm')
   async confirmPayment(
+    @CurrentUser() user: any,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ConfirmPaymentDto,
   ) {
+    await this.billService.verifyBillOwnership(id, user.id);
     return this.billService.confirmPayment(id, dto);
   }
 
   @Put('bills/:id/send')
-  async sendBill(@Param('id', ParseIntPipe) id: number) {
+  async sendBill(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.billService.verifyBillOwnership(id, user.id);
     return this.billService.sendBill(id);
   }
 }

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Tenant } from './tenant.entity';
 import { Room } from '../room/room.entity';
+import { Property } from '../property/property.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 
@@ -13,14 +14,37 @@ export class TenantService {
     private readonly tenantRepository: Repository<Tenant>,
     @InjectRepository(Room)
     private readonly roomRepository: Repository<Room>,
+    @InjectRepository(Property)
+    private readonly propertyRepository: Repository<Property>,
   ) {}
 
-  /** 登记租客（同时更新房间 status 为已出租） */
+  /** Verify that a room belongs to a property owned by the given landlord */
+  async verifyRoomOwnership(roomId: number, landlordId: number): Promise<void> {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+    const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
+    if (!property || property.landlordId !== landlordId) {
+      throw new ForbiddenException('无权访问该房间');
+    }
+  }
+
+  /** Verify that a tenant's room belongs to a property owned by the given landlord */
+  async verifyTenantOwnership(tenantId: number, landlordId: number): Promise<void> {
+    const tenant = await this.tenantRepository.findOne({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('租客不存在');
+    const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+    const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
+    if (!property || property.landlordId !== landlordId) {
+      throw new ForbiddenException('无权访问该租客');
+    }
+  }
+
+  /** Create tenant (also updates room status to rented) */
   async create(roomId: number, dto: CreateTenantDto): Promise<Tenant> {
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
     if (!room) throw new NotFoundException('房间不存在');
 
-    // 检查房间是否已有在租租客
     const existingTenant = await this.tenantRepository.findOne({
       where: { roomId, status: 1 },
     });
@@ -28,22 +52,20 @@ export class TenantService {
       throw new BadRequestException('ROOM_OCCUPIED: 房间已有在租租客');
     }
 
-    // 创建租客
     const tenant = this.tenantRepository.create({
       ...dto,
       roomId,
-      status: 1, // 在租
+      status: 1,
     });
     const saved = await this.tenantRepository.save(tenant);
 
-    // 更新房间状态为已出租
     room.status = 1;
     await this.roomRepository.save(room);
 
     return saved;
   }
 
-  /** 更新租客信息 */
+  /** Update tenant info */
   async update(id: number, dto: UpdateTenantDto): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({ where: { id } });
     if (!tenant) throw new NotFoundException('租客不存在');
@@ -51,7 +73,7 @@ export class TenantService {
     return this.tenantRepository.save(tenant);
   }
 
-  /** 退租：更新租客 status + 房间 status */
+  /** Move out: update tenant status + room status */
   async moveOut(id: number, moveOutDate: string): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({ where: { id } });
     if (!tenant) throw new NotFoundException('租客不存在');
@@ -60,11 +82,10 @@ export class TenantService {
       throw new BadRequestException('该租客已退租');
     }
 
-    tenant.status = 0; // 已退租
+    tenant.status = 0;
     tenant.moveOutDate = moveOutDate;
     const saved = await this.tenantRepository.save(tenant);
 
-    // 更新房间状态为空置
     const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
     if (room) {
       room.status = 0;
@@ -74,7 +95,7 @@ export class TenantService {
     return saved;
   }
 
-  /** 获取租客详情 */
+  /** Get tenant detail */
   async findOne(id: number): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({
       where: { id },
