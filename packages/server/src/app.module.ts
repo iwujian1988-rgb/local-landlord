@@ -40,8 +40,8 @@ import { HealthController } from './modules/health/health.controller';
             password: configService.get<string>('DB_PASSWORD', ''),
             database: configService.get<string>('DB_DATABASE', 'local_landlord'),
             autoLoadEntities: true,
-            synchronize: configService.get('NODE_ENV') === 'development',
-            logging: configService.get('NODE_ENV') === 'development',
+            synchronize: true,
+            logging: false,
           };
         }
 
