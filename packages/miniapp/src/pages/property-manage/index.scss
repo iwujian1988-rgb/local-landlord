@@ -1,0 +1,102 @@
+.page-property-manage {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pm-scroll {
+  flex: 1;
+}
+
+.pm-card {
+  margin: 16px 32px 0;
+  padding: 24px;
+  background: #fff;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.pm-card:active {
+  transform: scale(0.98);
+}
+
+.pm-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pm-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.pm-card-name {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pm-card-addr {
+  font-size: 24px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pm-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pm-card-stat {
+  font-size: 22px;
+  color: var(--text-hint);
+}
+
+.pm-card-stat.rented {
+  color: #4CAF50;
+}
+
+.pm-card-stat.vacant {
+  color: #9E9E9E;
+}
+
+.pm-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 20px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.pm-card-delete {
+  font-size: 24px;
+  color: #e53935;
+  padding: 8px 12px;
+}
+
+.pm-fab {
+  position: fixed;
+  right: 40px;
+  bottom: 200px;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: var(--accent-dk);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(232, 199, 106, 0.4);
+  z-index: 100;
+}
+
+.pm-fab:active {
+  transform: scale(0.92);
+}

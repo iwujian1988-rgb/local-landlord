@@ -1,11 +1,11 @@
 import { View, Text, Input, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import EmptyState from '../../components/EmptyState';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
+import Icon from '../../components/Icon';
 import { get, post, put, del } from '../../services/request';
-import { API_BASE } from '../../config';
+import { uploadFile } from '../../services/upload';
 import { useState, useCallback } from 'react';
 import './index.scss';
 
@@ -61,11 +61,10 @@ export default function QrCode() {
     }
   }, []);
 
-  useDidShow(() => { loadData(); });
-
-  const goBack = useCallback(() => {
-    Taro.navigateBack();
-  }, []);
+  useDidShow(() => {
+    Taro.setNavigationBarTitle({ title: '我的收款码' });
+    loadData();
+  });
 
   const handleUpload = useCallback((type: string) => {
     Taro.chooseImage({
@@ -74,23 +73,16 @@ export default function QrCode() {
       sourceType: ['album', 'camera'],
       success: (res) => {
         const filePath = res.tempFilePaths[0];
-        Taro.uploadFile({
-          url: `${API_BASE}/upload`,
-          filePath,
-          name: 'file',
-          header: { Authorization: `Bearer ${Taro.getStorageSync('auth_token') || ''}` },
-          success: (uploadRes) => {
-            const data = JSON.parse(uploadRes.data);
-            const uploadedUrl = data.data?.url || data.data?.fileID || data.url || '';
+        uploadFile(filePath)
+          .then((result) => {
             setCodes((prev) =>
-              prev.map((c) => (c.type === type ? { ...c, imageUrl: uploadedUrl } : c))
+              prev.map((c) => (c.type === type ? { ...c, imageUrl: result.url } : c))
             );
             Taro.showToast({ title: '收款码已上传', icon: 'none', duration: 2000 });
-          },
-          fail: () => {
+          })
+          .catch(() => {
             Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
-          },
-        });
+          });
       },
       fail: () => {
         Taro.showToast({ title: '没选上图片，再试一次', icon: 'none' });
@@ -155,8 +147,6 @@ export default function QrCode() {
 
   return (
     <View className="page-qr-code">
-      <NavBar title="我的收款码" onBack={goBack} />
-
       <ScrollView className="qr-scroll" scrollY>
         {loading && <Loading />}
         {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
@@ -177,19 +167,11 @@ export default function QrCode() {
                 <View className="qr-card-row">
                   <View className={`qr-card-icon-wrap ${code.type}`}>
                     {code.type === 'wechat' ? (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                        <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.434-.982.97-.982z" fill="#6a9b7d"/>
-                        <path d="M16.938 8.858c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.046c.133 0 .241-.11.241-.245 0-.06-.023-.118-.039-.174l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-7.062-6.122zM14.033 13.3c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982z" fill="#6a9b7d"/>
-                      </svg>
+                      <Text style={{ fontSize: '28px', lineHeight: 1 }}>💬</Text>
                     ) : code.type === 'alipay' ? (
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="#7ba3b8">
-                        <rect x="2" y="2" width="20" height="20" rx="4"/>
-                      </svg>
+                      <Icon name="credit-card" size={28} color="currentColor" />
                     ) : (
-                      <svg width="18" height="18" viewBox="0 0 24 24" stroke="var(--orange)" strokeWidth="1.8" fill="none">
-                        <rect x="2" y="3" width="20" height="18" rx="2"/>
-                        <line x1="2" y1="9" x2="22" y2="9"/>
-                      </svg>
+                      <Icon name="credit-card" size={28} color="var(--orange)" />
                     )}
                   </View>
                   <View className="qr-card-info">

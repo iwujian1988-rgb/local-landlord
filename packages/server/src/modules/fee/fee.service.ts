@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeeItem } from './fee-item.entity';
@@ -35,12 +35,56 @@ export class FeeService {
     await this.verifyRoomOwnership(feeItem.roomId, landlordId);
   }
 
-  /** Get fee items for a room */
-  async findByRoom(roomId: number): Promise<FeeItem[]> {
-    return this.feeItemRepository.find({
+  /** Get fee items for a room (with type as string) */
+  async findByRoom(roomId: number) {
+    const items = await this.feeItemRepository.find({
       where: { roomId },
       order: { sortOrder: 'ASC' },
     });
+    return items.map(f => ({
+      id: f.id,
+      name: f.name,
+      type: f.type === 0 ? 'fixed' : 'manual',
+      amount: Number(f.amount) || 0,
+      enabled: !!f.enabled,
+      isRent: !!f.isRent,
+    }));
+  }
+
+  /** Batch save fee items for a room */
+  async batchSave(roomId: number, fees: any[]) {
+    for (const fee of fees) {
+      if (!fee.name || !fee.name.trim()) {
+        throw new BadRequestException('费用项名称不能为空');
+      }
+      if (fee.amount !== undefined && fee.amount < 0) {
+        throw new BadRequestException('费用金额不能为负数');
+      }
+    }
+
+    // Delete existing fee items for this room
+    await this.feeItemRepository.delete({ roomId });
+
+    // Create new fee items
+    const entities = fees.map((fee, index) => this.feeItemRepository.create({
+      roomId,
+      name: fee.name,
+      type: fee.type === 'fixed' ? 0 : 1,
+      amount: fee.amount || 0,
+      enabled: fee.enabled !== false ? 1 : 0,
+      isRent: fee.isRent ? 1 : 0,
+      sortOrder: index,
+    }));
+
+    const saved = await this.feeItemRepository.save(entities);
+    return saved.map(f => ({
+      id: f.id,
+      name: f.name,
+      type: f.type === 0 ? 'fixed' : 'manual',
+      amount: Number(f.amount) || 0,
+      enabled: !!f.enabled,
+      isRent: !!f.isRent,
+    }));
   }
 
   /** Add fee item */
@@ -67,6 +111,12 @@ export class FeeService {
   async update(id: number, dto: UpdateFeeItemDto): Promise<FeeItem> {
     const feeItem = await this.feeItemRepository.findOne({ where: { id } });
     if (!feeItem) throw new NotFoundException('费用项不存在');
+    if (dto.name !== undefined && !dto.name.trim()) {
+      throw new BadRequestException('费用项名称不能为空');
+    }
+    if (dto.amount !== undefined && dto.amount < 0) {
+      throw new BadRequestException('费用金额不能为负数');
+    }
     Object.assign(feeItem, dto);
     return this.feeItemRepository.save(feeItem);
   }

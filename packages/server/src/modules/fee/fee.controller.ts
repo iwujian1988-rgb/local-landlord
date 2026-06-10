@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, ParseIntPipe, BadRequestException } from '@nestjs/common';
 import { FeeService } from './fee.service';
 import { CreateFeeItemDto } from './dto/create-fee-item.dto';
 import { UpdateFeeItemDto } from './dto/update-fee-item.dto';
@@ -26,10 +26,21 @@ export class FeeController {
   async create(
     @CurrentUser() user: any,
     @Param('roomId', ParseIntPipe) roomId: number,
-    @Body() dto: CreateFeeItemDto,
+    @Body() body: any,
   ) {
     await this.feeService.verifyRoomOwnership(roomId, user.id);
-    return this.feeService.create(roomId, dto);
+    // Batch save: { fees: [...] }
+    if (body.fees && Array.isArray(body.fees)) {
+      return this.feeService.batchSave(roomId, body.fees);
+    }
+    // Single create — validate required fields
+    if (!body.name || !body.name.trim()) {
+      throw new BadRequestException('费用项名称不能为空');
+    }
+    if (body.amount !== undefined && body.amount < 0) {
+      throw new BadRequestException('费用金额不能为负数');
+    }
+    return this.feeService.create(roomId, body);
   }
 
   @Put('fee-items/:id')

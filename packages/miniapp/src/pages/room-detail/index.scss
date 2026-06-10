@@ -259,12 +259,147 @@
   font-size: var(--font-xs, 26px);
   color: var(--accent-hover, #7A6F64);
   font-weight: 600;
+  cursor: pointer;
+
+  &:active {
+    opacity: 0.7;
+  }
+}
+
+.edit-link {
+  font-size: var(--font-xs, 26px);
+  color: var(--accent-dk, #E8C76A);
+  font-weight: 600;
+  cursor: pointer;
+
+  &:active {
+    opacity: 0.7;
+  }
 }
 
 .info-value-row {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Tenant Contact Card */
+.tenant-contact-card {
+  padding: 4px 0 0;
+}
+
+.tenant-contact-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.tenant-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--accent, #F5D78E);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tenant-contact-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tenant-name-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tenant-contact-name {
+  font-size: var(--font-lg, 44px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+}
+
+.tenant-contact-rent {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-secondary, #7A6F64);
+}
+
+.tenant-contact-actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.tenant-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  border-radius: var(--radius-md, 40px);
+  background: var(--bg-soft, #F5EDE2);
+
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+.tenant-action-btn.call-btn {
+  background: linear-gradient(135deg, var(--green, #7BA37B), #5a8a5a);
+}
+
+.tenant-action-label {
+  font-size: var(--font-sm, 30px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+}
+
+.call-btn .tenant-action-label {
+  color: #fff;
+}
+
+.tenant-contact-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 20px 0 0;
+  border-top: 2px solid rgba(74, 64, 56, 0.06);
+}
+
+.meta-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.meta-label {
+  font-size: var(--font-xs, 26px);
+  color: var(--text-hint, #A89B8C);
+}
+
+.meta-value {
+  font-size: var(--font-sm, 30px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+
+  &.warning {
+    color: var(--red, #C97B7B);
+  }
+}
+
+.meta-divider {
+  width: 2px;
+  height: 60px;
+  background: rgba(74, 64, 56, 0.06);
 }
 
 /* More List - 对齐 HTML: .menu-item */
@@ -309,4 +444,149 @@
   font-size: var(--font-base, 34px);
   font-weight: 500;
   color: var(--text-primary, #4A4038);
+}
+
+/* Prompt card for missing tenant */
+.prompt-card {
+  background: linear-gradient(135deg, rgba(245, 215, 142, 0.15), rgba(245, 215, 142, 0.05));
+  border: 2px dashed rgba(245, 215, 142, 0.3);
+  cursor: pointer;
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.prompt-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.prompt-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.prompt-text-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prompt-title {
+  font-size: var(--font-base, 34px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+}
+
+.prompt-desc {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-secondary, #7A6F64);
+  line-height: 1.4;
+}
+
+/* Contract expiry warning card */
+.warning-card {
+  background: linear-gradient(135deg, rgba(201, 123, 123, 0.08), rgba(232, 184, 125, 0.06));
+  border: 2px solid rgba(201, 123, 123, 0.15);
+}
+
+.warning-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.warning-icon {
+  font-size: 40px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.warning-text-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warning-title {
+  font-size: var(--font-base, 34px);
+  font-weight: 700;
+  color: var(--red, #C97B7B);
+}
+
+.warning-desc {
+  font-size: var(--font-sm, 30px);
+  color: var(--text-secondary, #7A6F64);
+  line-height: 1.4;
+}
+
+.warning-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.warning-btn {
+  flex: 1;
+  padding: 20px;
+  border-radius: 32px;
+  background: var(--accent, #F5D78E);
+  text-align: center;
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.warning-btn-secondary {
+    background: var(--bg-soft, #F5EDE2);
+  }
+}
+
+.warning-btn-text {
+  font-size: var(--font-sm, 30px);
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+
+  &.secondary-text {
+    color: var(--red, #C97B7B);
+  }
+}
+
+/* History Tenants */
+.history-tenant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(74, 64, 56, 0.06);
+}
+
+.history-tenant-row:last-child {
+  border-bottom: none;
+}
+
+.history-tenant-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-tenant-name {
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.history-tenant-date {
+  font-size: 24px;
+  color: var(--text-hint);
+}
+
+.history-tenant-phone {
+  font-size: 24px;
+  color: var(--text-muted);
 }

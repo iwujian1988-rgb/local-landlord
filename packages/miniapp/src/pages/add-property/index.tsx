@@ -1,12 +1,11 @@
 import { View, Text, Image, Input, Textarea } from '@tarojs/components';
 import Taro, { useDidHide } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import { useState, useCallback, useEffect } from 'react';
 import { get, post, put } from '../../services/request';
-import { API_BASE } from '../../config';
 import UploadModal, { UploadFile } from '../../components/UploadModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
+import Icon from '../../components/Icon';
 import './index.scss';
 
 export default function AddProperty() {
@@ -28,8 +27,10 @@ export default function AddProperty() {
     if (params?.propertyId) {
       const pid = params.propertyId;
       setPropertyId(pid);
+      Taro.setNavigationBarTitle({ title: '编辑房源' });
       loadProperty(pid);
     } else {
+      Taro.setNavigationBarTitle({ title: '添加房源' });
       const draft: any = Taro.getStorageSync('draft_property');
       if (draft) {
         setName(draft.name || '');
@@ -70,34 +71,10 @@ export default function AddProperty() {
   };
 
   const handleUploadCover = useCallback((file: UploadFile, _note: string) => {
-    setUploading(true);
-    setUploadError(false);
-    Taro.uploadFile({
-      url: `${API_BASE}/upload`,
-      filePath: file.tempFilePath,
-      name: 'file',
-      success: (res: any) => {
-        try {
-          const data = JSON.parse(res.data);
-          if (data.code === 0) {
-            setCoverImageURL(data.data?.url || '');
-            setCoverImageFileID(data.data?.fileID || '');
-            setUploadVisible(false);
-            Taro.showToast({ title: '图片已上传', icon: 'none', duration: 1500 });
-          } else {
-            setUploadError(true);
-          }
-        } catch {
-          setUploadError(true);
-        }
-      },
-      fail: () => {
-        setUploadError(true);
-      },
-      complete: () => {
-        setUploading(false);
-      },
-    });
+    if (file.serverUrl) {
+      setCoverImageURL(file.serverUrl);
+      setUploadVisible(false);
+    }
   }, []);
 
   useDidHide(() => {
@@ -108,10 +85,6 @@ export default function AddProperty() {
       }
     }
   });
-
-  const goBack = useCallback(() => {
-    Taro.navigateBack();
-  }, []);
 
   const handleSave = useCallback(async () => {
     if (saving) return;
@@ -127,11 +100,8 @@ export default function AddProperty() {
       address: address.trim(),
       note: note.trim(),
     };
-    if (coverImageFileID) {
-      payload.coverImageFileID = coverImageFileID;
-    }
     if (coverImageURL) {
-      payload.coverImageURL = coverImageURL;
+      payload.coverImage = coverImageURL;
     }
 
     try {
@@ -150,7 +120,7 @@ export default function AddProperty() {
               if (res.confirm) {
                 Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${propertyId}` });
               } else {
-                Taro.navigateBack();
+                Taro.switchTab({ url: '/pages/home/index' });
               }
             },
           });
@@ -172,7 +142,7 @@ export default function AddProperty() {
                 if (res.confirm) {
                   Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${newId}` });
                 } else {
-                  Taro.navigateBack();
+                  Taro.switchTab({ url: '/pages/home/index' });
                 }
               },
             });
@@ -191,8 +161,6 @@ export default function AddProperty() {
 
   return (
     <View className="page-add-property">
-      <NavBar title={propertyId ? '编辑房源' : '添加房源'} onBack={goBack} />
-
       {!propertyId && (
         <View className="add-property-hint">
           <Text className="hint-text">先给您的房子取个名字，比如&ldquo;幸福里 2号楼&rdquo;</Text>
@@ -214,20 +182,14 @@ export default function AddProperty() {
         <View className="cover-preview" onClick={() => setUploadVisible(true)}>
           <Image className="cover-preview-img" src={coverImageURL} mode="aspectFill" />
           <View className="cover-preview-tap">
-            <svg width="16" height="16" viewBox="0 0 24 24" stroke="#fff" strokeWidth="2" fill="none">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-              <circle cx="12" cy="13" r="4" />
-            </svg>
+            <Icon name="camera" size={48} color="currentColor" />
             <Text className="cover-preview-tap-text">重新拍摄</Text>
           </View>
         </View>
       ) : (
         <View className="cover-upload" onClick={() => setUploadVisible(true)}>
           <View className="cover-upload-inner">
-            <svg width="32" height="32" viewBox="0 0 24 24" stroke="var(--accent-hover)" strokeWidth="1.8" fill="none" opacity="0.6">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-              <circle cx="12" cy="13" r="4" />
-            </svg>
+            <Icon name="camera" size={48} color="currentColor" />
             <Text className="cover-upload-text">拍一张房子外观（可选）</Text>
           </View>
         </View>

@@ -1,11 +1,11 @@
-import { View, Text, ScrollView } from '@tarojs/components';
+import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import EmptyState from '../../components/EmptyState';
 import { useState, useCallback, useEffect } from 'react';
 import { get } from '../../services/request';
+import rentHeroImg from '../../assets/rent-stats/rent-hero-objects.png';
 import './index.scss';
 
 type Period = 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom';
@@ -15,7 +15,6 @@ const periods: { key: Period; label: string }[] = [
   { key: 'lastMonth', label: '上月' },
   { key: 'quarter', label: '季度' },
   { key: 'year', label: '年度' },
-  { key: 'custom', label: '自定义周期' },
 ];
 
 interface PropertyStat {
@@ -41,16 +40,15 @@ interface StatsData {
 export default function RentStats() {
   const routerParams = Taro.getCurrentInstance().router?.params || {};
   const routePropertyId = Number(routerParams.propertyId) || 0;
-  const routePeriod = (routerParams.period as Period) || undefined;
 
-  const [period, setPeriod] = useState<Period>(routePeriod || 'month');
+  const [period, setPeriod] = useState<Period>('month');
   const [statsData, setStatsData] = useState<StatsData>({
     propertyStats: [],
     totalExpected: 0,
     totalCollected: 0,
     totalPending: 0,
     totalRate: 0,
-    monthLabel: '2026 年 5 月',
+    monthLabel: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -74,16 +72,14 @@ export default function RentStats() {
     }
   }, [routePropertyId]);
 
-  useEffect(() => { loadData(period); }, [loadData, period]);
-
-  const goBack = useCallback(() => { Taro.navigateBack(); }, []);
+  useEffect(() => {
+    Taro.setNavigationBarTitle({ title: '收租统计' });
+    loadData(period);
+  }, [loadData, period]);
 
   return (
     <View className="page-rent-stats">
-      <NavBar title="收租统计" onBack={goBack} />
-
       <ScrollView className="stats-scroll" scrollY>
-        {/* Period filter */}
         <View className="filter-tabs">
           {periods.map((p) => (
             <View
@@ -105,39 +101,36 @@ export default function RentStats() {
         {error && <ErrorState description="加载失败，请稍后重试" onRetry={() => loadData(period)} />}
         {!loading && !error && (
           <>
-            {/* Overview Card */}
-            <View className="card card-glow overview-card">
+            <View className="overview-wrap">
               <View className="overview-header">
-                <View>
-                  <Text className="overview-period">{statsData.monthLabel}</Text>
-                  <Text className="overview-title">本周期收租总览</Text>
-                </View>
-                <View className="tag tag-blue">
-                  <Text className="tag-blue-text">收款率 {statsData.totalRate}%</Text>
-                </View>
+                <Text className="overview-period">{statsData.monthLabel}</Text>
+                <Text className="rate-tag">收款率 {statsData.totalRate}%</Text>
               </View>
-              <View className="stats-grid">
-                <View className="stats-item">
-                  <Text className="stats-value">{statsData.totalExpected.toLocaleString()}</Text>
-                  <Text className="stats-label">应收</Text>
+              <View className="overview-card">
+                <View className="overview-card-top">
+                  <Text className="overview-title">本周期收租总览</Text>
+                  <Image className="rent-hero-img" src={rentHeroImg} mode="aspectFit" />
                 </View>
-                <View className="stats-item">
-                  <Text className="stats-value green">{statsData.totalCollected.toLocaleString()}</Text>
-                  <Text className="stats-label">已收</Text>
-                </View>
-                <View className="stats-item">
-                  <Text className="stats-value orange">{statsData.totalPending.toLocaleString()}</Text>
-                  <Text className="stats-label">未收</Text>
+                <View className="stats-grid">
+                  <View className="stats-item">
+                    <Text><Text className="stats-icon" style={{ color: '#f0643e' }}>▣</Text><Text className="stats-label-text">应收</Text></Text>
+                    <Text className="stats-value orange">{statsData.totalExpected.toLocaleString()}<Text className="stats-unit">元</Text></Text>
+                  </View>
+                  <View className="stats-item">
+                    <Text><Text className="stats-icon" style={{ color: '#5fa264' }}>✓</Text><Text className="stats-label-text">已收</Text></Text>
+                    <Text className="stats-value green">{statsData.totalCollected.toLocaleString()}<Text className="stats-unit">元</Text></Text>
+                  </View>
+                  <View className="stats-item">
+                    <Text><Text className="stats-icon" style={{ color: '#f0a23f' }}>◷</Text><Text className="stats-label-text">未收</Text></Text>
+                    <Text className="stats-value pending">{statsData.totalPending.toLocaleString()}<Text className="stats-unit">元</Text></Text>
+                  </View>
                 </View>
               </View>
             </View>
 
-            {/* By Property */}
             <View className="section-header">
               <Text className="section-title">按房源统计</Text>
-              <Text className="section-more" onClick={() => Taro.showToast({ title: '即将支持导出功能', icon: 'none', duration: 2000 })}>
-                导出
-              </Text>
+              <Text className="section-more" onClick={() => Taro.showToast({ title: '即将支持导出功能', icon: 'none', duration: 2000 })}>↗ 导出</Text>
             </View>
 
             {statsData.propertyStats.length === 0 && (
@@ -145,7 +138,7 @@ export default function RentStats() {
             )}
 
             {statsData.propertyStats.map((ps, idx) => (
-              <View key={idx} className="card property-stat-card">
+              <View key={idx} className="property-stat-card">
                 <View className="property-stat-header">
                   <View>
                     <Text className="property-stat-name">{ps.name}</Text>
@@ -161,19 +154,16 @@ export default function RentStats() {
                 <View className="progress-bar">
                   <View className="progress-fill" style={{ width: `${ps.rate}%` }} />
                 </View>
-                <View className="property-stat-footer">
-                  <Text className="footer-text">已收 {ps.collected.toLocaleString()} 元 · 未收 {ps.pending.toLocaleString()} 元</Text>
-                </View>
+                <Text className="property-stat-footer">已收 {ps.collected.toLocaleString()} 元 · 未收 {ps.pending.toLocaleString()} 元</Text>
               </View>
             ))}
 
-            {/* Bottom buttons */}
             <View className="bottom-actions">
               <View className="bottom-btn secondary" onClick={() => Taro.showToast({ title: '已切换到自定义周期', icon: 'none', duration: 2000 })}>
-                <Text className="bottom-btn-text">选择周期</Text>
+                <Text>▣ 选择周期</Text>
               </View>
               <View className="bottom-btn primary" onClick={() => Taro.showToast({ title: '即将支持导出功能', icon: 'none', duration: 2000 })}>
-                <Text className="bottom-btn-text primary-text">导出统计</Text>
+                <Text>↗ 导出统计</Text>
               </View>
             </View>
           </>

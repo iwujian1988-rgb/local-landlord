@@ -1,16 +1,14 @@
 import { View, Text, ScrollView } from '@tarojs/components';
-import Taro from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
+import Taro, { useDidShow } from '@tarojs/taro';
 import './index.scss';
 
 export default function Privacy() {
-  const goBack = () => {
-    Taro.navigateBack();
-  };
+  useDidShow(() => {
+    Taro.setNavigationBarTitle({ title: '隐私政策' });
+  });
 
   return (
     <View className="page-privacy">
-      <NavBar title="隐私政策" onBack={goBack} />
       <ScrollView className="content-scroll" scrollY>
         <View className="policy-content">
           <Text className="policy-title">隐私政策</Text>

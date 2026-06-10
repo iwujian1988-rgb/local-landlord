@@ -9,12 +9,13 @@ const config = {
   outputRoot: 'dist',
   plugins: ['@tarojs/plugin-framework-react'],
   defineConstants: {
-    API_BASE: '"http://localhost:3000"',
+    API_BASE: '"http://127.0.0.1:3000/api"',
   },
   copy: { patterns: [], options: {} },
   framework: 'react',
   compiler: 'webpack5',
   mini: {
+    baseLevel: 16,
     compile: {
       exclude: [],
     },

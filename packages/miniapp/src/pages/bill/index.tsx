@@ -1,12 +1,13 @@
 import { View, Text, ScrollView, Image, Input } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import ConfirmModal from '../../components/ConfirmModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
+import Icon from '../../components/Icon';
 import { useState, useCallback, useMemo } from 'react';
 import { get, post } from '../../services/request';
-import { API_BASE } from '../../config';
+import { uploadFiles } from '../../services/upload';
+import { requestNotification } from '../../services/notification';
 import './index.scss';
 
 interface BillItem {
@@ -22,37 +23,57 @@ interface ApiBillData {
   billItems: BillItem[];
 }
 
+interface PageData {
+  roomName: string;
+  tenantName: string;
+  billItems: BillItem[];
+  photos: string[];
+  loading: boolean;
+  error: boolean;
+  uploading: boolean;
+  submitting: boolean;
+  confirmVisible: boolean;
+}
+
+const emptyPageData: PageData = {
+  roomName: '',
+  tenantName: '-',
+  billItems: [],
+  photos: [],
+  loading: false,
+  error: false,
+  uploading: false,
+  submitting: false,
+  confirmVisible: false,
+};
+
 export default function Bill() {
   const routerParams = Taro.getCurrentInstance().router?.params || {};
   const roomId = Number(routerParams.roomId) || 0;
   const tenantId = Number(routerParams.tenantId) || 0;
 
-  const [roomName, setRoomName] = useState('');
-  const [tenantName, setTenantName] = useState('-');
-  const [billItems, setBillItems] = useState<BillItem[]>([]);
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [data, setData] = useState<PageData>(emptyPageData);
 
   const loadData = useCallback(async () => {
     if (!roomId) return;
-    setLoading(true);
-    setError(false);
+    setData(prev => ({ ...prev, loading: true, error: false }));
     try {
       const res = await get<ApiBillData>(`/rooms/${roomId}/bills`);
       if (res.code === 0 && res.data) {
-        setRoomName(res.data.roomName || '');
-        setTenantName(res.data.tenantName || '-');
-        setBillItems(res.data.billItems || []);
+        const tName = res.data.tenantName || '-';
+        setData(prev => ({
+          ...prev,
+          roomName: res.data.roomName || '',
+          tenantName: tName,
+          billItems: res.data.billItems || [],
+        }));
+        Taro.setNavigationBarTitle({ title: `通知${tName}交租` });
       }
     } catch (err) {
       console.error('[Bill] 加载数据失败:', err);
-      setError(true);
+      setData(prev => ({ ...prev, error: true }));
     } finally {
-      setLoading(false);
+      setData(prev => ({ ...prev, loading: false }));
     }
   }, [roomId]);
 
@@ -66,65 +87,43 @@ export default function Bill() {
   });
 
   const totalAmount = useMemo(
-    () => billItems.reduce((s, i) => s + (Number(i.amount) || 0), 0),
-    [billItems]
+    () => data.billItems.reduce((s, i) => s + (Number(i.amount) || 0), 0),
+    [data.billItems]
   );
 
-  const goBack = useCallback(() => { Taro.navigateBack(); }, []);
-
   const handleAmountChange = useCallback((idx: number, val: string) => {
-    setBillItems(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], amount: Number(val) || 0 };
-      return next;
+    const num = Number(val) || 0;
+    if (num < 0) return;
+    if (num > 999999) return;
+    setData(prev => {
+      const next = [...prev.billItems];
+      next[idx] = { ...next[idx], amount: num };
+      return { ...prev, billItems: next };
     });
   }, []);
 
   const handlePhotoUpload = useCallback(() => {
-    if (uploading) return;
+    if (data.uploading) return;
     Taro.chooseImage({
       count: 3,
       sizeType: ['compressed'],
       sourceType: ['camera', 'album'],
       success: (res) => {
-        setUploading(true);
-        const tempPaths = res.tempFilePaths;
-        // Upload each file to server
-        Promise.all(
-          tempPaths.map((filePath) =>
-            new Promise<string>((resolve, reject) => {
-              Taro.uploadFile({
-                url: `${API_BASE}/upload`,
-                filePath,
-                name: 'file',
-                header: { Authorization: `Bearer ${Taro.getStorageSync('auth_token') || ''}` },
-                success: (uploadRes) => {
-                  try {
-                    const data = JSON.parse(uploadRes.data);
-                    const url = data.data?.url || data.data?.fileID || data.url || '';
-                    resolve(url);
-                  } catch {
-                    reject(new Error('解析上传结果失败'));
-                  }
-                },
-                fail: () => reject(new Error('上传失败')),
-              });
-            })
-          )
-        )
-          .then((urls) => {
-            setPhotos(prev => [...prev, ...urls.filter(Boolean)]);
+        setData(prev => ({ ...prev, uploading: true }));
+        uploadFiles(res.tempFilePaths)
+          .then((results) => {
+            setData(prev => ({ ...prev, photos: [...prev.photos, ...results.map(r => r.url).filter(Boolean)] }));
             Taro.showToast({ title: '账单照片已上传', icon: 'none', duration: 2000 });
           })
           .catch(() => {
             Taro.showToast({ title: '照片上传失败，请重试', icon: 'none', duration: 2000 });
           })
           .finally(() => {
-            setUploading(false);
+            setData(prev => ({ ...prev, uploading: false }));
           });
       },
     });
-  }, [uploading]);
+  }, [data.uploading]);
 
   const handleSendBill = useCallback(() => {
     Taro.navigateTo({
@@ -134,51 +133,51 @@ export default function Bill() {
 
   const handleCopyText = useCallback(() => {
     const month = new Date().getMonth() + 1;
-    const itemsText = billItems.map(i => `${i.name} ${i.amount} 元`).join('，');
-    const text = `${tenantName}您好，${roomName} ${month}月账单已出。\n${itemsText}。\n本月合计 ${totalAmount} 元。\n方便时请扫码付款，谢谢您。`;
+    const itemsText = data.billItems.map(i => `${i.name} ${i.amount} 元`).join('，');
+    const text = `${data.tenantName}您好，${data.roomName} ${month}月账单已出。\n${itemsText}。\n本月合计 ${totalAmount} 元。\n方便时请扫码付款，谢谢您。`;
     Taro.setClipboardData({
       data: text,
       success: () => Taro.showToast({ title: '文字已复制，可以发给租客了', icon: 'none', duration: 2000 }),
       fail: () => Taro.showToast({ title: '复制失败，请长按文字后手动复制', icon: 'none', duration: 3000 }),
     });
-  }, [billItems, tenantName, roomName, totalAmount]);
+  }, [data.billItems, data.tenantName, data.roomName, totalAmount]);
 
   const handleConfirmPaid = useCallback(async () => {
-    if (submitting) return;
-    setSubmitting(true);
-    setConfirmVisible(false);
+    if (data.submitting) return;
+    setData(prev => ({ ...prev, submitting: true, confirmVisible: false }));
     try {
+      const now = new Date();
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       await post(`/rooms/${roomId}/bills`, {
+        period,
         tenantId,
-        items: billItems,
+        items: data.billItems,
         totalAmount,
-        photos,
+        photos: data.photos,
       });
       Taro.showToast({ title: '已标记为已收', icon: 'none', duration: 2000 });
+      requestNotification();
     } catch (err) {
       console.error('[Bill] 标记已收失败:', err);
       Taro.showToast({ title: '操作失败', icon: 'none' });
     } finally {
-      setSubmitting(false);
+      setData(prev => ({ ...prev, submitting: false }));
     }
-  }, [roomId, tenantId, billItems, totalAmount, photos, submitting]);
+  }, [roomId, tenantId, data.billItems, totalAmount, data.photos, data.submitting]);
 
   return (
     <View className="page-bill">
-      <NavBar title={`通知${tenantName}交租`} onBack={goBack} />
-
       <ScrollView className="bill-scroll" scrollY>
-        {loading && <Loading />}
-        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
-        {!loading && !error && (
+        {data.loading && <Loading />}
+        {data.error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {!data.loading && !data.error && (
           <>
-            {/* Step 1: Calculate */}
             <View className="elder-card">
               <Text className="elder-card-title">第一步：算一下这个月多少钱</Text>
               <Text className="elder-card-desc">房租已经填好了，水电有变动就改一下。</Text>
 
               <View className="bill-items">
-                {billItems.map((item, idx) => (
+                {data.billItems.map((item, idx) => (
                   <View key={idx}>
                     {item.type === 'manual' ? (
                       <View className="form-group bill-input-group">
@@ -211,22 +210,18 @@ export default function Bill() {
               </View>
             </View>
 
-            {/* Step 2: Photo */}
             <View className="elder-card">
               <Text className="elder-card-title">第二步：拍一张表照片</Text>
               <Text className="elder-card-desc">比如电表、水表。没有也可以不拍。</Text>
 
               <View className="bill-photo-btn" onClick={handlePhotoUpload}>
-                <svg width="28" height="28" viewBox="0 0 24 24" stroke="var(--accent-dk)" strokeWidth="1.8" fill="none">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
-                <Text className="bill-photo-btn-text">{uploading ? '上传中...' : '拍照 / 上传照片'}</Text>
+                <Icon name="camera" size={48} color="currentColor" />
+                <Text className="bill-photo-btn-text">{data.uploading ? '上传中...' : '拍照 / 上传照片'}</Text>
               </View>
 
-              {photos.length > 0 && (
+              {data.photos.length > 0 && (
                 <View className="bill-photo-grid">
-                  {photos.map((src, idx) => (
+                  {data.photos.map((src, idx) => (
                     <View key={idx} className="bill-photo-card">
                       <Image className="bill-photo-img" src={src} mode="aspectFill" />
                       <Text className="bill-photo-tag">账单照片</Text>
@@ -236,7 +231,6 @@ export default function Bill() {
               )}
             </View>
 
-            {/* Step 3: Send */}
             <View className="elder-card">
               <Text className="elder-card-title">第三步：发给租客</Text>
               <Text className="elder-card-desc">发完以后，收到钱再点&ldquo;已收到&rdquo;。</Text>
@@ -249,8 +243,8 @@ export default function Bill() {
                 <Text className="bill-action-text secondary">复制文字</Text>
               </View>
 
-              <View className={`bill-action-btn paid-btn${submitting ? ' disabled' : ''}`} onClick={submitting ? undefined : () => setConfirmVisible(true)}>
-                <Text className="bill-action-text paid">{submitting ? '处理中...' : '我已收到钱'}</Text>
+              <View className={`bill-action-btn paid-btn${data.submitting ? ' disabled' : ''}`} onClick={data.submitting ? undefined : () => setData(prev => ({ ...prev, confirmVisible: true }))}>
+                <Text className="bill-action-text paid">{data.submitting ? '处理中...' : '我已收到钱'}</Text>
               </View>
             </View>
 
@@ -260,12 +254,12 @@ export default function Bill() {
       </ScrollView>
 
       <ConfirmModal
-        visible={confirmVisible}
+        visible={data.confirmVisible}
         title="确认已收款"
         amount={totalAmount}
         confirmText="确认已收"
         onConfirm={handleConfirmPaid}
-        onCancel={() => setConfirmVisible(false)}
+        onCancel={() => setData(prev => ({ ...prev, confirmVisible: false }))}
       />
     </View>
   );

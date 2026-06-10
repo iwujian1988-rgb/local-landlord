@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地房东 - 暖橙设计预览</title>
+<style>
+  :root {
+    --bg: #f7f2ea;
+    --bg2: #fbf7f0;
+    --card: rgba(255, 253, 247, 0.92);
+    --card-solid: #fffdf8;
+    --text: #3b332d;
+    --muted: #9a9188;
+    --muted2: #b8aea4;
+    --line: rgba(74, 60, 48, 0.08);
+    --orange: #ff8b45;
+    --coral: #f35b43;
+    --gold: #efba63;
+    --green: #6da368;
+    --shadow: 0 18px 46px rgba(94, 72, 49, 0.10);
+    --shadow-soft: 0 10px 28px rgba(96, 78, 56, 0.08);
+    --radius-xl: 32px;
+    --radius-lg: 24px;
+    --radius-md: 18px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #e8e5df; color: var(--text); }
+  body { display: grid; place-items: center; padding: 20px; }
+  button { font: inherit; border: 0; background: none; color: inherit; cursor: pointer; }
+  img { max-width: 100%; display: block; }
+
+  .app-shell {
+    width: min(100vw, 430px);
+    min-height: 880px;
+    border-radius: 38px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,.18);
+    position: relative;
+  }
+  .phone-screen {
+    position: relative;
+    width: 100%;
+    min-height: 880px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 18% 5%, rgba(255,255,255,.9), transparent 28%),
+      linear-gradient(180deg, #fbf7ef 0%, #f6f1e9 54%, #f9f5ef 100%);
+  }
+  .statusbar {
+    height: 45px;
+    padding: 13px 18px 0;
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: 16px;
+    color: #111;
+  }
+  .mini-nav {
+    height: 52px;
+    display: grid;
+    place-items: center;
+    padding: 0 18px;
+  }
+  .mini-nav h1 { margin: 0; font-size: 17px; font-weight: 600; }
+
+  .page-home {
+    height: calc(880px - 45px - 52px - 86px);
+    overflow-y: auto;
+    padding-bottom: 18px;
+    scrollbar-width: none;
+  }
+  .page-home::-webkit-scrollbar { display: none; }
+
+  .block-x { margin-inline: 17px; }
+
+  /* Greeting */
+  .greeting { padding-top: 4px; margin-bottom: 18px; margin-inline: 17px; }
+  .greeting h2 { margin: 0; font-size: clamp(32px, 9.8vw, 43px); line-height: 1.04; letter-spacing: -0.06em; font-weight: 900; }
+  .greeting p { margin: 5px 0 0; color: var(--muted); font-weight: 600; font-size: 17px; }
+
+  /* Hero Card */
+  .hero-card {
+    position: relative;
+    min-height: 226px;
+    border-radius: var(--radius-xl);
+    padding: 30px 24px 24px;
+    overflow: hidden;
+    margin-inline: 17px;
+    background:
+      radial-gradient(circle at 76% 28%, rgba(255,255,255,.22) 0 1px, transparent 2px),
+      radial-gradient(circle at 78% 52%, rgba(255,255,255,.15), transparent 40%),
+      linear-gradient(135deg, #ff9b45 0%, #fa7740 42%, #ee4d45 100%);
+    box-shadow: 0 20px 45px rgba(240, 92, 61, .22);
+  }
+  .hero-card::before, .hero-card::after {
+    content: "";
+    position: absolute;
+    width: 360px; height: 360px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.16);
+    right: -70px; top: -42px;
+  }
+  .hero-card::after { width: 250px; height: 250px; right: -14px; top: 12px; }
+  .hero-copy { position: relative; z-index: 3; width: 55%; color: #fff; }
+  .hero-copy h3 { margin: 0; font-size: 34px; line-height: 1.2; letter-spacing: .02em; font-weight: 900; }
+  .hero-copy p { margin: 15px 0 0; font-size: 16px; line-height: 1.4; opacity: .92; font-weight: 500; white-space: nowrap; }
+  .hero-asset {
+    position: absolute; z-index: 1; right: -4px; top: 18px;
+    width: 220px; height: 220px; object-fit: cover;
+    border-radius: 28px; opacity: .96;
+    filter: drop-shadow(0 18px 22px rgba(111,56,34,.16));
+    background: rgba(255,200,100,.2);
+  }
+
+  /* Reminder Card */
+  .reminder-card {
+    height: 88px;
+    margin: 20px 17px 0;
+    border-radius: 28px;
+    background: var(--card);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    grid-template-columns: 64px 1fr 20px;
+    align-items: center;
+    padding: 0 22px 0 19px;
+  }
+  .reminder-icon {
+    width: 58px; height: 58px; border-radius: 50%;
+    background: linear-gradient(135deg, #ffe8c8, #ffd4a8);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+  }
+  .reminder-body { display: flex; flex-direction: column; gap: 6px; padding-left: 5px; }
+  .reminder-body b { font-size: 19px; font-weight: 850; letter-spacing: -.02em; }
+  .reminder-body em {
+    font-style: normal; color: #5e544b; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .reminder-body em i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+  .chevron { color: #91877e; font-size: 30px; line-height: 1; }
+
+  /* Monthly Card */
+  .monthly-card {
+    margin: 20px 17px 0;
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+  .monthly-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .monthly-left { flex: 1; }
+  .monthly-title { font-size: 20px; font-weight: 820; }
+  .monthly-desc { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .monthly-right { text-align: center; }
+  .monthly-number { font-size: 36px; font-weight: 800; color: var(--green); line-height: 1; }
+  .monthly-label { font-size: 12px; color: var(--muted2); font-weight: 700; }
+
+  /* Function Section */
+  .function-section { margin: 24px 17px 0; }
+  .function-section header h3 { margin: 0; font-size: 26px; line-height: 1; font-weight: 900; letter-spacing: -.04em; }
+  .function-section header p { margin: 8px 0 14px; color: var(--muted); font-weight: 600; font-size: 15px; }
+  .function-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .feature-card {
+    min-height: 72px;
+    border-radius: 20px;
+    background: rgba(255,253,248,.94);
+    box-shadow: var(--shadow-soft);
+    display: grid;
+    grid-template-columns: 62px 1fr 16px;
+    align-items: center;
+    padding: 9px 14px;
+  }
+  .feature-icon {
+    width: 56px; height: 54px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px;
+  }
+  .feature-icon.room { background: linear-gradient(135deg, #ffe8d0, #ffd4b0); }
+  .feature-icon.stats { background: linear-gradient(135deg, #d4f0d4, #b8e0b8); }
+  .feature-icon.checkin { background: linear-gradient(135deg, #d8e8f8, #b8d4f0); }
+  .feature-icon.source { background: linear-gradient(135deg, #f0e0d8, #e8ccb8); }
+  .feature-label { font-size: 18px; font-weight: 850; letter-spacing: -.02em; }
+  .feature-arrow { color: #91877e; font-size: 26px; }
+
+  /* Guide Card */
+  .guide-card {
+    margin: 20px 17px 0;
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    border-left: 4px solid var(--orange);
+    background: linear-gradient(135deg, var(--card-solid) 0%, #fbf3e8 100%);
+    box-shadow: var(--shadow);
+  }
+  .guide-card-title { font-size: 20px; font-weight: 820; }
+  .guide-card-desc { font-size: 14px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  .guide-card-btn {
+    margin-top: 14px;
+    min-width: 184px;
+    height: 48px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 850;
+    background: linear-gradient(135deg, #f7bc65 0%, #ff8545 45%, #f05a3e 100%);
+    box-shadow: 0 16px 30px rgba(238, 99, 54, .22);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Tab Bar */
+  .tabbar {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 86px;
+    padding: 9px 22px 22px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    align-items: start;
+    background: rgba(255,255,255,.72);
+    backdrop-filter: blur(22px);
+    border-radius: 28px 28px 0 0;
+    box-shadow: 0 -10px 28px rgba(80,65,48,.07);
+  }
+  .tab { display: grid; justify-items: center; gap: 3px; color: #716a63; font-size: 13px; font-weight: 600; }
+  .tab svg { width: 30px; height: 30px; fill: currentColor; opacity: .9; }
+  .tab.is-active { color: var(--coral); }
+  .home-indicator {
+    position: absolute;
+    left: 50%; bottom: 7px;
+    width: 146px; height: 5px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: #000;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <section class="phone-screen">
+    <header class="statusbar">
+      <span>9:41</span>
+      <span>100%</span>
+    </header>
+    <div class="mini-nav"><h1>本地房东</h1></div>
+
+    <div class="page-home">
+      <!-- Greeting -->
+      <div class="greeting">
+        <h2>老王，早上好</h2>
+        <p>今天要做的事</p>
+      </div>
+
+      <!-- Hero Card -->
+      <div class="hero-card">
+        <div class="hero-copy">
+          <h3>一切正常，<br>去喝杯茶吧</h3>
+          <p>没有逾期，没有到期，继续保持。</p>
+        </div>
+        <img class="hero-asset" src="./assets/home-hero-illustration.png" alt="" />
+      </div>
+
+      <!-- Reminder Card -->
+      <div class="reminder-card">
+        <div class="reminder-icon">🔔</div>
+        <div class="reminder-body">
+          <b>你可能漏了</b>
+          <em><i></i>主卧空着没租出去</em>
+        </div>
+        <span class="chevron">›</span>
+      </div>
+
+      <!-- Monthly Collected -->
+      <div class="monthly-card">
+        <div class="monthly-row">
+          <div class="monthly-left">
+            <div class="monthly-title">本月已收到</div>
+            <div class="monthly-desc">点了"已收到"后金额会加到这里</div>
+          </div>
+          <div class="monthly-right">
+            <div class="monthly-number">8,500</div>
+            <div class="monthly-label">元</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Function Section -->
+      <div class="function-section">
+        <header>
+          <h3>常用功能</h3>
+          <p>快速管理房间、租客和收款码</p>
+        </header>
+        <div class="function-grid">
+          <div class="feature-card">
+            <div class="feature-icon room">🏠</div>
+            <span class="feature-label">房间资料</span>
+            <i class="feature-arrow">›</i>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon stats">📊</div>
+            <span class="feature-label">简单统计</span>
+            <i class="feature-arrow">›</i>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon checkin">📋</div>
+            <span class="feature-label">入住信息</span>
+            <i class="feature-arrow">›</i>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon source">🏢</div>
+            <span class="feature-label">房源管理</span>
+            <i class="feature-arrow">›</i>
+          </div>
+        </div>
+      </div>
+
+      <!-- Guide Card -->
+      <div class="guide-card">
+        <div class="guide-card-title">设置收款码</div>
+        <div class="guide-card-desc">设置收款码后租客可以直接扫码付款</div>
+        <button class="guide-card-btn">去设置</button>
+      </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <nav class="tabbar">
+      <div class="tab is-active">
+        <svg viewBox="0 0 24 24"><path d="M3.8 11.2 12 4l8.2 7.2v8.2a1.6 1.6 0 0 1-1.6 1.6h-4.2v-5.8H9.6V21H5.4a1.6 1.6 0 0 1-1.6-1.6v-8.2Z"/></svg>
+        <span>首页</span>
+      </div>
+      <div class="tab">
+        <svg viewBox="0 0 24 24"><path d="M5 4.5h5.5v5.5H5V4.5Zm8.5 0H19v5.5h-5.5V4.5ZM5 13.5h5.5V19H5v-5.5Zm8.5 0H19V19h-5.5v-5.5Z"/></svg>
+        <span>房间</span>
+      </div>
+      <div class="tab">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17Zm.9 9.2h2.8v1.7h-2.8v2.8h-1.8v-2.8H8.3v-1.7h2.8v-1.1H8.3V9.9h2l-2.2-3h2.2l1.7 2.5 1.7-2.5h2.2l-2.2 3h2v1.7h-2.8v1.1Z"/></svg>
+        <span>收租</span>
+      </div>
+      <div class="tab">
+        <svg viewBox="0 0 24 24"><path d="M12 12.4a4.4 4.4 0 1 0 0-8.8 4.4 4.4 0 0 0 0 8.8Zm-7.5 7.1c.8-3.4 3.7-5.5 7.5-5.5s6.7 2.1 7.5 5.5c.2.8-.4 1.5-1.2 1.5H5.7c-.8 0-1.4-.7-1.2-1.5Z"/></svg>
+        <span>我的</span>
+      </div>
+    </nav>
+    <div class="home-indicator"></div>
+  </section>
+</div>
+</body>
+</html>

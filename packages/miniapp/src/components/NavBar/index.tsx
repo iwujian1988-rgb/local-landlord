@@ -29,9 +29,7 @@ export default function NavBar({
       <View className="nav-left">
         {showBack && (
           <View className="back-btn" onClick={onBack}>
-            <svg width="20" height="20" viewBox="0 0 24 24" stroke="var(--text-primary)" strokeWidth="1.8" fill="none">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            <Text style={{ fontSize: '28px', color: 'var(--text-primary)', lineHeight: 1 }}>‹</Text>
           </View>
         )}
       </View>

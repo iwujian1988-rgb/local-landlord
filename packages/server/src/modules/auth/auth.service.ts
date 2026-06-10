@@ -22,6 +22,38 @@ export class AuthService {
   ) {}
 
   /**
+   * Dev login: bypass WeChat, create/find a test landlord by dev code
+   */
+  async devLogin(devCode: string) {
+    const openId = `dev_${devCode}`;
+
+    let landlord = await this.landlordRepository.findOne({ where: { openId } });
+    if (!landlord) {
+      landlord = this.landlordRepository.create({
+        openId,
+        name: '房东',
+        phone: '13800000000',
+        avatar: '',
+      });
+      landlord = await this.landlordRepository.save(landlord);
+    }
+
+    const payload = { sub: landlord.id, role: 1 };
+    const token = this.jwtService.sign(payload);
+
+    return {
+      token,
+      user: {
+        id: landlord.id,
+        openId: landlord.openId,
+        name: landlord.name,
+        phone: landlord.phone,
+        avatar: landlord.avatar,
+      },
+    };
+  }
+
+  /**
    * WeChat login: call code2Session to get openid, find or create landlord, issue JWT
    */
   async wechatLogin(dto: WechatLoginDto) {
@@ -61,7 +93,7 @@ export class AuthService {
     if (!landlord) {
       landlord = this.landlordRepository.create({
         openId: wxData.openid,
-        name: nickname || `房东${wxData.openid.substring(0, 8)}`,
+        name: '房东',
         phone: '',
         avatar: avatar || '',
       });
@@ -95,6 +127,42 @@ export class AuthService {
     };
   }
 
+  /**
+   * Cloud hosting login: authenticate via X-WX-OPENID from CallContainer
+   */
+  async cloudLogin(openId: string) {
+    let landlord = await this.landlordRepository.findOne({ where: { openId } });
+    if (!landlord) {
+      landlord = this.landlordRepository.create({
+        openId,
+        name: '房东',
+        phone: '',
+        avatar: '',
+      });
+      landlord = await this.landlordRepository.save(landlord);
+    }
+
+    if (landlord.status === 0) {
+      throw new ForbiddenException('账户已被禁用，请联系管理员');
+    }
+
+    const payload = { sub: landlord.id, role: 1 };
+    const token = this.jwtService.sign(payload);
+
+    return {
+      token,
+      user: {
+        id: landlord.id,
+        openId: landlord.openId,
+        name: landlord.name,
+        phone: landlord.phone,
+        avatar: landlord.avatar,
+        defaultPayeeName: landlord.defaultPayeeName,
+        paymentNote: landlord.paymentNote,
+      },
+    };
+  }
+
   /** Admin login */
   async adminLogin(dto: AdminLoginDto) {
     const { username, password } = dto;
@@ -102,7 +170,9 @@ export class AuthService {
     // Auto-create default admin on first run
     let admin = await this.adminRepository.findOne({ where: { username } });
     if (!admin && username === 'admin') {
-      const hashedPwd = await bcrypt.hash('admin123', 10);
+      const defaultPwd = process.env.ADMIN_DEFAULT_PASSWORD || this.generateRandomPassword();
+      this.logger.warn(`首次启动，已创建管理员账户 admin/${defaultPwd}，请立即登录修改密码！`);
+      const hashedPwd = await bcrypt.hash(defaultPwd, 10);
       admin = this.adminRepository.create({
         username: 'admin',
         password: hashedPwd,
@@ -193,5 +263,14 @@ export class AuthService {
     if (dto.paymentNote !== undefined) landlord.paymentNote = dto.paymentNote;
 
     return this.landlordRepository.save(landlord);
+  }
+
+  private generateRandomPassword(length = 16): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let pwd = '';
+    for (let i = 0; i < length; i++) {
+      pwd += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return pwd;
   }
 }

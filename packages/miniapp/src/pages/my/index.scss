@@ -1,142 +1,207 @@
+/* ========== My Page - 暖橙设计 ========== */
+
 .page-my {
   min-height: 100vh;
-  padding-bottom: 120px;
+  padding-bottom: 180px;
+  background:
+    radial-gradient(circle at 82% 7%, rgba(255,226,205,.3), transparent 30%),
+    linear-gradient(180deg, #fffaf5 0%, #fff5ef 48%, #fff9f5 100%);
 }
 
-/* Nav bar - tab page, no back */
-.nav-bar {
+/* Profile Hero */
+.profile-hero {
+  margin: 16px 28px 0;
+  padding: 32px;
+  border-radius: 36px 36px 0 0;
+  background: linear-gradient(135deg, #fffaf5, #fff1e5);
+  box-shadow: 0 16px 36px rgba(120,80,50,.06);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: transparent;
+  gap: 20px;
 }
 
-.nav-title {
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text-primary);
-}
-
-/* Profile - matches HTML .profile-header L881-888 */
-.profile-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 24px 20px;
-}
-
-.avatar {
-  width: 52px;
-  height: 52px;
+.profile-avatar-img {
+  width: 108px;
+  height: 108px;
   border-radius: 50%;
-  background: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   flex-shrink: 0;
 }
 
-.avatar-text {
-  font-size: var(--font-lg);
-  font-weight: 700;
-  color: var(--text-primary);
-}
+.profile-info { flex: 1; }
 
 .profile-name {
-  font-size: var(--font-lg);
-  font-weight: 700;
+  font-size: 38px;
+  font-weight: 850;
+  color: #2e2724;
+  display: block;
 }
 
 .profile-phone {
-  font-size: var(--font-sm);
-  color: var(--text-hint);
+  font-size: 26px;
+  color: #6e625c;
+  margin-top: 8px;
+  display: block;
 }
 
-/* Menu list - matches HTML .menu-item L891-911 */
-.menu-list {
-  padding: 0 16px;
+.profile-ill {
+  width: 200px;
+  height: 140px;
+  flex-shrink: 0;
+}
+
+/* Menu Panel */
+.menu-panel {
+  margin: 0 28px;
+  padding: 8px 0;
+  background: rgba(255,255,255,.88);
+  box-shadow: 0 14px 34px rgba(120,80,50,.05);
+  overflow: hidden;
+}
+
+.menu-main {
+  border-radius: 0 0 36px 36px;
+}
+
+.faq-panel {
+  margin-top: 16px;
+  border-radius: 28px;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 18px;
-  background: var(--cream);
-  border-radius: 20px;
-  margin: 0 16px 8px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+  height: 88px;
+  padding: 0 24px;
+  border-bottom: 2px solid rgba(240,225,215,.6);
 }
 
-.menu-item:active {
-  transform: scale(0.98);
-}
+.menu-item:last-child { border-bottom: none; }
 
-.menu-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-xs);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.menu-icon-img {
+  width: 56px;
+  height: 56px;
   flex-shrink: 0;
+  margin-right: 24px;
 }
 
 .menu-text {
   flex: 1;
-  font-size: var(--font-base);
-  font-weight: 500;
+  font-size: 30px;
+  font-weight: 600;
+  color: #332b27;
 }
 
 .menu-arrow {
-  width: 16px;
-  height: 16px;
-  stroke: var(--text-hint);
-  stroke-width: 2;
-  fill: none;
+  font-size: 42px;
+  font-weight: 250;
+  color: #51453f;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
-/* Section header - matches HTML L276-294 */
-.section-header {
+/* FAQ Section */
+.faq-title {
+  margin: 28px 32px 12px;
+  font-size: 34px;
+  font-weight: 860;
+  color: #302824;
+}
+
+.faq-item {
+  height: 72px;
+}
+
+.faq-item .menu-icon-img {
+  width: 40px;
+  height: 40px;
+  margin-right: 18px;
+}
+
+.faq-item .menu-text {
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.faq-answer {
+  margin: 0 24px 12px;
+  padding: 18px 24px;
+  background: rgba(255,250,245,.7);
+  border-radius: 16px;
+  border-left: 6px solid var(--accent);
+}
+
+.faq-answer-text {
+  font-size: 24px;
+  color: #6e625c;
+  line-height: 1.6;
+}
+
+/* Logout */
+.logout-section {
+  padding: 36px 28px 0;
+}
+
+.logout-btn {
+  width: 100%;
+  height: 88px;
+  border-radius: 999px;
+  background: rgba(245,237,226,.6);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 16px 16px 10px;
+  justify-content: center;
+
+  &:active { transform: scale(0.96); }
 }
 
-.section-title {
-  font-size: var(--font-md);
-  font-weight: 700;
+.logout-btn-text {
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+/* Login State */
+.login-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 80px 40px 40px;
+}
+
+.login-state-avatar {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  margin-bottom: 28px;
+}
+
+.login-state-title {
+  font-size: 40px;
+  font-weight: 800;
   color: var(--text-primary);
+  margin-bottom: 12px;
 }
 
-/* FAQ */
-.faq-list {
-  padding: 0 16px 24px;
-}
-
-.faq-text {
-  flex: 1;
-  font-size: var(--font-sm);
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.tip-answer {
-  margin: -8px 32px 16px;
-  padding: 24px 36px;
-  background: var(--bg-primary);
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  border-left: 4px solid var(--accent);
-}
-
-.tip-answer-text {
-  font-size: var(--font-sm);
+.login-state-desc {
+  font-size: 28px;
   color: var(--text-secondary);
-  line-height: 1.7;
+  margin-bottom: 36px;
+}
+
+.login-state-btn {
+  width: 100%;
+  height: 96px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f7bc65, #ff8545 45%, #f05a3e);
+  box-shadow: 0 16px 32px rgba(238,99,54,.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:active { transform: scale(0.96); }
+}
+
+.login-state-btn-text {
+  font-size: 34px;
+  font-weight: 800;
+  color: #fff;
 }

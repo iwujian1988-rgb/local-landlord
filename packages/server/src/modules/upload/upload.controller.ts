@@ -1,5 +1,5 @@
 import {
-  Controller, Post, UseInterceptors, UploadedFile,
+  Controller, Post, Body, UseInterceptors, UploadedFile,
   UseGuards, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,5 +24,13 @@ export class UploadController {
       }
       throw err;
     }
+  }
+
+  @Post('base64')
+  async uploadBase64(@Body() body: { data: string; size?: number }) {
+    if (!body.data) {
+      throw new BadRequestException('缺少文件数据');
+    }
+    return this.uploadService.uploadBase64(body.data, body.size);
   }
 }

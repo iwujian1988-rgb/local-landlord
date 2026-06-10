@@ -1,9 +1,10 @@
-import { Controller, Post, Get, Delete, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { DocumentService } from './document.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -12,22 +13,30 @@ export class DocumentController {
 
   @Post('rooms/:roomId/documents')
   async upload(
+    @CurrentUser() user: any,
     @Param('roomId', ParseIntPipe) roomId: number,
     @Body() dto: UploadDocumentDto,
   ) {
+    await this.documentService.verifyRoomOwnership(roomId, user.id);
     return this.documentService.upload(roomId, dto);
   }
 
   @Get('rooms/:roomId/documents')
   async findByRoom(
+    @CurrentUser() user: any,
     @Param('roomId', ParseIntPipe) roomId: number,
     @Query('type') type?: number,
   ) {
+    await this.documentService.verifyRoomOwnership(roomId, user.id);
     return this.documentService.findByRoom(roomId, type);
   }
 
   @Delete('documents/:id')
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  async remove(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    await this.documentService.verifyDocumentOwnership(id, user.id);
     await this.documentService.remove(id);
     return null;
   }

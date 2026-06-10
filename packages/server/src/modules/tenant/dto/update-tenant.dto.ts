@@ -1,13 +1,15 @@
-import { IsString, IsNumber, IsOptional, Min, Max, IsDateString } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max, IsDateString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateTenantDto {
   @IsOptional()
   @IsString()
+  @MaxLength(32)
   name?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(20)
   phone?: string;
 
   @IsOptional()
@@ -20,7 +22,7 @@ export class UpdateTenantDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(0)
   @Max(31)
   @Type(() => Number)
   rentDay?: number;
@@ -34,4 +36,9 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  status?: number;
 }

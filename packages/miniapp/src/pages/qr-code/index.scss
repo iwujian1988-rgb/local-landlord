@@ -155,7 +155,9 @@
 
 .qr-form-input {
   width: 100%;
-  padding: 16px;
+  height: 80px;
+  padding: 0 16px;
+  line-height: 80px;
   border: 2px solid var(--bg-soft);
   border-radius: 16px;
   font-size: 17px;
@@ -164,6 +166,7 @@
   color: var(--text-primary);
   transition: all 0.3s ease;
   outline: none;
+  box-sizing: border-box;
 }
 
 .qr-form-input:focus {
@@ -228,3 +231,12 @@
   color: var(--text-secondary);
   border: 2px solid var(--bg-soft);
 }
+
+.qr-scroll { flex: 1; }
+.qr-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+.qr-card-action { flex: 1; padding: 8px; border-radius: 12px; background: var(--bg-soft); text-align: center; font-size: var(--font-sm); font-weight: 600; color: var(--text-secondary); }
+.qr-card-action:active { opacity: 0.8; }
+.qr-card-action-text { font-size: var(--font-sm); font-weight: 600; color: var(--text-secondary); }
+.qr-upload-btn-text { font-size: var(--font-sm); font-weight: 700; color: var(--text-secondary); }
+.qr-action-btn-text { font-size: var(--font-base); font-weight: 700; }
+.secondary-text { color: var(--text-secondary) !important; }

@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import dayjs from 'dayjs';
+import { Repository, In } from 'typeorm';
 import { Room } from './room.entity';
 import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
@@ -9,58 +8,6 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { Bill } from '../bill/bill.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
-
-/**
- * computeRoomDisplayStatus - compute display status based on room status, contract dates, rentDay
- * Status codes:
- *   0: vacant
- *   1: rented
- *   2: expiring (contract end < 30 days)
- *   3: overdue (today > rentDay)
- */
-export function computeRoomDisplayStatus(
-  roomStatus: number,
-  contractEndDate: string | null,
-  rentDay: number | undefined,
-): number {
-  if (roomStatus === 0) return 0;
-
-  if (roomStatus === 1) {
-    if (rentDay !== undefined && rentDay !== null) {
-      const today = dayjs();
-      let dueDay: number;
-
-      if (rentDay === 0) {
-        dueDay = today.endOf('month').date();
-      } else {
-        dueDay = rentDay;
-      }
-
-      if (today.date() > dueDay) {
-        return 3;
-      }
-    }
-
-    if (contractEndDate) {
-      const endDate = dayjs(contractEndDate);
-      const now = dayjs();
-      const diffDays = endDate.diff(now, 'day');
-      if (diffDays <= 30) return 2;
-    }
-
-    return 1;
-  }
-
-  return roomStatus;
-}
-
-export interface RoomStatusSummary {
-  total: number;
-  vacant: number;
-  rented: number;
-  expiring: number;
-  overdue: number;
-}
 
 @Injectable()
 export class RoomService {
@@ -98,11 +45,97 @@ export class RoomService {
     }
   }
 
-  /** Get rooms under a property (supports status filter) */
+  /** Get all rooms for a landlord across all properties */
+  async findAllForLandlord(landlordId: number): Promise<any[]> {
+    const properties = await this.propertyRepository.find({ where: { landlordId } });
+    if (properties.length === 0) return [];
+
+    const propertyIds = properties.map(p => p.id);
+    const propertyMap = new Map<number, Property>();
+    for (const p of properties) propertyMap.set(p.id, p);
+
+    const rooms = await this.roomRepository.find({
+      where: { propertyId: In(propertyIds) },
+      order: { createdAt: 'DESC' },
+    });
+    if (rooms.length === 0) return [];
+
+    const roomIds = rooms.map(r => r.id);
+
+    const tenants = await this.tenantRepository.find({
+      where: { roomId: In(roomIds), status: 1 },
+    });
+    const tenantMap = new Map<number, Tenant>();
+    for (const t of tenants) tenantMap.set(t.roomId, t);
+
+    const feeItems = await this.feeItemRepository.find({
+      where: { roomId: In(roomIds) },
+      order: { sortOrder: 'ASC' },
+    });
+    const feeMap = new Map<number, FeeItem[]>();
+    for (const f of feeItems) {
+      const list = feeMap.get(f.roomId) || [];
+      list.push(f);
+      feeMap.set(f.roomId, list);
+    }
+
+    const result: any[] = [];
+    for (const room of rooms) {
+      const tenant = tenantMap.get(room.id);
+      const prop = propertyMap.get(room.propertyId);
+      const fees = (feeMap.get(room.id) || []).map(f => ({
+        id: f.id,
+        name: f.name,
+        type: f.type === 0 ? 'fixed' : 'manual',
+        amount: Number(f.amount) || 0,
+        enabled: !!f.enabled,
+        isRent: !!f.isRent,
+      }));
+
+      const rentDay = tenant?.rentDay ?? 10;
+      const today = new Date().getDate();
+      const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const currentBill = await this.billRepository.findOne({ where: { roomId: room.id, period: monthStr } });
+
+      let overdueDays = 0;
+      if (room.status === 1 && currentBill && currentBill.status !== 1 && today > rentDay) {
+        overdueDays = today - rentDay;
+      }
+
+      let displayStatus = 'vacant';
+      if (room.status === 1) {
+        if (overdueDays > 0) displayStatus = 'overdue';
+        else if (rentDay - today >= 1 && rentDay - today <= 3) displayStatus = 'approaching';
+        else displayStatus = 'rented';
+      }
+
+      result.push({
+        id: room.id,
+        name: room.name,
+        rent: Number(room.rent) || 0,
+        status: room.status,
+        images: room.images || [],
+        propertyId: room.propertyId,
+        propertyName: prop?.name || '',
+        tenantName: tenant?.name || '',
+        tenantId: tenant?.id || null,
+        rentDay,
+        displayStatus,
+        overdueDays,
+        feeItems: fees,
+      });
+    }
+
+    return result;
+  }
+
+  /** Get rooms under a property (API contract shape with propertyName, totalAmount, string displayStatus) */
   async findByProperty(
     propertyId: number,
     status?: number,
-  ): Promise<{ list: Room[]; summary: RoomStatusSummary }> {
+  ): Promise<any> {
+    const property = await this.propertyRepository.findOne({ where: { id: propertyId } });
+
     const where: any = { propertyId };
     if (status !== undefined) {
       where.status = status;
@@ -111,46 +144,79 @@ export class RoomService {
     const rooms = await this.roomRepository.find({
       where,
       order: { createdAt: 'DESC' },
-      relations: ['tenants'],
     });
 
+    const roomIds = rooms.map(r => r.id);
+
+    const tenants = roomIds.length > 0
+      ? await this.tenantRepository.find({ where: { roomId: In(roomIds), status: 1 } })
+      : [];
+    const tenantMap = new Map<number, Tenant>();
+    for (const t of tenants) tenantMap.set(t.roomId, t);
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const today = now.getDate();
+
+    const currentBills = roomIds.length > 0
+      ? await this.billRepository.find({ where: { roomId: In(roomIds), period: monthStr } })
+      : [];
+    const billMap = new Map<number, Bill>();
+    for (const b of currentBills) billMap.set(b.roomId, b);
+
     const enrichedRooms: any[] = [];
+    let vacant = 0, rented = 0, overdue = 0;
+
     for (const room of rooms) {
-      const activeTenant = room.tenants?.find(t => t.status === 1) || null;
-      const contractEndDate = activeTenant?.contractEndDate || null;
-      const rentDay = activeTenant?.rentDay;
+      const tenant = tenantMap.get(room.id);
+      const bill = billMap.get(room.id);
+      const rentDay = tenant?.rentDay ?? 10;
+      let overdueDays = 0;
+
+      let displayStatus = 'vacant';
+      if (room.status === 1) {
+        const billOverdue = bill && bill.status !== 1 && today > rentDay;
+        if (billOverdue) {
+          displayStatus = 'overdue';
+          overdueDays = today - rentDay;
+        } else if (rentDay - today >= 1 && rentDay - today <= 3) {
+          displayStatus = 'approaching';
+        } else {
+          displayStatus = 'rented';
+        }
+      }
+
+      if (displayStatus === 'vacant') vacant++;
+      else if (displayStatus === 'overdue') overdue++;
+      else rented++;
 
       enrichedRooms.push({
-        ...room,
-        displayStatus: computeRoomDisplayStatus(room.status, contractEndDate, rentDay),
-        activeTenant: activeTenant
-          ? {
-              id: activeTenant.id,
-              name: activeTenant.name,
-              phone: activeTenant.phone,
-              moveInDate: activeTenant.moveInDate,
-              contractEndDate: activeTenant.contractEndDate,
-            }
-          : null,
+        id: room.id,
+        name: room.name,
+        rent: Number(room.rent) || 0,
+        status: room.status,
+        images: room.images || [],
+        displayStatus,
+        tenantName: tenant?.name || '',
+        rentDay,
+        overdueDays,
+        contractEndDate: tenant?.contractEndDate || '',
+        totalAmount: bill ? Number(bill.totalAmount) || 0 : 0,
       });
     }
 
-    const summary: RoomStatusSummary = {
-      total: enrichedRooms.length,
-      vacant: enrichedRooms.filter(r => r.displayStatus === 0).length,
-      rented: enrichedRooms.filter(r => r.displayStatus === 1).length,
-      expiring: enrichedRooms.filter(r => r.displayStatus === 2).length,
-      overdue: enrichedRooms.filter(r => r.displayStatus === 3).length,
+    return {
+      list: enrichedRooms,
+      summary: { total: rooms.length, vacant, rented, overdue },
+      propertyName: property?.name || '',
     };
-
-    return { list: enrichedRooms, summary };
   }
 
   /** Get room detail (aggregated property + tenant + feeItems + latestBill) */
   async findOne(id: number): Promise<any> {
     const room = await this.roomRepository.findOne({
       where: { id },
-      relations: ['property', 'property.landlord'],
+      relations: ['property'],
     });
     if (!room) throw new NotFoundException('房间不存在');
 
@@ -168,20 +234,74 @@ export class RoomService {
     const latestBill = await this.billRepository.findOne({
       where: { roomId: id },
       order: { createdAt: 'DESC' },
-      relations: ['items'],
     });
 
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentBill = await this.billRepository.findOne({ where: { roomId: id, period: monthStr } });
+    const rentDay = activeTenant?.rentDay ?? 10;
+    const today = now.getDate();
+    let overdueDays = 0;
+    if (room.status === 1 && currentBill && currentBill.status !== 1 && today > rentDay) {
+      overdueDays = today - rentDay;
+    }
+
+    let displayStatus = 'vacant';
+    if (room.status === 1) {
+      if (overdueDays > 0) displayStatus = 'overdue';
+      else if (rentDay - today >= 1 && rentDay - today <= 3) displayStatus = 'approaching';
+      else displayStatus = 'rented';
+    }
+
     return {
-      ...room,
-      displayStatus: computeRoomDisplayStatus(
-        room.status,
-        activeTenant?.contractEndDate || null,
-        activeTenant?.rentDay,
-      ),
-      activeTenant,
-      tenants,
-      feeItems,
-      latestBill,
+      id: room.id,
+      name: room.name,
+      rent: Number(room.rent) || 0,
+      status: room.status,
+      deposit: room.deposit || 0,
+      area: room.area || '',
+      floor: room.floor || '',
+      orientation: room.orientation || '',
+      facilities: room.facilities || [],
+      images: room.images || [],
+      note: room.note || '',
+      availableDate: room.availableDate || null,
+      propertyId: room.propertyId,
+      property: room.property ? { id: room.property.id, name: room.property.name } : null,
+      tenant: activeTenant ? {
+        id: activeTenant.id,
+        name: activeTenant.name,
+        phone: activeTenant.phone || '',
+        rentDay: activeTenant.rentDay,
+        contractEndDate: activeTenant.contractEndDate || '',
+        moveInDate: activeTenant.moveInDate || '',
+        deposit: activeTenant.deposit || 0,
+        note: activeTenant.note || '',
+      } : null,
+      feeItems: feeItems.map(f => ({
+        id: f.id,
+        name: f.name,
+        type: f.type === 0 ? 'fixed' : 'manual',
+        amount: Number(f.amount) || 0,
+        enabled: !!f.enabled,
+        isRent: !!f.isRent,
+      })),
+      historyTenants: tenants
+        .filter(t => t.status !== 1)
+        .map(t => ({
+          id: t.id,
+          name: t.name,
+          phone: t.phone || '',
+          moveInDate: t.moveInDate || '',
+          moveOutDate: t.moveOutDate || '',
+        })),
+      latestBill: latestBill ? {
+        id: latestBill.id,
+        period: latestBill.period,
+        totalAmount: Number(latestBill.totalAmount) || 0,
+        status: latestBill.status,
+      } : null,
+      displayStatus,
     };
   }
 
@@ -195,11 +315,38 @@ export class RoomService {
     return this.roomRepository.save(room);
   }
 
-  /** Update room */
+  /** Update room (handles checkout action) */
   async update(id: number, dto: UpdateRoomDto): Promise<Room> {
     const room = await this.roomRepository.findOne({ where: { id } });
     if (!room) throw new NotFoundException('房间不存在');
-    Object.assign(room, dto);
+
+    if (dto.action === 'checkout') {
+      room.status = 0;
+      await this.roomRepository.save(room);
+      const activeTenant = await this.tenantRepository.findOne({
+        where: { roomId: id, status: 1 },
+      });
+      if (activeTenant) {
+        activeTenant.status = 0;
+        activeTenant.moveOutDate = new Date().toISOString().slice(0, 10);
+        await this.tenantRepository.save(activeTenant);
+      }
+      return room;
+    }
+
+    const { action, ...rest } = dto as any;
+
+    // Prevent setting status=1 (rented) without an active tenant
+    if (rest.status === 1 && room.status !== 1) {
+      const activeTenant = await this.tenantRepository.findOne({
+        where: { roomId: id, status: 1 },
+      });
+      if (!activeTenant) {
+        throw new BadRequestException('房间没有在租租客，无法标记为已租');
+      }
+    }
+
+    Object.assign(room, rest);
     return this.roomRepository.save(room);
   }
 

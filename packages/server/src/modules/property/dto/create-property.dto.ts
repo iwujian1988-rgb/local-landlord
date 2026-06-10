@@ -1,13 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional, IsInt } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
 
 export class CreatePropertyDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(64)
   name: string;
-
-  @IsInt()
-  @IsNotEmpty()
-  landlordId: number;
 
   @IsOptional()
   @IsString()

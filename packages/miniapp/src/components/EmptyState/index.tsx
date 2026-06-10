@@ -21,10 +21,7 @@ export default function EmptyState({
       {icon && <View className="empty-icon">{icon}</View>}
       {!icon && (
         <View className="empty-icon-default">
-          <svg width="52" height="52" viewBox="0 0 24 24" stroke="var(--accent-hover)" strokeWidth="1.8" fill="none" opacity="0.5">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            <polyline points="9 22 9 12 15 12 15 22" />
-          </svg>
+          <Text style={{ fontSize: '40px', lineHeight: 1, color: 'var(--accent-hover)', opacity: 0.5 }}>🏠</Text>
         </View>
       )}
       <Text className="empty-title">{title}</Text>

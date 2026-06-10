@@ -1,7 +1,7 @@
 import { View, Text, Input } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useState } from 'react';
-import { API_BASE } from '../../config';
+import { uploadFile } from '../../services/upload';
 import './index.scss';
 
 export interface UploadFile {
@@ -41,7 +41,7 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!selectedFile) {
       Taro.showToast({ title: '请先选择图片', icon: 'none' });
       return;
@@ -49,28 +49,15 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
     if (uploading) return;
 
     setUploading(true);
-    Taro.uploadFile({
-      url: `${API_BASE}/upload`,
-      filePath: selectedFile.tempFilePath,
-      name: 'file',
-      header: { Authorization: `Bearer ${Taro.getStorageSync('auth_token') || ''}` },
-      success: (uploadRes) => {
-        try {
-          const data = JSON.parse(uploadRes.data);
-          const serverUrl = data.data?.url || data.data?.fileID || data.url || '';
-          onUpload({ ...selectedFile, serverUrl }, note);
-          reset();
-        } catch {
-          Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
-        }
-      },
-      fail: () => {
-        Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
-      },
-      complete: () => {
-        setUploading(false);
-      },
-    });
+    try {
+      const result = await uploadFile(selectedFile.tempFilePath);
+      onUpload({ ...selectedFile, serverUrl: result.url }, note);
+      reset();
+    } catch {
+      Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleCancel = () => {
@@ -95,20 +82,13 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
         <View className="upload-actions-row">
           <View className="upload-action" onClick={() => handleChooseImage(['camera'])}>
             <View className="upload-action-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" stroke="var(--text-primary)" strokeWidth="1.8" fill="none">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                <circle cx="12" cy="13" r="4" />
-              </svg>
+              <Text style={{ fontSize: '48px', lineHeight: 1 }}>📷</Text>
             </View>
             <Text className="upload-action-label">拍照</Text>
           </View>
           <View className="upload-action" onClick={() => handleChooseImage(['album'])}>
             <View className="upload-action-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" stroke="var(--text-primary)" strokeWidth="1.8" fill="none">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
+              <Text style={{ fontSize: '28px', lineHeight: 1, color: 'var(--text-primary)' }}>🖼</Text>
             </View>
             <Text className="upload-action-label">相册</Text>
           </View>

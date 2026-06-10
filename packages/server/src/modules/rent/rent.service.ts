@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { SingleCharge } from './single-charge.entity';
@@ -10,11 +10,37 @@ import { Property } from '../property/property.entity';
 import { CreateSingleChargeDto } from './dto/create-single-charge.dto';
 import { RemindTenantDto } from './dto/remind-tenant.dto';
 
+const RECORD_TYPE_MAP: Record<number, string> = {
+  0: 'bill_sent', 1: 'bill_paid', 2: 'single_charge', 3: 'single_paid', 4: 'reminder',
+};
+
+const DOT_COLOR_MAP: Record<number, string> = {
+  0: 'accent', 1: 'green', 2: 'orange', 3: 'green', 4: 'accent',
+};
+
+export interface PendingEntry {
+  roomId: number;
+  roomName: string;
+  propertyName: string;
+  propertyId: number;
+  rent: number;
+  tenantName: string;
+  tenantId: number | null;
+  contractEndDate: string;
+  rentDay: number;
+  billId: number | null;
+  billStatus: number;
+  totalAmount: number;
+  overdueDays: number;
+  daysUntil: number;
+  hasOverdue: boolean;
+}
+
 export interface PendingRentGroup {
-  today: any[];
-  expiringSoon: any[];
-  overdue: any[];
-  completed: any[];
+  today: PendingEntry[];
+  approaching: PendingEntry[];
+  overdue: PendingEntry[];
+  completed: PendingEntry[];
 }
 
 @Injectable()
@@ -34,118 +60,118 @@ export class RentService {
     private readonly propertyRepository: Repository<Property>,
   ) {}
 
+  /** Verify room belongs to landlord */
+  async verifyRoomOwnership(roomId: number, landlordId: number): Promise<void> {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+    const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
+    if (!property || property.landlordId !== landlordId) {
+      throw new ForbiddenException('无权访问该房间');
+    }
+  }
+
   /**
-   * Pending rent list: grouped by today/expiringSoon/overdue/completed
-   * Optimized with batch loading instead of N+1 queries.
+   * Pending rent list: grouped by today/approaching/overdue/completed
+   * Bucket rules per API-CONTRACT.md:
+   *   today       — today == rentDay, current bill unpaid
+   *   approaching — rentDay - today ∈ [1, 3], current bill unpaid
+   *   overdue     — today > rentDay (current bill unpaid) OR has prior-period unpaid bills
+   *   completed   — current bill paid
    */
   async getPendingRent(landlordId: number): Promise<PendingRentGroup> {
-    // 1. Get all rented rooms for this landlord in one query
-    const rentedRooms = await this.roomRepository
-      .createQueryBuilder('room')
-      .innerJoin('room.property', 'property')
-      .where('property.landlordId = :landlordId', { landlordId })
-      .andWhere('room.status = 1')
-      .getMany();
+    const properties = await this.propertyRepository.find({ where: { landlordId } });
+    if (properties.length === 0) {
+      return { today: [], approaching: [], overdue: [], completed: [] };
+    }
+    const propertyMap = new Map<number, Property>();
+    for (const p of properties) propertyMap.set(p.id, p);
 
+    const propertyIds = properties.map(p => p.id);
+    const rentedRooms = await this.roomRepository.find({
+      where: { propertyId: In(propertyIds), status: 1 },
+    });
     if (rentedRooms.length === 0) {
-      return { today: [], expiringSoon: [], overdue: [], completed: [] };
+      return { today: [], approaching: [], overdue: [], completed: [] };
     }
 
     const roomIds = rentedRooms.map(r => r.id);
 
-    // 2. Batch load all active tenants for these rooms
     const allTenants = await this.tenantRepository.find({
       where: { roomId: In(roomIds), status: 1 },
     });
     const tenantMap = new Map<number, Tenant>();
-    for (const t of allTenants) {
-      tenantMap.set(t.roomId, t);
-    }
+    for (const t of allTenants) tenantMap.set(t.roomId, t);
 
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const todayDate = now.getDate();
 
-    // 3. Batch load current month bills for these rooms
     const currentBills = await this.billRepository.find({
       where: { roomId: In(roomIds), period: monthStr },
-      relations: ['items'],
     });
     const currentBillMap = new Map<number, Bill>();
-    for (const b of currentBills) {
-      currentBillMap.set(b.roomId, b);
-    }
+    for (const b of currentBills) currentBillMap.set(b.roomId, b);
 
-    // 4. Batch load all unpaid bills for overdue detection
     const unpaidBills = await this.billRepository.find({
       where: { roomId: In(roomIds), status: 0 },
     });
-    const overdueBillsMap = new Map<number, Bill[]>();
+    const priorOverdueMap = new Map<number, boolean>();
     for (const b of unpaidBills) {
-      if (b.period < monthStr) {
-        const list = overdueBillsMap.get(b.roomId) || [];
-        list.push(b);
-        overdueBillsMap.set(b.roomId, list);
-      }
+      if (b.period < monthStr) priorOverdueMap.set(b.roomId, true);
     }
 
-    const todayList: any[] = [];
-    const expiringSoonList: any[] = [];
-    const overdueList: any[] = [];
-    const completedList: any[] = [];
+    const todayList: PendingEntry[] = [];
+    const approachingList: PendingEntry[] = [];
+    const overdueList: PendingEntry[] = [];
+    const completedList: PendingEntry[] = [];
 
     for (const room of rentedRooms) {
-      const activeTenant = tenantMap.get(room.id) || null;
-      const currentBill = currentBillMap.get(room.id) || null;
-      const trulyOverdue = overdueBillsMap.get(room.id) || [];
+      const tenant = tenantMap.get(room.id) || null;
+      const bill = currentBillMap.get(room.id) || null;
+      const prop = propertyMap.get(room.propertyId);
+      const rentDay = tenant?.rentDay ?? 10;
+      const hasPriorOverdue = priorOverdueMap.get(room.id) || false;
 
-      const rentEntry = {
+      let overdueDays = 0;
+      if (todayDate > rentDay) overdueDays = todayDate - rentDay;
+
+      let daysUntil = 0;
+      if (todayDate < rentDay) daysUntil = rentDay - todayDate;
+
+      const entry: PendingEntry = {
         roomId: room.id,
         roomName: room.name,
-        rent: room.rent,
-        tenantName: activeTenant?.name || '',
-        tenantId: activeTenant?.id || null,
-        contactEndDate: activeTenant?.contractEndDate || '',
-        rentDay: activeTenant?.rentDay || 10,
-        billId: currentBill?.id || null,
-        billStatus: currentBill?.status ?? null,
-        totalAmount: currentBill?.totalAmount || 0,
-        hasOverdue: trulyOverdue.length > 0,
+        propertyName: prop?.name || '',
+        propertyId: room.propertyId,
+        rent: Number(room.rent) || 0,
+        tenantName: tenant?.name || '',
+        tenantId: tenant?.id || null,
+        contractEndDate: tenant?.contractEndDate || '',
+        rentDay,
+        billId: bill?.id || null,
+        billStatus: bill?.status ?? 0,
+        totalAmount: Number(bill?.totalAmount) || Number(room.rent) || 0,
+        overdueDays,
+        daysUntil,
+        hasOverdue: hasPriorOverdue,
       };
 
-      if (currentBill && currentBill.status === 1) {
-        completedList.push(rentEntry);
-      } else if (trulyOverdue.length > 0) {
-        overdueList.push(rentEntry);
-      } else if (currentBill && currentBill.status === 0) {
-        const rentDay = activeTenant?.rentDay || 10;
-        const dayOfMonth = now.getDate();
-        if (dayOfMonth === rentDay) {
-          todayList.push(rentEntry);
-        } else if (dayOfMonth > rentDay) {
-          overdueList.push(rentEntry);
-        } else {
-          todayList.push(rentEntry);
-        }
+      if (bill && bill.status === 1) {
+        completedList.push(entry);
+      } else if (hasPriorOverdue || todayDate > rentDay) {
+        overdueList.push(entry);
+      } else if (todayDate === rentDay) {
+        todayList.push(entry);
+      } else if (daysUntil >= 1 && daysUntil <= 3) {
+        approachingList.push(entry);
       } else {
-        const contractEnd = activeTenant?.contractEndDate;
-        if (contractEnd) {
-          const diffDays = Math.ceil(
-            (new Date(contractEnd).getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          if (diffDays <= 30 && diffDays > 0) {
-            expiringSoonList.push(rentEntry);
-          } else {
-            todayList.push(rentEntry);
-          }
-        } else {
-          todayList.push(rentEntry);
-        }
+        // Not due yet (daysUntil > 3), don't show in any bucket
       }
     }
 
     return {
       today: todayList,
-      expiringSoon: expiringSoonList,
+      approaching: approachingList,
       overdue: overdueList,
       completed: completedList,
     };
@@ -177,13 +203,14 @@ export class RentService {
     return this.singleChargeRepository.save(charge);
   }
 
-  /** Confirm single charge */
-  async confirmSingleCharge(id: number): Promise<SingleCharge> {
+  /** Confirm single charge with ownership check */
+  async confirmSingleCharge(id: number, landlordId: number): Promise<SingleCharge> {
     const charge = await this.singleChargeRepository.findOne({
       where: { id },
       relations: ['tenant'],
     });
     if (!charge) throw new NotFoundException('收款记录不存在');
+    await this.verifyRoomOwnership(charge.roomId, landlordId);
 
     if (charge.status === 1) {
       throw new BadRequestException('该收款已确认');
@@ -205,13 +232,21 @@ export class RentService {
     return saved;
   }
 
-  /** Get rent records for a room */
-  async getRecords(roomId: number): Promise<RentRecord[]> {
-    return this.rentRecordRepository.find({
+  /** Get rent records for a room (API contract shape with type as string, dotColor, time) */
+  async getRecords(roomId: number) {
+    const records = await this.rentRecordRepository.find({
       where: { roomId },
-      relations: ['bill'],
       order: { createdAt: 'DESC' },
     });
+    return records.map(r => ({
+      id: r.id,
+      type: RECORD_TYPE_MAP[r.type] || 'other',
+      title: r.title || '',
+      description: r.description || '',
+      amount: Number(r.amount) || 0,
+      time: r.createdAt ? r.createdAt.toISOString().slice(0, 16).replace('T', ' ') : '',
+      dotColor: DOT_COLOR_MAP[r.type] || 'accent',
+    }));
   }
 
   /** Remind tenant (create reminder record type=4) */
@@ -219,11 +254,14 @@ export class RentService {
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
     if (!room) throw new NotFoundException('房间不存在');
 
+    const title = dto.title || `催缴提醒-${dto.month || ''}`;
+    const description = dto.description || (dto.tenantId ? `租客ID: ${dto.tenantId}` : '');
+
     const rentRecord = this.rentRecordRepository.create({
       roomId,
       type: 4,
-      title: dto.title,
-      description: dto.description || '',
+      title,
+      description,
       amount: 0,
     });
     return this.rentRecordRepository.save(rentRecord);

@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { extname, join } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const multer = require('multer');
@@ -10,6 +10,10 @@ const allowedMimes = [
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
+const allowedBase64Mimes = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
 ];
 
 @Injectable()
@@ -105,6 +109,83 @@ export class UploadService {
         },
       );
     });
+  }
+
+  /**
+   * Handle base64-encoded file upload (from callContainer)
+   */
+  async uploadBase64(data: string, size?: number) {
+    if (!data || !data.startsWith('data:')) {
+      throw new BadRequestException('无效的 base64 数据');
+    }
+
+    const match = data.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!match) {
+      throw new BadRequestException('不支持的文件类型，仅支持图片');
+    }
+
+    const [, mimeType, base64Data] = match;
+    if (!allowedBase64Mimes.includes(mimeType)) {
+      throw new BadRequestException(`不支持的图片格式: ${mimeType}`);
+    }
+
+    const ext = mimeType.split('/')[1] === 'jpeg' ? '.jpg' : `.${mimeType.split('/')[1]}`;
+    const filename = `${uuidv4()}${ext}`;
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    if (this.uploadMode === 'cloudbase') {
+      // Upload to COS
+      const key = `uploads/${filename}`;
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const COS = require('cos-nodejs-sdk-v5');
+      const cos = new COS({
+        SecretId: process.env.COS_SECRET_ID,
+        SecretKey: process.env.COS_SECRET_KEY,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        cos.putObject(
+          {
+            Bucket: this.cosBucket,
+            Region: this.cosRegion,
+            Key: key,
+            Body: buffer,
+            ContentLength: buffer.length,
+          },
+          (err: Error | null) => {
+            if (err) {
+              this.logger.error('COS base64 upload failed', err);
+              reject(new BadRequestException('文件上传到云存储失败'));
+              return;
+            }
+            resolve();
+          },
+        );
+      });
+
+      return {
+        filename,
+        originalname: filename,
+        mimetype: mimeType,
+        size: size || buffer.length,
+        url: this.getFileUrl(filename),
+      };
+    }
+
+    // Local mode: save to disk
+    const uploadDir = join(process.cwd(), 'uploads');
+    if (!existsSync(uploadDir)) {
+      mkdirSync(uploadDir, { recursive: true });
+    }
+    writeFileSync(join(uploadDir, filename), buffer);
+
+    return {
+      filename,
+      originalname: filename,
+      mimetype: mimeType,
+      size: size || buffer.length,
+      url: this.getFileUrl(filename),
+    };
   }
 
   async formatUploadResponse(file: any) {

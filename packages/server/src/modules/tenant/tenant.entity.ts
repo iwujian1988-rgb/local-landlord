@@ -20,8 +20,8 @@ export class Tenant {
   @Column({ name: 'move_in_date', type: 'date' })
   moveInDate: string;
 
-  @Column({ name: 'contract_end_date', type: 'date' })
-  contractEndDate: string;
+  @Column({ name: 'contract_end_date', type: 'date', nullable: true })
+  contractEndDate: string | null;
 
   @Column({ name: 'rent_day', type: 'tinyint', unsigned: true, default: 10 })
   rentDay: number;

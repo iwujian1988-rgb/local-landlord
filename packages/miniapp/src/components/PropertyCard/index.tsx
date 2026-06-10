@@ -1,15 +1,16 @@
 import { View, Text, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import type { Property } from '@local-landlord/shared';
+import Icon from '../Icon';
 import './index.scss';
 
 interface PropertyCardProps {
   property: Property;
   onClick?: () => void;
-  onLongPress?: () => void;
+  onDelete?: (id: number) => void;
 }
 
-export default function PropertyCard({ property, onClick, onLongPress }: PropertyCardProps) {
+export default function PropertyCard({ property, onClick, onDelete }: PropertyCardProps) {
   const {
     id,
     name,
@@ -27,27 +28,26 @@ export default function PropertyCard({ property, onClick, onLongPress }: Propert
   };
 
   return (
-    <View className="property-card" onClick={onClick} onLongPress={onLongPress}>
+    <View className="property-card" onClick={onClick}>
       <View className="property-header">
         {coverImage ? (
           <Image className="property-thumb" src={coverImage} mode="aspectFill" />
         ) : (
           <View className="property-thumb property-thumb-placeholder">
-            <svg width="28" height="28" viewBox="0 0 24 24" stroke="#B5A99A" strokeWidth="1.8" fill="none">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
+            <Icon name="building" size={40} color="var(--text-hint)" />
           </View>
         )}
         <View className="property-info">
           <Text className="property-name">{name}</Text>
           {address && <Text className="property-address">{address}</Text>}
         </View>
-        <View className="property-edit-btn" onClick={(e: any) => { e.stopPropagation(); handleEdit(); }} onLongPress={(e: any) => { e.stopPropagation(); handleEdit(); }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" stroke="var(--text-muted)" strokeWidth="1.8" fill="none">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
+        <View className="property-actions">
+          <View className="property-action-btn" onClick={(e: any) => { e.stopPropagation(); onDelete?.(id); }}>
+            <Icon name="trash" size={24} color="var(--text-hint)" />
+          </View>
+          <View className="property-action-btn" onClick={(e: any) => { e.stopPropagation(); handleEdit(); }}>
+            <Icon name="pencil" size={24} color="var(--text-hint)" />
+          </View>
         </View>
       </View>
       <View className="property-stats">

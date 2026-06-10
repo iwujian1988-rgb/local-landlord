@@ -1,15 +1,22 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateRoomDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(32)
   name: string;
 
   @IsNumber()
   @Min(0)
+  @Max(999999)
   @Type(() => Number)
   rent: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  status?: number;
 
   @IsOptional()
   @IsString()

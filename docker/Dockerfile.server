@@ -10,5 +10,7 @@ COPY . .
 RUN pnpm --filter @local-landlord/admin build
 RUN pnpm --filter @local-landlord/server build
 RUN cp -r packages/admin/dist packages/server/public
-EXPOSE 3000
+EXPOSE 80
+ENV PORT=80
+ENV NODE_ENV=production
 CMD ["node", "packages/server/dist/main.js"]

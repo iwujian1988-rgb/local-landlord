@@ -9,6 +9,7 @@ import { RentRecord } from '../rent/rent-record.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
+import { FeeItem } from '../fee/fee-item.entity';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 
@@ -27,6 +28,8 @@ export class BillService {
     private readonly roomRepository: Repository<Room>,
     @InjectRepository(Property)
     private readonly propertyRepository: Repository<Property>,
+    @InjectRepository(FeeItem)
+    private readonly feeItemRepository: Repository<FeeItem>,
     @InjectEntityManager()
     private readonly entityManager: EntityManager,
   ) {}
@@ -50,6 +53,10 @@ export class BillService {
 
   /** Create bill (wrapped in transaction) */
   async create(roomId: number, dto: CreateBillDto): Promise<Bill> {
+    if (!dto.items || dto.items.length === 0) {
+      throw new BadRequestException('账单至少需要一个费用项');
+    }
+
     return this.entityManager.transaction(async (manager) => {
       const tenant = await manager.findOne(Tenant, {
         where: { roomId, status: 1 },
@@ -143,13 +150,38 @@ export class BillService {
     return this.billRepository.save(bill);
   }
 
-  /** Get bills by room */
-  async findByRoom(roomId: number): Promise<Bill[]> {
-    return this.billRepository.find({
-      where: { roomId },
-      relations: ['items', 'tenant'],
-      order: { createdAt: 'DESC' },
+  /** Get current-period bill items for a room (API contract shape) */
+  async findByRoom(roomId: number): Promise<{ roomName: string; tenantName: string; billItems: any[] }> {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+
+    const tenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const currentBill = await this.billRepository.findOne({
+      where: { roomId, period: monthStr },
+      relations: ['items'],
     });
+
+    const feeItems = await this.feeItemRepository.find({ where: { roomId }, order: { sortOrder: 'ASC' } });
+
+    const billItems = feeItems.map(fee => {
+      const matchedBillItem = currentBill?.items?.find(bi => bi.feeName === fee.name);
+      return {
+        name: fee.name,
+        amount: matchedBillItem ? Number(matchedBillItem.amount) : (fee.enabled ? Number(fee.amount) || 0 : 0),
+        type: fee.type === 0 ? 'fixed' : 'manual',
+        feeId: fee.id,
+      };
+    });
+
+    return {
+      roomName: room.name,
+      tenantName: tenant?.name || '',
+      billItems,
+    };
   }
 
   /**

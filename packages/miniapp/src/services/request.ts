@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro';
-import { API_BASE } from '../config';
+import { API_BASE_URL, CLOUD_ENV_ID, USE_CLOUD } from '../config';
 import { useAuthStore } from '../store/useAuthStore';
 
 export interface ApiResponse<T = unknown> {
@@ -20,13 +20,19 @@ const request = async <T = unknown>(
   };
 
   try {
-    const res = await Taro.request({
-      ...options,
-      url: `${API_BASE}${options.url}`,
-      header: mergedHeader,
-    });
+    let data: ApiResponse<T>;
 
-    const data = res.data as ApiResponse<T>;
+    if (USE_CLOUD) {
+      data = await callContainer<T>(options, mergedHeader);
+    } else {
+      const res = await Taro.request({
+        timeout: 5000,
+        ...options,
+        url: `${API_BASE_URL}${options.url}`,
+        header: mergedHeader,
+      });
+      data = res.data as ApiResponse<T>;
+    }
 
     if (data.code === 401) {
       Taro.removeStorageSync('auth_token');
@@ -37,10 +43,30 @@ const request = async <T = unknown>(
 
     return data;
   } catch (err: any) {
-    // Re-throw so pages can catch and show ErrorState
     throw err;
   }
 };
+
+function callContainer<T>(
+  options: Taro.request.Option,
+  header: Record<string, string>,
+): Promise<ApiResponse<T>> {
+  return new Promise((resolve, reject) => {
+    (wx as any).cloud.callContainer({
+      config: { env: CLOUD_ENV_ID },
+      path: `/api${options.url}`,
+      method: options.method || 'GET',
+      data: options.data,
+      header,
+      success: (res: any) => {
+        resolve(res.data as ApiResponse<T>);
+      },
+      fail: (err: any) => {
+        reject(new Error(err.errMsg || 'callContainer 请求失败'));
+      },
+    });
+  });
+}
 
 export const get = <T = unknown>(url: string, data?: Record<string, unknown>): Promise<ApiResponse<T>> =>
   request<T>({ url, method: 'GET', data });

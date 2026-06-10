@@ -13,6 +13,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class RoomController {
   constructor(private readonly roomService: RoomService) {}
 
+  @Get('rooms')
+  async findAllForLandlord(@CurrentUser() user: any) {
+    return this.roomService.findAllForLandlord(user.id);
+  }
+
   @Get('properties/:propertyId/rooms')
   async findByProperty(
     @CurrentUser() user: any,
@@ -20,7 +25,7 @@ export class RoomController {
     @Query('status') status?: number,
   ) {
     await this.roomService.verifyPropertyOwnership(propertyId, user.id);
-    return this.roomService.findByProperty(propertyId, status);
+    return this.roomService.findByProperty(propertyId, status !== undefined && !isNaN(status as any) ? status : undefined);
   }
 
   @Post('properties/:propertyId/rooms')

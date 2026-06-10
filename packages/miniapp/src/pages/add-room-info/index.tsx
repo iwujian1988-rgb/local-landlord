@@ -1,8 +1,8 @@
-import { View, Text, Input, Textarea, Picker } from '@tarojs/components';
+import { View, Text, Input, Textarea, Picker, Image } from '@tarojs/components';
 import Taro, { useDidHide } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import { useState, useCallback, useEffect } from 'react';
 import { get, post, put } from '../../services/request';
+import { uploadFile } from '../../services/upload';
 import './index.scss';
 
 const facilityOptions = ['有空调', '有独卫', '能做饭', '可养宠'];
@@ -27,6 +27,8 @@ export default function AddRoomInfo() {
 
   const [showMore, setShowMore] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -53,6 +55,7 @@ export default function AddRoomInfo() {
       const res = await get<any>(`/rooms/${rid}`);
       const found = res.data?.room || res.data;
       if (found && res.code === 0) {
+        Taro.setNavigationBarTitle({ title: '编辑房间信息' });
         setIsEdit(true);
         setName(found.name || '');
         setRent(String(found.rent || ''));
@@ -66,12 +69,20 @@ export default function AddRoomInfo() {
         setAvailableDate(found.availableDate && found.availableDate !== '随时可入住' ? found.availableDate : '');
         setAvailableType(found.availableDate && found.availableDate !== '随时可入住' ? 'date' : 'anytime');
         setPropertyId(found.propertyId || routePropertyId);
+        setImages(found.images || []);
       }
     } catch (err) {
       console.error('[AddRoomInfo] 加载房间失败:', err);
       Taro.showToast({ title: '加载失败', icon: 'none' });
     }
   };
+
+  // Set initial title for non-edit mode
+  useEffect(() => {
+    if (!roomId) {
+      Taro.setNavigationBarTitle({ title: '填写房间信息' });
+    }
+  }, []);
 
   // Check draft
   useEffect(() => {
@@ -92,10 +103,6 @@ export default function AddRoomInfo() {
         Taro.showToast({ title: '已恢复未完成的草稿', icon: 'none', duration: 2000 });
       }
     }
-  }, []);
-
-  const goBack = useCallback(() => {
-    Taro.navigateBack();
   }, []);
 
   useDidHide(() => {
@@ -128,7 +135,6 @@ export default function AddRoomInfo() {
       return;
     }
     setSaving(true);
-    const tempPhotos = Taro.getStorageSync('tempRoomPhotos') || [];
 
     const roomData: any = {
       name: name.trim(),
@@ -140,7 +146,7 @@ export default function AddRoomInfo() {
       floor: floor.trim() || undefined,
       orientation: orientation.trim() || undefined,
       facilities: selectedFacilities.length > 0 ? selectedFacilities : undefined,
-      images: tempPhotos.length > 0 ? tempPhotos : [],
+      images: images.length > 0 ? images : [],
       note: note.trim() || undefined,
     };
 
@@ -160,29 +166,84 @@ export default function AddRoomInfo() {
       Taro.removeStorageSync('tempRoomPhotos');
       setSaving(false);
 
-      Taro.showModal({
-        title: '房间已保存',
-        content: '要现在登记租客吗？',
-        confirmText: '现在登记',
-        cancelText: '稍后再说',
-        success: (res: any) => {
-          if (res.confirm) {
-            Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${savedRoomId}` });
-          } else {
-            Taro.navigateBack();
-          }
-        },
-      });
+      if (roomData.status === 1) {
+        // Room is rented — ask to register tenant
+        Taro.showModal({
+          title: '房间已保存',
+          content: '要现在登记租客吗？',
+          confirmText: '现在登记',
+          cancelText: '稍后再说',
+          success: (res: any) => {
+            if (res.confirm) {
+              Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${savedRoomId}` });
+            } else {
+              Taro.switchTab({ url: '/pages/rooms/index' });
+            }
+          },
+        });
+      } else {
+        // Room is vacant — just go back
+        Taro.showToast({ title: '房间已保存', icon: 'none', duration: 1500 });
+        setTimeout(() => {
+          Taro.switchTab({ url: '/pages/rooms/index' });
+        }, 1000);
+      }
     } catch (err) {
       console.error('[AddRoomInfo] 保存房间失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });
       setSaving(false);
     }
-  }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, deposit, area, floor, orientation, selectedFacilities, note]);
+  }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, deposit, area, floor, orientation, selectedFacilities, note, images]);
+
+  const handleAddImage = useCallback(() => {
+    if (uploading) return;
+    Taro.chooseImage({
+      count: 9 - images.length,
+      sizeType: ['compressed'],
+      sourceType: ['camera', 'album'],
+      success: (res) => {
+        setUploading(true);
+        const uploads = res.tempFiles.map((file: any) => uploadFile(file.path));
+        Promise.all(uploads)
+          .then((results) => {
+            setImages((prev) => [...prev, ...results.map(r => r.url).filter(Boolean)]);
+          })
+          .catch(() => {
+            Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
+          })
+          .finally(() => setUploading(false));
+      },
+    });
+  }, [images.length, uploading]);
+
+  const handleRemoveImage = useCallback((idx: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
 
   return (
     <View className="page-add-room-info">
-      <NavBar title={isEdit ? '编辑房间信息' : '填写房间信息'} onBack={goBack} />
+      {/* Image Section */}
+      <View className="form-group">
+        <Text className="form-label">房间照片</Text>
+        <View className="image-grid">
+          {images.map((img, idx) => (
+            <View key={idx} className="image-grid-item">
+              <Image className="image-thumb" src={img} mode="aspectFill" />
+              <View className="image-remove" onClick={() => handleRemoveImage(idx)}>
+                <Text className="image-remove-text">×</Text>
+              </View>
+            </View>
+          ))}
+          {images.length < 9 && (
+            <View className="image-grid-item image-add-btn" onClick={handleAddImage}>
+              <Text style={{ fontSize: '36px', color: 'var(--accent-hover)', lineHeight: 1, opacity: 0.4 }}>
+                {uploading ? '...' : '＋'}
+              </Text>
+              <Text className="image-add-text">添加照片</Text>
+            </View>
+          )}
+        </View>
+      </View>
 
       <View className="form-group">
         <Text className="form-label">房间名称 *</Text>
@@ -215,22 +276,22 @@ export default function AddRoomInfo() {
 
       <View className="form-group">
         <Text className="form-label">房间状态</Text>
-        <View className="status-toggle">
-          <View
-            className={`status-option ${status === 'vacant' ? 'active accent' : ''}`}
-            onClick={() => setStatus('vacant')}
-          >
-            <Text className="status-option-text">空着</Text>
+        <Picker
+          mode="selector"
+          range={['空着', '已出租']}
+          value={status === 'rented' ? 1 : 0}
+          onChange={(e) => setStatus(Number(e.detail.value) === 1 ? 'rented' : 'vacant')}
+        >
+          <View className="form-select-wrap">
+            <Text className="form-select-text" style={{ color: 'var(--text-primary)' }}>
+              {status === 'rented' ? '已出租' : '空着'}
+            </Text>
+            <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>▾</Text>
           </View>
-          <View
-            className={`status-option ${status === 'rented' ? 'active accent' : ''}`}
-            onClick={() => setStatus('rented')}
-          >
-            <Text className="status-option-text">已出租</Text>
-          </View>
-        </View>
+        </Picker>
       </View>
 
+      {status === 'vacant' && (
       <View className="form-group">
         <Text className="form-label">可入住时间</Text>
         <View className="status-toggle">
@@ -255,17 +316,12 @@ export default function AddRoomInfo() {
           </Picker>
         )}
       </View>
+      )}
 
       {/* More Info Toggle */}
       <View className="more-toggle" onClick={() => setShowMore(!showMore)}>
         <Text className="more-toggle-text">更多信息（可选）</Text>
-        <svg
-          width="16" height="16" viewBox="0 0 24 24"
-          stroke="var(--accent-hover)" strokeWidth="1.8" fill="none"
-          style={{ transform: showMore ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.3s ease' }}
-        >
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
+        <Text style={{ fontSize: '24px', color: 'var(--accent-hover)', lineHeight: 1, transform: showMore ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.3s ease' }}>›</Text>
       </View>
 
       {showMore && (

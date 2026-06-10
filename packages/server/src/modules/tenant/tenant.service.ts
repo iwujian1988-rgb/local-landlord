@@ -52,11 +52,19 @@ export class TenantService {
       throw new BadRequestException('ROOM_OCCUPIED: 房间已有在租租客');
     }
 
-    const tenant = this.tenantRepository.create({
-      ...dto,
+    const today = new Date().toISOString().slice(0, 10);
+    const tenantData: Partial<Tenant> = {
       roomId,
+      name: dto.name,
+      phone: dto.phone,
+      moveInDate: dto.moveInDate || today,
+      contractEndDate: dto.contractEndDate || undefined,
+      rentDay: dto.rentDay ?? 10,
+      deposit: dto.deposit ?? undefined,
+      note: dto.note ?? undefined,
       status: 1,
-    });
+    };
+    const tenant = this.tenantRepository.create(tenantData);
     const saved = await this.tenantRepository.save(tenant);
 
     room.status = 1;

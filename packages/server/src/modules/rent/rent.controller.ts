@@ -25,20 +25,29 @@ export class RentController {
   }
 
   @Put('single-charges/:id/confirm')
-  async confirmSingleCharge(@Param('id', ParseIntPipe) id: number) {
-    return this.rentService.confirmSingleCharge(id);
+  async confirmSingleCharge(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.rentService.confirmSingleCharge(id, user.id);
   }
 
   @Get('rooms/:roomId/records')
-  async getRecords(@Param('roomId', ParseIntPipe) roomId: number) {
+  async getRecords(
+    @CurrentUser() user: any,
+    @Param('roomId', ParseIntPipe) roomId: number,
+  ) {
+    await this.rentService.verifyRoomOwnership(roomId, user.id);
     return this.rentService.getRecords(roomId);
   }
 
   @Post('rooms/:roomId/remind')
   async remindTenant(
+    @CurrentUser() user: any,
     @Param('roomId', ParseIntPipe) roomId: number,
     @Body() dto: RemindTenantDto,
   ) {
+    await this.rentService.verifyRoomOwnership(roomId, user.id);
     return this.rentService.remindTenant(roomId, dto);
   }
 }

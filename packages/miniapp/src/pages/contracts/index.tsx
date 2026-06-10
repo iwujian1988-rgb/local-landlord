@@ -1,13 +1,13 @@
 import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import EmptyState from '../../components/EmptyState';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import ConfirmModal from '../../components/ConfirmModal';
+import Icon from '../../components/Icon';
 import UploadModal, { UploadFile } from '../../components/UploadModal';
 import { get, post, del } from '../../services/request';
-import { API_BASE } from '../../config';
+import { uploadFile } from '../../services/upload';
 import { useState, useCallback, useMemo } from 'react';
 import './index.scss';
 
@@ -79,44 +79,31 @@ export default function Contracts() {
     }
   }, [roomId]);
 
-  useDidShow(() => { loadData(); });
+  useDidShow(() => { Taro.setNavigationBarTitle({ title: '合同收据' }); loadData(); });
 
-  const goBack = useCallback(() => {
-    Taro.navigateBack();
-  }, []);
-
-  const handleUpload = useCallback((file: UploadFile, note: string) => {
-    Taro.uploadFile({
-      url: `${API_BASE}/upload`,
-      filePath: file.tempFilePath,
-      name: 'file',
-      header: { Authorization: `Bearer ${Taro.getStorageSync('auth_token') || ''}` },
-      success: async (uploadRes) => {
-        const data = JSON.parse(uploadRes.data);
-        const uploadedUrl = data.data?.url || data.data?.fileID || data.url || '';
-        const newDoc: DocumentItem = {
-          id: Date.now().toString(),
-          type: 'other',
-          name: note || '新上传文件',
-          date: new Date().toISOString().slice(0, 10),
-          imageUrl: uploadedUrl,
-          roomId: roomId > 0 ? roomId : undefined,
-        };
-        // Save via API
-        await post(`/rooms/${roomId}/documents`, {
-          type: 'other',
-          name: note || '新上传文件',
-          imageUrl: uploadedUrl,
-          roomId: roomId > 0 ? roomId : undefined,
-        });
-        setDocs((prev) => [newDoc, ...prev]);
-        setShowUpload(false);
-        Taro.showToast({ title: '资料已上传', icon: 'none', duration: 2000 });
-      },
-      fail: () => {
-        Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
-      },
-    });
+  const handleUpload = useCallback(async (file: UploadFile, note: string) => {
+    try {
+      const result = await uploadFile(file.tempFilePath);
+      const uploadedUrl = result.url;
+      const newDoc: DocumentItem = {
+        id: Date.now().toString(),
+        type: 'other',
+        name: note || '新上传文件',
+        date: new Date().toISOString().slice(0, 10),
+        imageUrl: uploadedUrl,
+        roomId: roomId > 0 ? roomId : undefined,
+      };
+      await post(`/rooms/${roomId}/documents`, {
+        type: 5,
+        name: note || '新上传文件',
+        imageUrl: uploadedUrl,
+      });
+      setDocs((prev) => [newDoc, ...prev]);
+      setShowUpload(false);
+      Taro.showToast({ title: '资料已上传', icon: 'none', duration: 2000 });
+    } catch {
+      Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
+    }
   }, [roomId]);
 
   const handleDeleteRequest = useCallback((docId: string) => {
@@ -148,20 +135,6 @@ export default function Contracts() {
 
   return (
     <View className="page-contracts">
-      <NavBar
-        title="合同收据"
-        onBack={goBack}
-        rightActions={[{
-          icon: (
-            <svg width="20" height="20" viewBox="0 0 24 24" stroke="var(--text-secondary)" strokeWidth="1.8" fill="none">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          ),
-          onClick: () => setShowUpload(true),
-        }]}
-      />
-
       <ScrollView className="contracts-filter" scrollX>
         {filters.map((f) => (
           <View
@@ -190,19 +163,14 @@ export default function Contracts() {
                     {doc.imageUrl ? (
                       <Image src={doc.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-xs)' }} />
                     ) : (
-                      <svg width="24" height="24" viewBox="0 0 24 24" stroke="var(--accent-dk)" strokeWidth="1.8" fill="none" opacity="0.5">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
+                      <Icon name="file-text" size={28} color="var(--accent-dk)" />
                     )}
                   </View>
                   <View className="doc-info">
                     <Text className="doc-name">{doc.name}</Text>
                     <Text className="doc-date">{doc.date} 上传</Text>
                   </View>
-                  <svg width="16" height="16" viewBox="0 0 24 24" stroke="var(--text-hint)" strokeWidth="1.8" fill="none" style={{ flexShrink: 0 }}>
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1, flexShrink: 0 }}>›</Text>
                 </View>
               ))
             )}
@@ -212,10 +180,7 @@ export default function Contracts() {
       </ScrollView>
 
       <View className="upload-footer-btn" onClick={() => setShowUpload(true)}>
-        <svg width="18" height="18" viewBox="0 0 24 24" stroke="var(--accent)" strokeWidth="1.8" fill="none">
-          <line x1="12" y1="5" x2="12" y2="19" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
+        <Icon name="plus" size={32} color="var(--accent)" />
         <Text className="upload-footer-text">上传资料</Text>
       </View>
 
@@ -229,6 +194,7 @@ export default function Contracts() {
       <ConfirmModal
         visible={deleteVisible}
         title="确认删除该文件？"
+        description="删除后不可恢复"
         confirmText="确认删除"
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteVisible(false)}

@@ -62,7 +62,9 @@
 
 .form-input {
   width: 100%;
-  padding: 32px;
+  height: 96px;
+  padding: 0 32px;
+  line-height: 96px;
   border: 4px solid var(--bg-soft);
   border-radius: 32px;
   font-size: 34px;
@@ -71,10 +73,11 @@
   color: var(--text-primary);
   transition: all 0.3s ease;
   outline: none;
+  box-sizing: border-box;
+}
 
-  &.error {
-    border-color: var(--red);
-  }
+.form-input.suffix-input {
+  padding-right: 80px;
 }
 
 .form-error-text {

@@ -1,0 +1,43 @@
+{
+  "containerPort": 80,
+  "dockerfilePath": "docker/Dockerfile.server",
+  "buildDir": "",
+  "minNum": 1,
+  "maxNum": 5,
+  "cpu": 1,
+  "mem": 2,
+  "policyType": "cpu",
+  "policyThreshold": 80,
+  "policyDetails": [
+    { "PolicyType": "cpu", "PolicyThreshold": 80 },
+    { "PolicyType": "mem", "PolicyThreshold": 80 }
+  ],
+  "envParams": {
+    "NODE_ENV": "production",
+    "PORT": "80",
+    "DB_TYPE": "mysql",
+    "DB_HOST": "",
+    "DB_PORT": "3306",
+    "DB_USERNAME": "",
+    "DB_PASSWORD": "",
+    "DB_DATABASE": "local_landlord",
+    "UPLOAD_MODE": "cloudbase",
+    "WX_APPID": "",
+    "WX_SECRET": "",
+    "JWT_SECRET": "",
+    "JWT_EXPIRES_IN": "7d",
+    "COS_SECRET_ID": "",
+    "COS_SECRET_KEY": "",
+    "COS_BUCKET": "",
+    "COS_REGION": "",
+    "WX_SUBSCRIBE_TEMPLATE_RENT": "",
+    "ADMIN_DEFAULT_PASSWORD": ""
+  },
+  "customLogs": "stdout",
+  "initialDelaySeconds": 15,
+  "dataBaseName": "local_landlord",
+  "executeSQLs": [
+    "CREATE DATABASE IF NOT EXISTS local_landlord DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+    "USE local_landlord;"
+  ]
+}

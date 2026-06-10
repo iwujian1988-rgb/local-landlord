@@ -36,6 +36,16 @@
   color: #fff;
 }
 
+.filter-tab-text {
+  font-size: var(--font-sm);
+  font-weight: 500;
+}
+
+/* Scroll container */
+.records-scroll {
+  flex: 1;
+}
+
 /* Record list */
 .record-list {
   padding: 0 0 16px;

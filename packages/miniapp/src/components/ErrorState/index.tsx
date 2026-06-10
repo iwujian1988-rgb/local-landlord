@@ -36,11 +36,7 @@ export default function ErrorState({
   return (
     <View className={`error-state ${fullPage ? 'full-page' : ''}`}>
       <View className="error-icon-wrap">
-        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint, #A89B8C)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.4">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
+        <Text style={{ fontSize: '28px', lineHeight: 1, color: 'var(--text-hint, #A89B8C)', opacity: 0.4 }}>🕐</Text>
       </View>
       <Text className="error-title">{title}</Text>
       {description && <Text className="error-desc">{description}</Text>}

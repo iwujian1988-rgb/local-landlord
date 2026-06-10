@@ -1,8 +1,8 @@
 import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
+import Icon from '../../components/Icon';
 import { useState, useCallback, useMemo } from 'react';
 import { get } from '../../services/request';
 import './index.scss';
@@ -41,18 +41,18 @@ export default function Payment() {
       const qrRes = await get<any>('/payment-qr');
       const qrData = qrRes.data || {};
       if (qrData.payeeName) setPayeeName(qrData.payeeName);
-      if (qrData.wechatQr) setQrImageUrl(qrData.wechatQr);
-      else if (qrData.alipayQr) setQrImageUrl(qrData.alipayQr);
+      const codes = qrData.codes || [];
+      const defaultCode = codes.find((c: any) => c.isDefault) || codes[0];
+      if (defaultCode?.imageUrl) setQrImageUrl(defaultCode.imageUrl);
 
       // Fetch room name if not provided via params
       if (roomNameParam) {
         setRoomName(roomNameParam);
       } else if (roomId > 0) {
-        // TODO: Use /rooms/${roomId} endpoint instead of /rooms when available
-        const roomRes = await get<any[]>(`/rooms`);
-        const rooms = roomRes.data || [];
-        const room = rooms.find((r: any) => r.id === roomId);
-        if (room) setRoomName(room.name);
+        const roomRes = await get<any>(`/rooms/${roomId}`);
+        if (roomRes.code === 0 && roomRes.data) {
+          setRoomName(roomRes.data.name || '');
+        }
       }
 
       // Build payment items
@@ -74,17 +74,32 @@ export default function Payment() {
     }
   }, [roomId, paramAmount, feeType, note, roomNameParam]);
 
-  useDidShow(() => { loadData(); });
+  useDidShow(() => {
+    Taro.setNavigationBarTitle({ title: '发给租客' });
+    loadData();
+  });
 
-  const goBack = useCallback(() => { Taro.navigateBack(); }, []);
-
+  // Save image — for WeChat mini-program, guide user to screenshot
   const handleSaveImage = useCallback(() => {
-    Taro.showToast({ title: '图片已保存到相册', icon: 'none', duration: 2000 });
+    Taro.showModal({
+      title: '保存账单图片',
+      content: '请用手机截屏保存此页面，然后发给租客。截屏包含金额和收款码。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
   }, []);
 
+  // Share via WeChat
   const handleShare = useCallback(() => {
-    Taro.showToast({ title: '已生成分享卡片', icon: 'none', duration: 2000 });
-  }, []);
+    // Copy bill text to clipboard as the simplest sharing method
+    const itemsText = items.map(i => `${i.name} ${i.amount}元`).join('，');
+    const text = `${roomName} ${period}账单\n${itemsText}\n合计 ${totalAmount.toLocaleString()} 元\n${payeeName ? `收款人：${payeeName}\n` : ''}付款后请告诉房东，方便核对。`;
+
+    Taro.setClipboardData({
+      data: text,
+      success: () => Taro.showToast({ title: '账单文字已复制，粘贴发给租客即可', icon: 'none', duration: 2500 }),
+    });
+  }, [roomName, period, items, totalAmount, payeeName]);
 
   const headerLabel = feeType
     ? `单独收款 · ${feeType}`
@@ -92,8 +107,6 @@ export default function Payment() {
 
   return (
     <View className="page-payment">
-      <NavBar title="付款页面" onBack={goBack} />
-
       <ScrollView className="payment-scroll" scrollY>
         {loading && <Loading />}
         {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
@@ -124,38 +137,26 @@ export default function Payment() {
             <Image className="payment-qr-img" src={qrImageUrl} mode="aspectFit" />
           ) : (
             <View className="payment-qr-placeholder">
-              <svg width="48" height="48" viewBox="0 0 24 24" stroke="var(--text-hint)" strokeWidth="1.8" fill="none" opacity="0.4">
-                <rect x="3" y="3" width="7" height="7"/>
-                <rect x="14" y="3" width="7" height="7"/>
-                <rect x="3" y="14" width="7" height="7"/>
-                <rect x="14" y="14" width="3" height="3"/>
-                <line x1="21" y1="14" x2="21" y2="14.01"/>
-                <line x1="21" y1="21" x2="21" y2="21.01"/>
-              </svg>
+              <Icon name="smartphone" size={28} color="var(--text-hint)" />
               <Text className="payment-qr-placeholder-text">收款二维码</Text>
+              <Text className="payment-qr-placeholder-hint" onClick={() => Taro.navigateTo({ url: '/pages/qr-code/index' })}>
+                去设置收款码
+              </Text>
             </View>
           )}
-          <Text className="payment-payee">收款人：{payeeName}</Text>
+          {payeeName && <Text className="payment-payee">收款人：{payeeName}</Text>}
           <Text className="payment-payee-hint">付款后请告诉房东，方便核对</Text>
         </View>
 
         {/* Action Buttons */}
         <View className="payment-actions">
           <View className="payment-btn secondary" onClick={handleSaveImage}>
-            <svg width="18" height="18" viewBox="0 0 24 24" stroke="var(--accent)" strokeWidth="1.8" fill="none">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
+            <Text style={{ fontSize: '28px', lineHeight: 1, color: 'var(--accent)' }}>🖼</Text>
             <Text className="payment-btn-text secondary">保存图片</Text>
           </View>
           <View className="payment-btn primary" onClick={handleShare}>
-            <svg width="18" height="18" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" fill="none">
-              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-              <polyline points="16 6 12 2 8 6"/>
-              <line x1="12" y1="2" x2="12" y2="15"/>
-            </svg>
-            <Text className="payment-btn-text">分享给租客</Text>
+            <Icon name="send" size={28} color="currentColor" />
+            <Text className="payment-btn-text">复制账单</Text>
           </View>
         </View>
 

@@ -1,35 +1,176 @@
-/* ========== Rooms - 对齐 index.html CSS 属性值 ========== */
+/* ========== Rooms - 暖橙设计 ========== */
 
 .page-rooms {
   min-height: 100vh;
+  background:
+    radial-gradient(circle at 82% 7%, rgba(255,226,205,.3), transparent 30%),
+    linear-gradient(180deg, #fffaf5 0%, #fff5ef 48%, #fff9f5 100%);
   display: flex;
   flex-direction: column;
 }
 
 .rooms-scroll {
   flex: 1;
+  padding-bottom: 180px;
 }
 
-.add-property-card {
-  margin: 0 32px 28px;
-  padding: 36px;
-  border: 4px dashed rgba(125, 127, 172, 0.2);
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: var(--radius-lg);
+/* Room Card */
+.room-card {
+  margin: 16px 32px 0;
+  padding: 28px;
+  background: linear-gradient(180deg, rgba(255,255,253,.98), rgba(255,250,244,.96));
+  border-radius: 44px;
+  box-shadow: 0 20px 48px rgba(136,77,40,.07);
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.room-card:active { transform: scale(0.98); }
+
+.room-card-img {
+  width: 168px;
+  height: 130px;
+  border-radius: 24px;
+  flex-shrink: 0;
+  background: var(--bg-soft);
+}
+
+.room-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.room-card-name {
+  font-size: 36px;
+  font-weight: 850;
+  color: #302824;
+}
+
+.room-status {
+  display: inline-block;
+  padding: 6px 18px;
+  border-radius: 999px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.room-status.vacant { background: #fff0e8; color: #dd714d; }
+.room-status.rented { background: #e8f5e8; color: #5fa264; }
+
+.room-card-meta {
+  margin-top: 20px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.room-card-property {
+  font-size: 24px;
+  color: #81746e;
+}
+
+.room-card-rent {
+  font-size: 30px;
+  color: #f0643e;
+  font-weight: 720;
+  margin-left: 18px;
+}
+
+.room-card-tenant {
+  font-size: 24px;
+  color: #81746e;
+  margin-left: 14px;
+}
+
+.room-card-arrow {
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 250;
+  color: #7b6c64;
+  flex-shrink: 0;
+}
+
+/* FAB */
+.fab-add {
+  position: fixed;
+  right: 56px;
+  bottom: 200px;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ffad52 0%, #ff4d36 88%);
+  box-shadow: 0 28px 48px rgba(240,82,49,.28);
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  min-height: 200px;
+  z-index: 100;
 }
 
-.add-property-card:active {
-  transform: scale(0.98);
+.fab-add:active { transform: scale(0.92); }
+
+/* Property Picker */
+.property-picker-content {
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.add-property-text {
-  font-size: var(--font-base);
-  color: var(--text-hint);
+.property-picker-title {
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.property-picker-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.property-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 0;
+  border-bottom: 2px solid rgba(0,0,0,.05);
+}
+
+.property-picker-item:last-child { border-bottom: none; }
+
+.property-picker-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.property-picker-item-name {
+  font-size: 32px;
+  color: var(--text-primary);
   font-weight: 500;
+}
+
+.property-picker-item-addr {
+  font-size: 26px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.property-picker-new {
+  justify-content: center;
+  border-bottom: none;
+  border-top: 2px dashed rgba(0,0,0,.07);
+  margin-top: 12px;
+  padding: 28px 0;
 }

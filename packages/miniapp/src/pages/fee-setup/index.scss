@@ -1,93 +1,99 @@
+// fee-setup - aligned with design system (rpx-scale)
 .page-fee-setup {
   min-height: 100vh;
-  padding-bottom: 100px;
+  padding-bottom: 160px;
 }
 
 .fee-hint {
-  padding: 8px 20px 16px;
+  padding: 8px 32px 16px;
 }
 
 .fee-hint-text {
-  font-size: var(--font-sm, 15px);
+  font-size: var(--font-sm, 30px);
   color: var(--text-hint, #A89B8C);
 }
 
 .fee-list {
-  padding: 0 16px;
+  padding: 0 32px;
   display: flex;
   flex-direction: column;
 }
 
-/* Fee item - 对齐 HTML: .fee-item (L646-658) */
+/* Fee item */
 .fee-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px;
+  padding: 32px;
   background: var(--cream, #FFFDF9);
-  border-radius: var(--radius-md, 20px);
-  margin-bottom: 10px;
+  border-radius: var(--radius-md, 40px);
+  margin-bottom: 16px;
 }
 
-/* 对齐 HTML: .fee-info (L655) */
 .fee-info {
   flex: 1;
 }
 
-/* 对齐 HTML: .fee-name (L656) */
 .fee-name {
   font-weight: 600;
-  font-size: var(--font-base, 17px);
+  font-size: var(--font-base, 34px);
   color: var(--text-primary, #4A4038);
 }
 
-/* 对齐 HTML: .fee-desc (L657) */
-.fee-desc {
-  font-size: var(--font-sm, 15px);
-  color: var(--text-hint, #A89B8C);
-  margin-top: 2px;
+.fee-name-input {
+  font-weight: 600;
+  font-size: var(--font-base, 34px);
+  color: var(--text-primary, #4A4038);
+  background: transparent;
+  border-bottom: 2px solid var(--accent, #F5D78E);
+  padding-bottom: 4px;
 }
 
-/* 对齐 HTML: .fee-amount (L658) */
+.fee-desc {
+  font-size: var(--font-sm, 26px);
+  color: var(--text-hint, #A89B8C);
+  margin-top: 4px;
+}
+
 .fee-amount {
-  font-size: var(--font-md, 20px);
+  font-size: var(--font-md, 40px);
   font-weight: 700;
   color: var(--accent-dk, #E8C76A);
-  margin-right: 12px;
+  margin-right: 20px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 
   &.manual {
     color: var(--text-hint, #A89B8C);
-    margin-right: 12px;
+    margin-right: 20px;
   }
 }
 
 .fee-amount-input {
-  width: 80px;
+  width: 160px;
   text-align: right;
-  font-size: var(--font-md, 20px);
+  font-size: var(--font-md, 40px);
   font-weight: 700;
   color: var(--accent-dk, #E8C76A);
   background: transparent;
 }
 
 .fee-amount-unit {
-  font-size: var(--font-sm, 15px);
+  font-size: var(--font-sm, 30px);
   color: var(--text-secondary, #7A6F64);
 }
 
 .fee-amount-placeholder {
-  margin-right: 12px;
+  margin-right: 20px;
 }
 
-/* Toggle - 对齐 HTML: .toggle (L340-361) */
+/* Toggle */
 .toggle-switch {
-  width: 52px;
-  height: 30px;
+  width: 100px;
+  height: 56px;
   background: #E8E0D5;
-  border-radius: 15px;
+  border-radius: 28px;
   position: relative;
   flex-shrink: 0;
   transition: all 0.3s ease;
@@ -96,22 +102,22 @@
 
   &::after {
     content: '';
-    width: 26px;
-    height: 26px;
+    width: 48px;
+    height: 48px;
     background: #fff;
     border-radius: 50%;
     position: absolute;
-    top: 2px;
-    left: 2px;
+    top: 4px;
+    left: 4px;
     transition: all 0.3s ease;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
 
   &.on {
     background: var(--accent, #F5D78E);
 
     &::after {
-      left: 24px;
+      left: 48px;
     }
   }
 
@@ -121,41 +127,45 @@
   }
 }
 
-/* Add fee button - 对齐 HTML inline (L1965-1967) */
+/* Add fee button */
 .add-fee-btn {
-  border: 1.5px dashed rgba(125,127,172,0.25);
-  border-radius: var(--radius-md, 20px);
-  padding: 14px;
+  border: 4px dashed rgba(125, 127, 172, 0.25);
+  border-radius: var(--radius-md, 40px);
+  padding: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-top: 16px;
+
+  &:active {
+    transform: scale(0.98);
+  }
 }
 
 .add-fee-btn-text {
-  font-size: var(--font-base, 17px);
+  font-size: var(--font-base, 34px);
   color: var(--accent-dk, #E8C76A);
   font-weight: 700;
 }
 
-/* Bottom actions - 对齐 HTML inline (L1970-1979) */
+/* Bottom actions */
 .fee-actions {
-  padding: 20px 16px;
+  padding: 32px;
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .action-btn {
-  flex: 1;
-  border-radius: var(--radius-lg, 24px);
-  padding: 12px 24px;
-  display: inline-flex;
+  width: 100%;
+  min-height: 100px;
+  border-radius: 999px;
+  padding: 24px 32px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   transition: all 0.3s ease;
-  font-size: var(--font-base, 17px);
-  font-weight: 700;
   border: none;
   font-family: inherit;
   cursor: pointer;
@@ -167,12 +177,72 @@
   &.primary {
     background: var(--accent, #F5D78E);
     color: var(--text-primary, #4A4038);
-    box-shadow: 0 4px 16px rgba(245,215,142,0.4);
+    box-shadow: 0 8px 32px rgba(245, 215, 142, 0.4);
   }
 
   &.secondary {
     background: var(--bg-soft, #F5EDE2);
     color: var(--text-secondary, #7A6F64);
-    border: 2px solid var(--bg-soft, #F5EDE2);
+    border: 4px solid var(--bg-soft, #F5EDE2);
   }
+
+  &.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+.action-btn-text {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.secondary-text {
+  color: var(--text-secondary, #7A6F64);
+}
+
+/* Room Picker */
+.room-pick-list {
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.room-pick-card {
+  display: flex;
+  align-items: center;
+  padding: 32px;
+  background: var(--cream, #FFFDF9);
+  border-radius: var(--radius-md, 40px);
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.room-pick-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.room-pick-name {
+  font-size: var(--font-base, 34px);
+  font-weight: 700;
+  color: var(--text-primary, #4A4038);
+}
+
+.room-pick-meta {
+  font-size: var(--font-xs, 26px);
+  color: var(--text-hint, #A89B8C);
+}
+
+.room-pick-arrow {
+  font-size: 42px;
+  font-weight: 250;
+  color: #51453f;
+  line-height: 1;
+  flex-shrink: 0;
 }

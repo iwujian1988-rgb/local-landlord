@@ -1,14 +1,16 @@
-import { IsString, IsNumber, IsOptional, IsArray, Min } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsArray, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateRoomDto {
   @IsOptional()
   @IsString()
+  @MaxLength(32)
   name?: string;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
+  @Max(999999)
   @Type(() => Number)
   rent?: number;
 
@@ -52,4 +54,8 @@ export class UpdateRoomDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsString()
+  action?: string;
 }

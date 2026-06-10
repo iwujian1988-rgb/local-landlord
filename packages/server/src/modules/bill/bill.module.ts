@@ -8,9 +8,10 @@ import { RentRecord } from '../rent/rent-record.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
+import { FeeItem } from '../fee/fee-item.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Bill, BillItem, RentRecord, Tenant, Room, Property])],
+  imports: [TypeOrmModule.forFeature([Bill, BillItem, RentRecord, Tenant, Room, Property, FeeItem])],
   controllers: [BillController],
   providers: [BillService],
   exports: [BillService],

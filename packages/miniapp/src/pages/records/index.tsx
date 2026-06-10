@@ -1,6 +1,5 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import EmptyState from '../../components/EmptyState';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
@@ -55,12 +54,12 @@ export default function Records() {
       setRecords(data);
 
       if (roomId > 0) {
-        // TODO: Use /rooms/${roomId} endpoint instead of /rooms when available
-        // Currently the server does not have a single-room endpoint, so we fetch all.
-        const roomRes = await get<any[]>('/rooms');
-        const rooms = roomRes.data || [];
-        const room = rooms.find((r: any) => r.id === roomId);
-        setTitle(room ? `${room.name} · 收租记录` : '收租记录');
+        const roomRes = await get<any>(`/rooms/${roomId}`);
+        if (roomRes.code === 0 && roomRes.data) {
+          const roomTitle = `${roomRes.data.name} · 收租记录`;
+          setTitle(roomTitle);
+          Taro.setNavigationBarTitle({ title: roomTitle });
+        }
       }
     } catch (err) {
       console.error('[Records] 加载记录失败:', err);
@@ -70,11 +69,10 @@ export default function Records() {
     }
   }, [roomId]);
 
-  useDidShow(() => { loadData(); });
-
-  const goBack = useCallback(() => {
-    Taro.navigateBack();
-  }, []);
+  useDidShow(() => {
+    Taro.setNavigationBarTitle({ title: title });
+    loadData();
+  });
 
   const filteredRecords = useMemo(() => {
     const types = filterMapping[activeFilter];
@@ -84,8 +82,6 @@ export default function Records() {
 
   return (
     <View className="page-records">
-      <NavBar title={title} onBack={goBack} />
-
       <ScrollView className="records-filter" scrollX>
         {filters.map((f) => (
           <View

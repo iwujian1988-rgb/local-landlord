@@ -19,6 +19,14 @@ export class BillController {
     @Param('roomId', ParseIntPipe) roomId: number,
     @Body() dto: CreateBillDto,
   ) {
+    // Frontend may send items[].name instead of items[].feeName
+    if (dto.items) {
+      for (const item of dto.items as any[]) {
+        if (!item.feeName && item.name) {
+          item.feeName = item.name;
+        }
+      }
+    }
     await this.billService.verifyRoomOwnership(roomId, user.id);
     return this.billService.create(roomId, dto);
   }

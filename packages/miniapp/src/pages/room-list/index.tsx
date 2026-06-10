@@ -1,6 +1,5 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import RoomCard from '../../components/RoomCard';
 import { get } from '../../services/request';
 import EmptyState from '../../components/EmptyState';
@@ -37,7 +36,6 @@ const filters: { key: FilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'vacant', label: '空着' },
   { key: 'rented', label: '已出租' },
-  { key: 'expiring', label: '快到期' },
   { key: 'overdue', label: '欠租' },
 ];
 
@@ -68,10 +66,11 @@ export default function RoomList() {
     setLoading(true);
     setError(false);
     try {
-      const res = await get<{ rooms: ApiRoom[]; propertyName: string }>(`/properties/${propertyId}/rooms`);
+      const res = await get<{ list: ApiRoom[]; propertyName: string; summary: any }>(`/properties/${propertyId}/rooms`);
       if (res.code === 0 && res.data) {
         setPropertyName(res.data.propertyName || '');
-        const enriched: RoomItem[] = (res.data.rooms || []).map((r: ApiRoom) => ({
+        Taro.setNavigationBarTitle({ title: res.data.propertyName || '房间列表' });
+        const enriched: RoomItem[] = (res.data.list || []).map((r: ApiRoom) => ({
           ...r,
           displayStatus: r.displayStatus || (r.status === 1 ? 'rented' : 'vacant'),
         })) as RoomItem[];
@@ -86,12 +85,9 @@ export default function RoomList() {
   };
 
   useDidShow(() => {
+    Taro.setNavigationBarTitle({ title: propertyName || '房间列表' });
     loadData();
   });
-
-  const goBack = useCallback(() => {
-    Taro.navigateBack();
-  }, []);
 
   const goToAddRoom = useCallback(() => {
     Taro.navigateTo({ url: `/pages/add-room-photo/index?propertyId=${propertyId}` });
@@ -108,14 +104,13 @@ export default function RoomList() {
   const filteredRooms = useMemo(() => {
     if (activeFilter === 'all') return rooms;
     if (activeFilter === 'vacant') return rooms.filter((r) => r.displayStatus === 'vacant');
-    if (activeFilter === 'rented') return rooms.filter((r) => r.displayStatus === 'rented' || r.displayStatus === 'pending_rent');
-    if (activeFilter === 'expiring') return rooms.filter((r) => r.displayStatus === 'expiring_soon');
+    if (activeFilter === 'rented') return rooms.filter((r) => r.displayStatus === 'rented' || r.displayStatus === 'approaching');
     if (activeFilter === 'overdue') return rooms.filter((r) => r.displayStatus === 'overdue');
     return rooms;
   }, [activeFilter, rooms]);
 
   const totalRooms = rooms.length;
-  const rentedCount = rooms.filter((r) => r.status === 1 || r.displayStatus === 'rented' || r.displayStatus === 'pending_rent').length;
+  const rentedCount = rooms.filter((r) => r.status === 1 || r.displayStatus === 'rented' || r.displayStatus === 'approaching').length;
   const vacantCount = rooms.filter((r) => r.status === 0 || r.displayStatus === 'vacant').length;
   const overdueCount = rooms.filter((r) => r.displayStatus === 'overdue').length;
 
@@ -127,13 +122,6 @@ export default function RoomList() {
 
   return (
     <View className="page-room-list">
-      <NavBar
-        title={propertyName || '房间列表'}
-        onBack={goBack}
-        rightText="+"
-        onRightClick={goToAddRoom}
-      />
-
       {/* Quick stats tags */}
       <View className="stats-tags">
         <View className="stat-tag tag-blue">{totalRooms} 间房</View>
@@ -160,8 +148,11 @@ export default function RoomList() {
 
       {/* Stats button */}
       <View className="stats-link">
+        <View className="stats-link-btn" onClick={goToAddRoom}>
+          <Text className="stats-link-text">＋ 添加房间</Text>
+        </View>
         <View className="stats-link-btn" onClick={goToRentStats}>
-          <Text className="stats-link-text">查看月度 / 季度 / 年度统计</Text>
+          <Text className="stats-link-text">查看统计</Text>
         </View>
       </View>
 

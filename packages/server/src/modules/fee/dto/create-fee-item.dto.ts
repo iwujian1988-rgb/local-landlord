@@ -1,9 +1,10 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateFeeItemDto {
   @IsString()
   @IsNotEmpty()
+  @MaxLength(32)
   name: string;
 
   @IsNumber()

@@ -17,6 +17,7 @@ import { LandlordModule } from './modules/landlord/landlord.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { SystemModule } from './modules/system/system.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -68,6 +69,7 @@ import { HealthController } from './modules/health/health.controller';
     StatsModule,
     SystemModule,
     UploadModule,
+    SubscriptionModule,
   ],
   controllers: [HealthController],
   providers: [

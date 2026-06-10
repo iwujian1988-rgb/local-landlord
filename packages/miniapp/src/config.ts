@@ -1,12 +1,9 @@
-/** 云开发环境配置 */
-export const CLOUD_ENV_ID = process.env.TARO_APP_CLOUD_ENV_ID || 'your-env-id';
+declare const API_BASE: string;
 
-/** Server API 地址 */
-export const API_BASE = process.env.TARO_APP_API_BASE || 'http://localhost:3000';
+export const API_BASE_URL = API_BASE || 'http://192.168.3.84:3000/api';
+export const CLOUD_ENV_ID = 'prod-d6gpmvmbod40b5928';
+export const WX_TEMPLATE_RENT = 'siY2jHZxVvfJmZgnrLEzkfYmc8FWt8DFlsdfAIvPGcM';
+export const WX_TEMPLATE_OVERDUE = 'siY2jHZxVvfJmZgnrLEzkfYmc8FWt8DFlsdfAIvPGcM';
 
-/** 云开发环境配置 */
-export const CLOUD_CONFIG = {
-  env: CLOUD_ENV_ID,
-  // 跟踪用户访问，用于云函数中获取用户身份
-  traceUser: true,
-};
+// Whether to use wx.cloud.callContainer instead of Taro.request
+export const USE_CLOUD = process.env.NODE_ENV === 'production';

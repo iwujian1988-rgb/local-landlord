@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import Taro from '@tarojs/taro';
-import { API_BASE } from '../config';
+import { USE_CLOUD } from '../config';
+import { post } from '../services/request';
 
 interface AuthState {
   token: string;
@@ -22,9 +23,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loginLoading: false,
   loginError: '',
 
-  /**
-   * 静默登录：从 storage 恢复 token，不阻塞启动
-   */
   loginSilently: async () => {
     const { token, isLoggedIn } = get();
     if (isLoggedIn && token) return token;
@@ -37,35 +35,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return '';
   },
 
-  /**
-   * 微信登录：wx.login() → Server /auth/wechat/login → 存 JWT
-   */
   login: async () => {
     set({ loginLoading: true, loginError: '' });
     try {
-      // 1. 调微信 wx.login 获取临时 code
-      const loginRes = await Taro.login();
-      if (!loginRes.code) throw new Error('wx.login 失败');
+      let data: any;
 
-      // 2. 发 POST 到 Server 换取 JWT
-      const resp = await Taro.request({
-        url: `${API_BASE}/auth/wechat/login`,
-        method: 'POST',
-        data: { code: loginRes.code },
-      });
-      const data = resp.data as { token: string; landlord: any };
+      if (USE_CLOUD) {
+        // Cloud hosting: callContainer auto-injects X-WX-OPENID
+        const res = await post<any>('/auth/cloud-login', {});
+        data = res.data || res;
+      } else {
+        // Dev mode: wx.login → code → server verifies
+        const isDev = process.env.NODE_ENV === 'development';
+        const code = isDev ? 'dev_test' : (await Taro.login()).code;
+        if (!code) throw new Error('wx.login 失败');
+
+        const resp = await post<any>('/auth/wechat/login', { code });
+        data = resp.data || resp;
+      }
 
       if (!data.token) throw new Error('服务端未返回 token');
 
-      // 3. 存储 token
       Taro.setStorageSync('auth_token', data.token);
-      if (data.landlord) {
-        Taro.setStorageSync('landlord_info', data.landlord);
+      if (data.user) {
+        Taro.setStorageSync('landlord_info', data.user);
       }
 
       set({
         token: data.token,
-        user: data.landlord || null,
+        user: data.user || null,
         isLoggedIn: true,
         loginLoading: false,
       });

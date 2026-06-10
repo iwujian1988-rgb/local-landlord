@@ -1,17 +1,18 @@
 import { View, Text, Input, Textarea, Picker } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import NavBar from '../../components/NavBar';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useState, useCallback } from 'react';
 import { get, post } from '../../services/request';
 import './index.scss';
 
-const FEE_TYPES = ['水费', '电费', '燃气费', '网费', '维修费', '押金', '清洁费', '其他'];
+// Common fee types as suggestions - user can also type custom ones
+const COMMON_TYPES = ['水费', '电费', '燃气费', '网费', '停车费', '物业费', '维修费', '清洁费', '押金', '家具费', '钥匙费'];
 
 interface RoomOption {
   id: number;
   label: string;
+  feeItems?: { name: string }[];
 }
 
 export default function SingleCharge() {
@@ -21,6 +22,8 @@ export default function SingleCharge() {
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number>(preRoomId);
   const [feeType, setFeeType] = useState('');
+  const [customFeeType, setCustomFeeType] = useState('');
+  const [useCustomType, setUseCustomType] = useState(false);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,9 +37,8 @@ export default function SingleCharge() {
       const res = await get<any[]>('/rooms');
       const allRooms = res.data || [];
       const opts: RoomOption[] = allRooms.map((r: any) => {
-        const tenant = (r.tenants || []).find((t: any) => t.status !== 0);
-        const label = tenant ? `${r.name} · ${tenant.name}` : `${r.name} (空房)`;
-        return { id: r.id, label };
+        const label = r.tenantName ? `${r.name} · ${r.tenantName}` : `${r.name} (空房)`;
+        return { id: r.id, label, feeItems: r.feeItems || [] };
       });
       setRooms(opts);
       if (preRoomId > 0 && !selectedRoomId) {
@@ -50,51 +52,73 @@ export default function SingleCharge() {
     }
   }, [preRoomId, selectedRoomId]);
 
-  useDidShow(() => { loadData(); });
+  useDidShow(() => { loadData(); Taro.setNavigationBarTitle({ title: '单独收一笔钱' }); });
 
-  const goBack = useCallback(() => { Taro.navigateBack(); }, []);
+  // Build fee type options: room-specific fees first, then common suggestions
+  const currentRoom = rooms.find(r => r.id === selectedRoomId);
+  const roomFeeNames = (currentRoom?.feeItems || []).map(f => f.name);
+  const allFeeTypes = [...new Set([...roomFeeNames, ...COMMON_TYPES])];
 
   const handleGenerate = useCallback(async () => {
+    const finalFeeType = useCustomType ? customFeeType.trim() : feeType;
     if (!selectedRoomId) {
       Taro.showToast({ title: '请选择房间', icon: 'none', duration: 2000 });
       return;
     }
-    if (!feeType) {
-      Taro.showToast({ title: '请选择费用类型', icon: 'none', duration: 2000 });
+    if (!finalFeeType) {
+      Taro.showToast({ title: '请选择或输入费用类型', icon: 'none', duration: 2000 });
       return;
     }
     if (!amount.trim() || Number(amount) <= 0) {
       Taro.showToast({ title: '请输入有效金额', icon: 'none', duration: 2000 });
       return;
     }
+    if (Number(amount) > 999999) {
+      Taro.showToast({ title: '金额超出合理范围', icon: 'none', duration: 2000 });
+      return;
+    }
     if (submitting) return;
-    setSubmitting(true);
-    await post(`/rooms/${selectedRoomId}/single-charge`, {
-      feeType,
-      amount: Number(amount),
-      note,
+    const roomLabel = rooms.find(r => r.id === selectedRoomId)?.label || '';
+    Taro.showModal({
+      title: '确认生成收款通知？',
+      content: `房间：${roomLabel}\n费用：${finalFeeType}\n金额：${Number(amount).toLocaleString()} 元${note ? '\n备注：' + note : ''}`,
+      confirmText: '确认生成',
+      cancelText: '再改改',
+      success: async (res) => {
+        if (!res.confirm) return;
+        setSubmitting(true);
+        try {
+          await post(`/rent/rooms/${selectedRoomId}/single-charge`, {
+            feeType: finalFeeType,
+            amount: Number(amount),
+            note,
+          });
+          Taro.showToast({ title: '已保存，正在跳转到付款页...', icon: 'none', duration: 1500 });
+        } catch (err) {
+          Taro.showToast({ title: '保存失败', icon: 'none' });
+          setSubmitting(false);
+          return;
+        }
+        setTimeout(() => {
+          setSubmitting(false);
+          Taro.navigateTo({
+            url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${encodeURIComponent(finalFeeType)}&note=${encodeURIComponent(note)}`
+          });
+        }, 1500);
+      },
     });
-    Taro.showToast({ title: '收款通知已生成', icon: 'none', duration: 2000 });
-    setTimeout(() => {
-      setSubmitting(false);
-      Taro.navigateTo({
-        url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${feeType}&note=${encodeURIComponent(note)}`
-      });
-    }, 1500);
-  }, [selectedRoomId, feeType, amount, note, submitting]);
+  }, [selectedRoomId, feeType, customFeeType, useCustomType, amount, note, submitting]);
 
   const selectedRoomLabel = rooms.find(r => r.id === selectedRoomId)?.label || '请选择房间';
 
   return (
     <View className="page-single-charge">
-      <NavBar title="单独收一笔钱" onBack={goBack} />
-
       {loading && <Loading />}
       {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
       {!loading && !error && (
         <>
       <View className="sc-tip">
-        <Text className="sc-tip-text">适合单独收水电费、维修费、押金等</Text>
+        <Text className="sc-tip-text">适合单独收费：水电费、停车费、维修费、押金等</Text>
       </View>
 
       <View className="sc-form">
@@ -109,6 +133,7 @@ export default function SingleCharge() {
               const idx = Number(e.detail.value);
               if (rooms[idx]) {
                 setSelectedRoomId(rooms[idx].id);
+                setFeeType('');
               }
             }}
           >
@@ -116,27 +141,42 @@ export default function SingleCharge() {
               <Text className="form-select-text" style={{ color: selectedRoomId ? 'var(--text-primary)' : 'var(--text-hint)' }}>
                 {selectedRoomLabel}
               </Text>
-              <svg width="16" height="16" viewBox="0 0 24 24" stroke="var(--text-hint)" strokeWidth="1.8" fill="none">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
+              <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>▾</Text>
             </View>
           </Picker>
         </View>
 
-        {/* Fee Type */}
+        {/* Fee Type - Quick select from common types */}
         <View className="form-group">
           <Text className="form-label">费用类型</Text>
           <View className="fee-type-grid">
-            {FEE_TYPES.map(ft => (
+            {allFeeTypes.map(t => (
               <View
-                key={ft}
-                className={`fee-type-item ${feeType === ft ? 'active' : ''}`}
-                onClick={() => setFeeType(ft)}
+                key={t}
+                className={`fee-type-item${feeType === t && !useCustomType ? ' active' : ''}`}
+                onClick={() => { setFeeType(t); setUseCustomType(false); }}
               >
-                <Text className="fee-type-text">{ft}</Text>
+                <Text className="fee-type-item-text">{t}</Text>
               </View>
             ))}
           </View>
+        </View>
+
+        {/* Custom fee type input */}
+        <View className="form-group">
+          <Text className="form-label">或自己输入</Text>
+          <Input
+            className="form-input"
+            type="text"
+            placeholder="如：停车费、空调费、中介费..."
+            value={useCustomType ? customFeeType : ''}
+            onInput={(e: any) => {
+              setCustomFeeType(e.detail.value);
+              setUseCustomType(!!e.detail.value.trim());
+              if (e.detail.value.trim()) setFeeType('');
+            }}
+            placeholderStyle="color: var(--text-hint)"
+          />
         </View>
 
         {/* Amount */}
@@ -148,7 +188,11 @@ export default function SingleCharge() {
               type="digit"
               placeholder="输入金额"
               value={amount}
-              onInput={(e: any) => setAmount(e.detail.value)}
+              onInput={(e: any) => {
+                const val = e.detail.value;
+                if (Number(val) < 0 || Number(val) > 999999) return;
+                setAmount(val);
+              }}
               placeholderStyle="color: var(--text-hint)"
             />
             <Text className="input-suffix">元</Text>
@@ -171,7 +215,7 @@ export default function SingleCharge() {
 
         {/* Submit */}
         <View className="sc-actions">
-          <View className="sc-submit-btn" onClick={handleGenerate}>
+          <View className={`sc-submit-btn ${submitting ? 'disabled' : ''}`} onClick={submitting ? undefined : handleGenerate}>
             <Text className="sc-submit-text">{submitting ? '生成中...' : '生成收款通知'}</Text>
           </View>
         </View>

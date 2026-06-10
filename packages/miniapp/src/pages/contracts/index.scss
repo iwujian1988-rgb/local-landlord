@@ -38,6 +38,16 @@
   color: #fff;
 }
 
+.filter-tab-text {
+  font-size: var(--font-sm);
+  font-weight: 500;
+}
+
+/* Scroll container */
+.contracts-scroll {
+  flex: 1;
+}
+
 /* Doc card - matches HTML .doc-card L702-724 */
 .doc-card {
   display: flex;
@@ -107,4 +117,10 @@
 
 .upload-footer-btn:active {
   transform: scale(0.96);
+}
+
+.upload-footer-text {
+  font-size: var(--font-base);
+  font-weight: 700;
+  color: var(--text-secondary);
 }

@@ -104,13 +104,23 @@
   font-weight: 700;
 }
 
-.property-edit-btn {
-  width: 88px;
-  height: 88px;
+.property-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.property-action-btn {
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  flex-shrink: 0;
-  opacity: 0.6;
+  border-radius: var(--radius-sm);
+  opacity: 0.5;
+}
+
+.property-action-btn:active {
+  opacity: 1;
+  background: rgba(74, 64, 56, 0.06);
 }

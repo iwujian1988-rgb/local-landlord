@@ -31,10 +31,7 @@ export default function RoomCard({ room, onClick }: RoomCardProps) {
           <Image className="room-card-img" src={imageSrc} mode="aspectFill" />
         ) : (
           <View className="room-card-img room-card-img-placeholder">
-            <svg width="28" height="28" viewBox="0 0 24 24" stroke="#B5A99A" strokeWidth="1.8" fill="none">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
+            <Text style={{ fontSize: '40px', lineHeight: 1, color: '#B5A99A' }}>🏠</Text>
           </View>
         )}
         <View className="room-card-info">

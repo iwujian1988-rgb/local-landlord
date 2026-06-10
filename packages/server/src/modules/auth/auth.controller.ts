@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Headers, UseGuards, BadRequestException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { WechatLoginDto } from './dto/wechat-login.dto';
@@ -14,7 +14,20 @@ export class AuthController {
   @Post('wechat/login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async wechatLogin(@Body() dto: WechatLoginDto) {
+    // Dev bypass: skip WeChat code verification in development
+    if (process.env.NODE_ENV === 'development' && dto.code?.startsWith('dev_')) {
+      return this.authService.devLogin(dto.code);
+    }
     return this.authService.wechatLogin(dto);
+  }
+
+  @Post('cloud-login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async cloudLogin(@Headers('x-wx-openid') openId: string) {
+    if (!openId) {
+      throw new BadRequestException('缺少微信身份信息，请通过小程序访问');
+    }
+    return this.authService.cloudLogin(openId);
   }
 
   @Get('me')
