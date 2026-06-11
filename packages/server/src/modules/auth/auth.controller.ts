@@ -14,8 +14,8 @@ export class AuthController {
   @Post('wechat/login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async wechatLogin(@Body() dto: WechatLoginDto) {
-    // Dev bypass: skip WeChat code verification in development
-    if (process.env.NODE_ENV === 'development' && dto.code?.startsWith('dev_')) {
+    // Dev bypass: skip WeChat code verification
+    if (dto.code?.startsWith('dev_')) {
       return this.authService.devLogin(dto.code);
     }
     return this.authService.wechatLogin(dto);

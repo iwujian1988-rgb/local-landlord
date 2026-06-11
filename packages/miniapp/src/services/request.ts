@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro';
-import { API_BASE_URL, CLOUD_ENV_ID, USE_CLOUD } from '../config';
+import { API_BASE_URL, CLOUD_ENV_ID, CLOUD_SVC, USE_CLOUD } from '../config';
 import { useAuthStore } from '../store/useAuthStore';
 
 export interface ApiResponse<T = unknown> {
@@ -54,6 +54,7 @@ function callContainer<T>(
   return new Promise((resolve, reject) => {
     (wx as any).cloud.callContainer({
       config: { env: CLOUD_ENV_ID },
+      svc: CLOUD_SVC,
       path: `/api${options.url}`,
       method: options.method || 'GET',
       data: options.data,
