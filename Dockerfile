@@ -1,5 +1,6 @@
 FROM node:18-alpine
 WORKDIR /app
+RUN apk add --no-cache ca-certificates && update-ca-certificates
 RUN npm install -g pnpm
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/

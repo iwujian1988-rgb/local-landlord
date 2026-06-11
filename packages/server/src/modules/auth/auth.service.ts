@@ -59,24 +59,17 @@ export class AuthService {
   async wechatLogin(dto: WechatLoginDto) {
     const { code, nickname, avatar } = dto;
 
-    // 1. Call WeChat code2Session with 5s timeout
+    // 1. Call WeChat code2Session with 10s timeout
     const appid = process.env.WX_APPID;
     const secret = process.env.WX_SECRET;
     if (!appid || !secret) {
       throw new BadRequestException('微信登录服务未配置');
     }
-    const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
 
     let wxData: { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-
-      const resp = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
-
-      // Destructure openid only, explicitly discard session_key
-      const raw = await resp.json() as { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
+      const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+      const raw = await this.httpGetJson(wxUrl);
       const { openid } = raw;
       wxData = { openid };
     } catch (error) {
@@ -272,5 +265,23 @@ export class AuthService {
       pwd += chars[Math.floor(Math.random() * chars.length)];
     }
     return pwd;
+  }
+
+  private httpGetJson(url: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const mod = url.startsWith('https') ? require('https') : require('http');
+      const timer = setTimeout(() => {
+        req.destroy(new Error('request timeout'));
+      }, 10000);
+      const req = mod.get(url, (res: any) => {
+        let data = '';
+        res.on('data', (chunk: string) => { data += chunk; });
+        res.on('end', () => {
+          clearTimeout(timer);
+          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        });
+      });
+      req.on('error', (err: Error) => { clearTimeout(timer); reject(err); });
+    });
   }
 }
