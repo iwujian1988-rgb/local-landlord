@@ -5,7 +5,6 @@ export class Admin {
   @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Index({ unique: true })
   @Column({ length: 32, unique: true })
   username: string;
 

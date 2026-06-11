@@ -39,9 +39,10 @@ import { HealthController } from './modules/health/health.controller';
           const password = configService.get<string>('DB_PASSWORD', '');
           const database = configService.get<string>('DB_DATABASE', 'local_landlord');
 
-          // Auto-create database if not exists
+          // Auto-create database, drop first if has corrupt schema
           const conn = await mysql.createConnection({ host, port, user: username, password });
-          await conn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+          await conn.query(`DROP DATABASE IF EXISTS \`${database}\``);
+          await conn.query(`CREATE DATABASE \`${database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
           await conn.end();
 
           return {

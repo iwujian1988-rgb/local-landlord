@@ -7,7 +7,6 @@ export class Landlord {
   @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
 
-  @Index({ unique: true })
   @Column({ name: 'open_id', length: 64, unique: true })
   openId: string;
 
