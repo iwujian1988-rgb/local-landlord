@@ -51,7 +51,7 @@ export default function MainLayout() {
       >
         <Box sx={{ p: 3, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <Typography variant="h6" fontWeight={700} color="#F5D78E">
-            本地房东
+            五联人家
           </Typography>
           <Typography variant="caption" color="rgba(255,255,255,0.5)">
             管理后台

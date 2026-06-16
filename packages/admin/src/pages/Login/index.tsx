@@ -30,7 +30,7 @@ export default function Login() {
     <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
       <Card sx={{ width: 400, p: 5 }}>
         <Typography variant="h5" fontWeight={700} textAlign="center" mb={1}>
-          本地房东
+          五联人家
         </Typography>
         <Typography variant="body2" color="text.secondary" textAlign="center" mb={4}>
           管理后台登录
