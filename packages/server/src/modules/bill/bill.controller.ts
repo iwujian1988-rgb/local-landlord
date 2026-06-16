@@ -63,8 +63,9 @@ export class BillController {
   async sendBill(
     @CurrentUser() user: any,
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { items?: { feeName?: string; name?: string; amount: number }[] },
   ) {
     await this.billService.verifyBillOwnership(id, user.id);
-    return this.billService.sendBill(id);
+    return this.billService.sendBill(id, dto.items);
   }
 }

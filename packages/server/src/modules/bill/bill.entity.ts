@@ -21,9 +21,19 @@ export class Bill {
   @Column({ length: 7 })
   period: string;
 
+  // 多月账单的结束月（含）。如押一付三季度账单 period=2024-09, period_end=2024-11。
+  // 旧账单该字段为 null，按单月 (period) 处理。
+  @Column({ name: 'period_end', type: 'varchar', length: 7, nullable: true })
+  periodEnd: string | null;
+
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
   totalAmount: number;
 
+  @Column({ name: 'paid_amount', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  paidAmount: number;
+
+  // 0: pending (未收), 1: paid (已收), 2: overdue (逾期), 3: partial (部分付款),
+  // 4: cancelled (退租作废 — 租客退租时未付清的账单被关闭，不再催收/统计)
   @Column({ type: 'tinyint', unsigned: true, default: 0 })
   status: number;
 
@@ -31,7 +41,7 @@ export class Bill {
   photos: string[];
 
   @Column({ name: 'sent_at', type: 'datetime', nullable: true })
-  sentAt: Date;
+  sentAt: Date | null;
 
   @Column({ name: 'paid_at', type: 'datetime', nullable: true })
   paidAt: Date;

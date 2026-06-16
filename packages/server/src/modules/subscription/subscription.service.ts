@@ -128,6 +128,8 @@ export class SubscriptionService {
     const today = now.date();
     const isLastDay = now.endOf('month').date() === today;
     const monthStr = now.format('YYYY-MM');
+    const currentMonth = now.month();
+    const currentYear = now.year();
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
@@ -136,8 +138,18 @@ export class SubscriptionService {
 
     for (const tenant of tenants) {
       const rentDay = tenant.rentDay ?? 1;
+      const payMonths = tenant.payMonths ?? 1;
       const isRentDay = rentDay === today || (rentDay === 0 && isLastDay);
       if (!isRentDay) continue;
+
+      // Cycle check for multi-month tenants (押X付Y where Y > 1):
+      // only generate on months where (monthsSinceMoveIn % payMonths === 0)
+      if (payMonths > 1 && tenant.moveInDate) {
+        const moveIn = dayjs(tenant.moveInDate);
+        const monthsSinceMoveIn = (currentYear - moveIn.year()) * 12 + (currentMonth - moveIn.month());
+        if (monthsSinceMoveIn < 0) continue;
+        if (monthsSinceMoveIn % payMonths !== 0) continue;
+      }
 
       const existing = await this.billRepository.findOne({
         where: { roomId: tenant.roomId, period: monthStr },
@@ -158,7 +170,11 @@ export class SubscriptionService {
       if (feeItems.length > 0) {
         for (const fee of feeItems) {
           if (!fee.enabled) continue;
-          const amt = Number(fee.amount) || 0;
+          const baseAmt = Number(fee.amount) || 0;
+          // Fixed items (房租, fixed网费 etc.) get multiplied by payMonths to
+          // collect for the whole cycle upfront. Manual items (水电, 维修)
+          // start at 0 — landlord fills in actual values before sending.
+          const amt = fee.type === 0 ? baseAmt * payMonths : 0;
           items.push({ feeName: fee.name, amount: amt });
           totalAmount += amt;
         }
@@ -166,14 +182,17 @@ export class SubscriptionService {
 
       if (items.length === 0) {
         const rent = Number(room.rent) || 0;
-        items.push({ feeName: '房租', amount: rent });
-        totalAmount = rent;
+        items.push({ feeName: '房租', amount: rent * payMonths });
+        totalAmount = rent * payMonths;
       }
+
+      const periodEnd = dayjs(monthStr + '-01').add(payMonths - 1, 'month').format('YYYY-MM');
 
       const bill = this.billRepository.create({
         roomId: room.id,
         tenantId: tenant.id,
         period: monthStr,
+        periodEnd,
         totalAmount,
         status: 0,
         photos: [],
@@ -249,13 +268,24 @@ export class SubscriptionService {
     const today = now.date();
     const isLastDay = now.endOf('month').date() === today;
     const monthStr = now.format('YYYY-MM');
+    const currentMonth = now.month();
+    const currentYear = now.year();
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
     for (const tenant of tenants) {
       const rentDay = tenant.rentDay ?? 1;
+      const payMonths = tenant.payMonths ?? 1;
       const shouldNotify = rentDay === today || (rentDay === 0 && isLastDay);
       if (!shouldNotify) continue;
+
+      // Skip non-cycle months for multi-month tenants
+      if (payMonths > 1 && tenant.moveInDate) {
+        const moveIn = dayjs(tenant.moveInDate);
+        const monthsSinceMoveIn = (currentYear - moveIn.year()) * 12 + (currentMonth - moveIn.month());
+        if (monthsSinceMoveIn < 0) continue;
+        if (monthsSinceMoveIn % payMonths !== 0) continue;
+      }
 
       const bill = await this.billRepository.findOne({
         where: { roomId: tenant.roomId, period: monthStr },
@@ -375,14 +405,17 @@ export class SubscriptionService {
       if (!bill.tenant || !bill.room) continue;
 
       const rentDay = bill.tenant.rentDay ?? 1;
+      // Use periodEnd (if set) for overdue detection — multi-month bills cover
+      // through this month. Old bills fall back to period (single-month).
+      const effectivePeriod = bill.periodEnd || bill.period;
       let dueDay: number;
       if (rentDay === 0) {
-        dueDay = dayjs(bill.period + '-01').endOf('month').date();
+        dueDay = dayjs(effectivePeriod + '-01').endOf('month').date();
       } else {
         dueDay = rentDay;
       }
 
-      const periodDate = dayjs(bill.period + '-01');
+      const periodDate = dayjs(effectivePeriod + '-01');
       const billMonth = periodDate.month();
       const billYear = periodDate.year();
 
@@ -596,9 +629,15 @@ export class SubscriptionService {
       if (bills.length === 0) continue;
 
       const totalExpected = bills.reduce((sum, b) => sum + Number(b.totalAmount), 0);
-      const paidBills = bills.filter(b => b.status !== 0);
-      const totalCollected = paidBills.reduce((sum, b) => sum + Number(b.totalAmount), 0);
-      const unpaidCount = bills.filter(b => b.status === 0).length;
+      // status: 0=未收, 1=已收, 2=逾期, 3=部分付款
+      // For collected amount: full bills contribute totalAmount, partial bills contribute paidAmount only
+      const totalCollected = bills.reduce((sum, b) => {
+        if (b.status === 1 || b.status === 2) return sum + Number(b.totalAmount);
+        if (b.status === 3) return sum + (Number(b.paidAmount) || 0);
+        return sum;
+      }, 0);
+      const paidBills = bills.filter(b => b.status === 1 || b.status === 3);
+      const unpaidCount = bills.filter(b => b.status === 0 || b.status === 2).length;
 
       await this.sendSubscribeMessage(
         landlord.openId,
