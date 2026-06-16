@@ -58,6 +58,9 @@ jobs:
       - name: Type check server
         run: pnpm --filter @local-landlord/server type-check
 
+      - name: Type check H5
+        run: pnpm --filter @local-landlord/h5 exec tsc --noEmit
+
       - name: Run E2E tests
         run: |
           cd packages/server
@@ -74,6 +77,9 @@ jobs:
           JWT_EXPIRES_IN: 7d
           NODE_ENV: test
           PORT: 3000
+
+      - name: Build H5
+        run: pnpm --filter @local-landlord/h5 build
 
       - name: Build server
         run: pnpm --filter @local-landlord/server build

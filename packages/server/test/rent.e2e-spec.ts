@@ -1,30 +1,26 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
+import request from 'supertest';
+import { createTestApp, loginAsLandlord } from './helpers/app';
 
 describe('Rent (e2e)', () => {
   let app: INestApplication;
-  let token: string;
+  let auth: () => { Authorization: string };
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
-    const loginRes = await request(app.getHttpServer()).post('/api/auth/admin/login').send({ username: 'admin', password: 'admin123' });
-    token = loginRes.body.data.token;
+    app = await createTestApp();
+    auth = await loginAsLandlord(app);
   });
 
   afterAll(async () => { await app.close(); });
-  const auth = () => ({ Authorization: `Bearer ${token}` });
 
   it('TC-RENT-001: 创建单独收款', async () => {
     const props = await request(app.getHttpServer()).get('/api/properties').set(auth());
-    const pid = props.body.data.list?.[0]?.id || props.body.data[0]?.id;
+    const list = props.body.data?.list || props.body.data;
+    const pid = list?.[0]?.id;
     if (!pid) return;
     const rooms = await request(app.getHttpServer()).get(`/api/properties/${pid}/rooms`).set(auth());
-    const roomId = rooms.body.data.list?.[0]?.id;
+    const roomList = rooms.body.data?.list || rooms.body.data;
+    const roomId = roomList?.[0]?.id;
     if (!roomId) return;
     const res = await request(app.getHttpServer())
       .post(`/api/rooms/${roomId}/single-charge`).set(auth())
@@ -34,10 +30,12 @@ describe('Rent (e2e)', () => {
 
   it('TC-RENT-002: 获取收租记录', async () => {
     const props = await request(app.getHttpServer()).get('/api/properties').set(auth());
-    const pid = props.body.data.list?.[0]?.id || props.body.data[0]?.id;
+    const list = props.body.data?.list || props.body.data;
+    const pid = list?.[0]?.id;
     if (!pid) return;
     const rooms = await request(app.getHttpServer()).get(`/api/properties/${pid}/rooms`).set(auth());
-    const roomId = rooms.body.data.list?.[0]?.id;
+    const roomList = rooms.body.data?.list || rooms.body.data;
+    const roomId = roomList?.[0]?.id;
     if (!roomId) return;
     const res = await request(app.getHttpServer()).get(`/api/rooms/${roomId}/records`).set(auth());
     expect(res.body.code).toBe(0);
@@ -46,10 +44,12 @@ describe('Rent (e2e)', () => {
 
   it('TC-RENT-003: 提醒租客', async () => {
     const props = await request(app.getHttpServer()).get('/api/properties').set(auth());
-    const pid = props.body.data.list?.[0]?.id || props.body.data[0]?.id;
+    const list = props.body.data?.list || props.body.data;
+    const pid = list?.[0]?.id;
     if (!pid) return;
     const rooms = await request(app.getHttpServer()).get(`/api/properties/${pid}/rooms`).set(auth());
-    const roomId = rooms.body.data.list?.[0]?.id;
+    const roomList = rooms.body.data?.list || rooms.body.data;
+    const roomId = roomList?.[0]?.id;
     if (!roomId) return;
     const res = await request(app.getHttpServer())
       .post(`/api/rooms/${roomId}/remind`).set(auth())
