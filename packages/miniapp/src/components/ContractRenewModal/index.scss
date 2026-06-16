@@ -1,0 +1,159 @@
+.renew-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.renew-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.renew-overlay.show .renew-content {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.renew-content {
+  background: var(--cream);
+  border-radius: var(--radius-xl);
+  width: 85%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 36px;
+  transform: scale(0.9);
+  opacity: 0;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.renew-handle {
+  display: none;
+}
+
+.renew-text {
+  text-align: center;
+  padding: 8px 0 24px;
+}
+
+.renew-title {
+  font-size: var(--font-md);
+  font-weight: 700;
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.renew-desc {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.renew-date-area {
+  margin: 8px 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.renew-date-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.renew-date-label {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.renew-date-value {
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  border: 2px solid var(--bg-soft);
+}
+
+.renew-date-value.old {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.renew-arrow {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 32px;
+}
+
+.renew-date-input {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  border: 2px solid var(--accent);
+  font-size: var(--font-sm);
+}
+
+.renew-date-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.renew-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.renew-btn {
+  flex: 1;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-sm);
+  font-weight: 700;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  min-height: 80px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.renew-btn:active {
+  transform: scale(0.96);
+}
+
+.cancel-btn {
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  border: 2px solid var(--bg-soft);
+}
+
+.ok-btn {
+  background: var(--accent);
+  color: var(--text-primary);
+  box-shadow: 0 4px 16px rgba(245, 215, 142, 0.4);
+}
+
+.renew-btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}

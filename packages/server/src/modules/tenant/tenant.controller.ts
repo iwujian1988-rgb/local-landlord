@@ -2,6 +2,7 @@ import { Controller, Post, Put, Delete, Get, Body, Param, Query, UseGuards, Pars
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { MoveOutDto } from './dto/move-out.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -37,13 +38,10 @@ export class TenantController {
   async moveOut(
     @CurrentUser() user: any,
     @Param('id', ParseIntPipe) id: number,
-    @Query('moveOutDate') moveOutDate: string,
+    @Body() dto: MoveOutDto,
   ) {
     await this.tenantService.verifyTenantOwnership(id, user.id);
-    if (!moveOutDate) {
-      moveOutDate = new Date().toISOString().slice(0, 10);
-    }
-    return this.tenantService.moveOut(id, moveOutDate);
+    return this.tenantService.moveOut(id, dto);
   }
 
   @Get('tenants/:id')

@@ -2,6 +2,9 @@ import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '../../components/Icon';
 import ConfirmModal from '../../components/ConfirmModal';
+import DepositModal from '../../components/DepositModal';
+import NoteEditModal from '../../components/NoteEditModal';
+import ContractRenewModal from '../../components/ContractRenewModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useState, useCallback } from 'react';
@@ -19,6 +22,7 @@ interface RoomData {
   images?: string[];
   status: number;
   propertyId: number;
+  note?: string;
 }
 
 interface TenantData {
@@ -28,6 +32,22 @@ interface TenantData {
   rentDay?: number;
   contractEndDate?: string;
   moveInDate?: string;
+  deposit?: number;
+  moveInReading?: string;
+  moveOutReading?: string;
+  initialPaymentMethod?: string | null;
+  initialPaymentDate?: string | null;
+  initialPaymentAmount?: number | null;
+}
+
+interface MoveOutPreview {
+  prepaidRefund: number;
+  latestPaidPeriodEnd: string | null;
+}
+
+interface ActivePartialPayment {
+  count: number;
+  totalPaid: number;
 }
 
 interface PropertyData {
@@ -53,8 +73,13 @@ interface PageData {
   loading: boolean;
   error: boolean;
   checkoutVisible: boolean;
+  depositVisible: boolean;
   deleteVisible: boolean;
   showMoreActions: boolean;
+  noteModalVisible: boolean;
+  renewModalVisible: boolean;
+  moveOutPreview: MoveOutPreview | null;
+  activePartialPayment: ActivePartialPayment | null;
 }
 
 const emptyPageData: PageData = {
@@ -67,8 +92,13 @@ const emptyPageData: PageData = {
   loading: false,
   error: false,
   checkoutVisible: false,
+  depositVisible: false,
   deleteVisible: false,
   showMoreActions: false,
+  noteModalVisible: false,
+  renewModalVisible: false,
+  moveOutPreview: null,
+  activePartialPayment: null,
 };
 
 export default function RoomDetail() {
@@ -93,6 +123,8 @@ export default function RoomDetail() {
           historyTenants: d.historyTenants || [],
           roomStatus: d.status === 1 ? '已租' : '空着',
           tenantId: d.tenant ? d.tenant.id : null,
+          moveOutPreview: d.moveOutPreview || null,
+          activePartialPayment: d.activePartialPayment || null,
         }));
         Taro.setNavigationBarTitle({ title: d.name || '房间详情' });
       }
@@ -113,11 +145,25 @@ export default function RoomDetail() {
     Taro.showToast({ title: msg, icon: 'none', duration: 2000 });
   }, []);
 
-  const handleCheckout = useCallback(async () => {
-    setData(prev => ({ ...prev, checkoutVisible: false }));
+  const handleCheckout = useCallback(() => {
+    // Close confirm modal, open deposit modal
+    setData(prev => ({ ...prev, checkoutVisible: false, depositVisible: true }));
+  }, []);
+
+  const handleCheckoutSubmit = useCallback(async (depositData?: {
+    depositStatus: number;
+    refundAmount: number;
+    deductReason: string;
+    moveOutReading?: string;
+  }) => {
+    setData(prev => ({ ...prev, depositVisible: false }));
     try {
-      await put(`/rooms/${roomId}`, { status: 0, action: 'checkout' });
-      setData(prev => ({ ...prev, tenant: null, roomStatus: '空着' }));
+      await put(`/rooms/${roomId}`, {
+        status: 0,
+        action: 'checkout',
+        ...(depositData || { depositStatus: 0 }),
+      });
+      setData(prev => ({ ...prev, tenant: null, roomStatus: '空着', moveOutPreview: null }));
       Taro.showModal({
         title: '退租成功',
         content: '房间已变为空置状态，是否立即登记新租客？',
@@ -149,6 +195,36 @@ export default function RoomDetail() {
     }
   }, [roomId]);
 
+  const handleNoteSave = useCallback(async (note: string) => {
+    try {
+      await put(`/rooms/${roomId}`, { note });
+      setData(prev => ({ ...prev, noteModalVisible: false, room: prev.room ? { ...prev.room, note } : null }));
+      Taro.showToast({ title: '备注已保存', icon: 'success', duration: 1500 });
+    } catch (err) {
+      console.error('[RoomDetail] 保存备注失败:', err);
+      Taro.showToast({ title: '保存失败', icon: 'none' });
+    }
+  }, [roomId]);
+
+  const handleRenew = useCallback(async (newEndDate: string) => {
+    if (!data.tenantId) {
+      Taro.showToast({ title: '租客信息缺失', icon: 'none' });
+      return;
+    }
+    try {
+      await put(`/tenants/${data.tenantId}`, { contractEndDate: newEndDate });
+      setData(prev => ({
+        ...prev,
+        renewModalVisible: false,
+        tenant: prev.tenant ? { ...prev.tenant, contractEndDate: newEndDate } : null,
+      }));
+      Taro.showToast({ title: '续签成功', icon: 'success', duration: 1500 });
+    } catch (err) {
+      console.error('[RoomDetail] 续签失败:', err);
+      Taro.showToast({ title: '续签失败', icon: 'none' });
+    }
+  }, [data.tenantId]);
+
   const getStatusLabel = () => {
     if (data.room?.status === 1) return '已租';
     return '空着';
@@ -161,7 +237,11 @@ export default function RoomDetail() {
   };
 
   const rentDayText = data.tenant?.rentDay !== undefined
-    ? (data.tenant.rentDay === 0 ? '月底' : `每月 ${data.tenant.rentDay} 号`)
+    ? (() => {
+        const dayLabel = data.tenant.rentDay === 0 ? '月底' : `${data.tenant.rentDay} 号`;
+        const payMonths = (data.tenant as any).payMonths ?? 1;
+        return payMonths > 1 ? `每 ${payMonths} 个月的 ${dayLabel}` : `每月 ${dayLabel}`;
+      })()
     : '-';
 
   const contractExpiryDays = (() => {
@@ -295,7 +375,7 @@ export default function RoomDetail() {
               <View className="warning-actions">
                 <View
                   className="warning-btn"
-                  onClick={() => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}&tenantId=${data.tenantId}` })}
+                  onClick={() => setData(prev => ({ ...prev, renewModalVisible: true }))}
                 >
                   <Text className="warning-btn-text">续签（修改到期日）</Text>
                 </View>
@@ -353,22 +433,6 @@ export default function RoomDetail() {
         <View className="quick-actions">
           {[
             {
-              label: '发给租客',
-              icon: (<Icon name="send" size={28} color="var(--accent-hover)" />),
-              action: () => {
-                if (data.tenantId) {
-                  Taro.navigateTo({ url: `/pages/payment/index?roomId=${roomId}&amount=${data.room?.rent || 0}` });
-                } else {
-                  showToast('请先登记租客');
-                }
-              },
-            },
-            {
-              label: '登记租客',
-              icon: (<Icon name="user-plus" size={28} color="var(--accent-hover)" />),
-              action: () => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}` }),
-            },
-            {
               label: '发账单',
               icon: (<Icon name="credit-card" size={28} color="var(--accent-hover)" />),
               action: () => Taro.navigateTo({ url: `/pages/bill/index?roomId=${roomId}${data.tenantId ? `&tenantId=${data.tenantId}` : ''}` }),
@@ -382,6 +446,11 @@ export default function RoomDetail() {
               label: '收租记录',
               icon: (<Icon name="clock" size={28} color="var(--accent-hover)" />),
               action: () => Taro.navigateTo({ url: `/pages/records/index?roomId=${roomId}` }),
+            },
+            {
+              label: data.tenant ? '编辑租客' : '登记租客',
+              icon: (<Icon name="user-plus" size={28} color="var(--accent-hover)" />),
+              action: () => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}` }),
             },
             {
               label: data.showMoreActions ? '收起' : '更多',
@@ -415,7 +484,7 @@ export default function RoomDetail() {
                 action: () => Taro.navigateTo({ url: `/pages/contracts/index?roomId=${roomId}` }),
               },
               {
-                label: '每月要收',
+                label: '每月收费项目',
                 icon: (<Icon name="settings" size={28} color="var(--accent-hover)" />),
                 action: () => Taro.navigateTo({ url: `/pages/fee-setup/index?roomId=${roomId}` }),
               },
@@ -479,7 +548,7 @@ export default function RoomDetail() {
               iconBg: 'gray-bg',
               icon: (<Icon name="pencil" size={28} color="var(--text-secondary)" />),
               action: () => {
-                Taro.navigateTo({ url: `/pages/add-room-info/index?roomId=${roomId}&propertyId=${urlPropertyId}` });
+                setData(prev => ({ ...prev, noteModalVisible: true }));
               },
             },
             {
@@ -505,10 +574,24 @@ export default function RoomDetail() {
       <ConfirmModal
         visible={data.checkoutVisible}
         title={`确认${data.tenant?.name || '租客'}退租？`}
-        description="退租后房间将变为空置状态"
-        confirmText="确认退租"
+        description={
+          data.activePartialPayment
+            ? `⚠ 该租客已付 ¥${data.activePartialPayment.totalPaid.toLocaleString()}（${data.activePartialPayment.count} 笔部分付款），退租后未付清的账单将作废。建议先确认收齐尾款，或与租客协商退还已付款。`
+            : '退租后房间将变为空置状态'
+        }
+        confirmText="下一步"
         onConfirm={handleCheckout}
         onCancel={() => setData(prev => ({ ...prev, checkoutVisible: false }))}
+      />
+
+      <DepositModal
+        visible={data.depositVisible}
+        deposit={Number(data.tenant?.deposit) || 0}
+        prepaidRefund={Number(data.moveOutPreview?.prepaidRefund) || 0}
+        moveInReading={data.tenant?.moveInReading || ''}
+        onCancel={() => setData(prev => ({ ...prev, depositVisible: false }))}
+        onSkip={() => handleCheckoutSubmit()}
+        onConfirm={handleCheckoutSubmit}
       />
 
       <ConfirmModal
@@ -518,6 +601,21 @@ export default function RoomDetail() {
         confirmText="确认删除"
         onConfirm={handleDeleteRoom}
         onCancel={() => setData(prev => ({ ...prev, deleteVisible: false }))}
+      />
+
+      <NoteEditModal
+        visible={data.noteModalVisible}
+        initialNote={data.room?.note || ''}
+        onCancel={() => setData(prev => ({ ...prev, noteModalVisible: false }))}
+        onConfirm={handleNoteSave}
+      />
+
+      <ContractRenewModal
+        visible={data.renewModalVisible}
+        tenantName={data.tenant?.name}
+        currentEndDate={data.tenant?.contractEndDate}
+        onCancel={() => setData(prev => ({ ...prev, renewModalVisible: false }))}
+        onConfirm={handleRenew}
       />
     </View>
   );

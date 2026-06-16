@@ -29,6 +29,13 @@ export class UpdateTenantDto {
 
   @IsOptional()
   @IsNumber()
+  @Min(1)
+  @Max(12)
+  @Type(() => Number)
+  payMonths?: number;
+
+  @IsOptional()
+  @IsNumber()
   @Min(0)
   @Type(() => Number)
   deposit?: number;
