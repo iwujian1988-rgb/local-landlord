@@ -8,6 +8,15 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Landlord } from '../landlord/landlord.entity';
 import { Admin } from '../system/admin.entity';
+import { Property } from '../property/property.entity';
+import { Room } from '../room/room.entity';
+import { Tenant } from '../tenant/tenant.entity';
+import { Bill } from '../bill/bill.entity';
+import { BillItem } from '../bill/bill-item.entity';
+import { SingleCharge } from '../rent/single-charge.entity';
+import { RentRecord } from '../rent/rent-record.entity';
+import { PaymentQr } from '../payment-qr/payment-qr.entity';
+import { Document } from '../document/document.entity';
 
 @Global()
 @Module({
@@ -27,7 +36,13 @@ import { Admin } from '../system/admin.entity';
         };
       },
     }),
-    TypeOrmModule.forFeature([Landlord, Admin]),
+    TypeOrmModule.forFeature([
+      Landlord, Admin,
+      Property, Room, Tenant,
+      Bill, BillItem,
+      SingleCharge, RentRecord,
+      PaymentQr, Document,
+    ]),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],

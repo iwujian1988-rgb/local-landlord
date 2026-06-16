@@ -16,6 +16,9 @@ const allowedBase64Mimes = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
 ];
 
+// Same as multipart limits.fileSize — keeps base64 path from being used to bypass it.
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 @Injectable()
 export class UploadService {
   private readonly logger = new Logger(UploadService.name);
@@ -35,14 +38,14 @@ export class UploadService {
     if (uploadMode === 'cloudbase') {
       return {
         storage: multer.memoryStorage(),
-        limits: { fileSize: 10 * 1024 * 1024 },
+        limits: { fileSize: MAX_UPLOAD_BYTES },
         fileFilter: UploadService.fileFilter,
       };
     }
 
     return {
       storage: UploadService.getDiskStorage(),
-      limits: { fileSize: 10 * 1024 * 1024 },
+      limits: { fileSize: MAX_UPLOAD_BYTES },
       fileFilter: UploadService.fileFilter,
     };
   }
@@ -132,6 +135,10 @@ export class UploadService {
     const ext = mimeType.split('/')[1] === 'jpeg' ? '.jpg' : `.${mimeType.split('/')[1]}`;
     const filename = `${uuidv4()}${ext}`;
     const buffer = Buffer.from(base64Data, 'base64');
+
+    if (buffer.length > MAX_UPLOAD_BYTES) {
+      throw new BadRequestException(`文件过大，最大允许 ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB`);
+    }
 
     if (this.uploadMode === 'cloudbase') {
       // Upload to COS

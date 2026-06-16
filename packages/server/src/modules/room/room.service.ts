@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import dayjs from 'dayjs';
 import { Room } from './room.entity';
 import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
@@ -95,7 +96,18 @@ export class RoomService {
       const rentDay = tenant?.rentDay ?? 10;
       const today = new Date().getDate();
       const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-      const currentBill = await this.billRepository.findOne({ where: { roomId: room.id, period: monthStr } });
+      // Covering bill (multi-month aware), exclude cancelled
+      const currentBill = await this.billRepository
+        .createQueryBuilder('bill')
+        .where('bill.room_id = :rid', { rid: room.id })
+        .andWhere('bill.status != :cancelled', { cancelled: 4 })
+        .andWhere(
+          '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
+          'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
+          { monthStr },
+        )
+        .orderBy('bill.created_at', 'DESC')
+        .getOne();
 
       let overdueDays = 0;
       if (room.status === 1 && currentBill && currentBill.status !== 1 && today > rentDay) {
@@ -158,9 +170,26 @@ export class RoomService {
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const today = now.getDate();
 
-    const currentBills = roomIds.length > 0
-      ? await this.billRepository.find({ where: { roomId: In(roomIds), period: monthStr } })
-      : [];
+    // Find bills covering current month — multi-month aware (押X付Y bills span
+    // period..periodEnd). Exclude cancelled (status=4) so退租 rooms don't show
+    // as overdue.
+    const currentBills: Bill[] = [];
+    if (roomIds.length > 0) {
+      for (const rid of roomIds) {
+        const bill = await this.billRepository
+          .createQueryBuilder('bill')
+          .where('bill.room_id = :rid', { rid })
+          .andWhere('bill.status != :cancelled', { cancelled: 4 })
+          .andWhere(
+            '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
+            'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
+            { monthStr },
+          )
+          .orderBy('bill.created_at', 'DESC')
+          .getOne();
+        if (bill) currentBills.push(bill);
+      }
+    }
     const billMap = new Map<number, Bill>();
     for (const b of currentBills) billMap.set(b.roomId, b);
 
@@ -236,9 +265,61 @@ export class RoomService {
       order: { createdAt: 'DESC' },
     });
 
+    // Partial-payment warning: if tenant has any status=3 (partial) bills,
+    // surface the total paid amount so the landlord sees "this tenant already
+    // paid ¥X, checkout will void the unpaid balance" before confirming.
+    let activePartialPayment: { count: number; totalPaid: number } | null = null;
+    if (activeTenant) {
+      const partialBills = await this.billRepository.find({
+        where: { tenantId: activeTenant.id, status: 3 },
+      });
+      if (partialBills.length > 0) {
+        activePartialPayment = {
+          count: partialBills.length,
+          totalPaid: partialBills.reduce((s, b) => s + (Number(b.paidAmount) || 0), 0),
+        };
+      }
+    }
+
+    // P0-B: preview prepaid rent refund if tenant moves out today. Used by
+    // DepositModal to show breakdown before user confirms checkout.
+    const previewNow = new Date();
+    let prepaidRefundPreview = 0;
+    let latestPaidPeriodEnd: string | null = null;
+    if (activeTenant) {
+      const latestPaidBill = await this.billRepository.findOne({
+        where: { tenantId: activeTenant.id, status: 1 },
+        order: { periodEnd: 'DESC' },
+      });
+      if (latestPaidBill) {
+        latestPaidPeriodEnd = latestPaidBill.periodEnd || latestPaidBill.period;
+        const periodEndDate = dayjs(latestPaidPeriodEnd + '-01').endOf('month');
+        const moveOutDay = dayjs(previewNow); // preview uses today
+        const unusedDays = periodEndDate.diff(moveOutDay, 'day');
+        if (unusedDays > 0) {
+          const monthlyRent = Number(room.rent) || 0;
+          if (monthlyRent > 0) {
+            const dailyRate = monthlyRent / 30;
+            prepaidRefundPreview = Math.round(dailyRate * unusedDays * 100) / 100;
+          }
+        }
+      }
+    }
+
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const currentBill = await this.billRepository.findOne({ where: { roomId: id, period: monthStr } });
+    // Covering bill (multi-month aware), exclude cancelled
+    const currentBill = await this.billRepository
+      .createQueryBuilder('bill')
+      .where('bill.room_id = :rid', { rid: id })
+      .andWhere('bill.status != :cancelled', { cancelled: 4 })
+      .andWhere(
+        '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
+        'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
+        { monthStr },
+      )
+      .orderBy('bill.created_at', 'DESC')
+      .getOne();
     const rentDay = activeTenant?.rentDay ?? 10;
     const today = now.getDate();
     let overdueDays = 0;
@@ -273,11 +354,28 @@ export class RoomService {
         name: activeTenant.name,
         phone: activeTenant.phone || '',
         rentDay: activeTenant.rentDay,
+        payMonths: activeTenant.payMonths ?? 1,
         contractEndDate: activeTenant.contractEndDate || '',
         moveInDate: activeTenant.moveInDate || '',
         deposit: activeTenant.deposit || 0,
         note: activeTenant.note || '',
+        // P0-A: 入住实收信息（前端 add-tenant 编辑回填用）
+        initialPaymentMethod: activeTenant.initialPaymentMethod || null,
+        initialPaymentDate: activeTenant.initialPaymentDate || null,
+        initialPaymentAmount: activeTenant.initialPaymentAmount != null
+          ? Number(activeTenant.initialPaymentAmount)
+          : null,
+        // P0-C: 入住水电读数（退租时对照展示）
+        moveInReading: activeTenant.moveInReading || '',
+        moveOutReading: activeTenant.moveOutReading || '',
       } : null,
+      // P0-B: 预付租金退还预览（如果今天退租）
+      moveOutPreview: activeTenant ? {
+        prepaidRefund: prepaidRefundPreview,
+        latestPaidPeriodEnd,
+      } : null,
+      // Partial-payment warning for checkout confirm modal
+      activePartialPayment,
       feeItems: feeItems.map(f => ({
         id: f.id,
         name: f.name,
@@ -310,7 +408,7 @@ export class RoomService {
     const room = this.roomRepository.create({
       ...dto,
       propertyId,
-      status: 0,
+      status: dto.status ?? 0,
     });
     return this.roomRepository.save(room);
   }
@@ -328,8 +426,46 @@ export class RoomService {
       });
       if (activeTenant) {
         activeTenant.status = 0;
-        activeTenant.moveOutDate = new Date().toISOString().slice(0, 10);
+        const moveOutDate = new Date().toISOString().slice(0, 10);
+        activeTenant.moveOutDate = moveOutDate;
+
+        if (dto.depositStatus != null) {
+          activeTenant.depositStatus = dto.depositStatus;
+          if (dto.depositRefundAmount != null) {
+            activeTenant.depositRefundAmount = dto.depositRefundAmount;
+          }
+          if (dto.depositDeductReason != null) {
+            activeTenant.depositDeductReason = dto.depositDeductReason;
+          }
+        }
+
+        // P0-C: 退租水电读数
+        if (dto.moveOutReading != null) {
+          activeTenant.moveOutReading = dto.moveOutReading;
+        }
+
+        // P0-B: 预付租金退还 — 前端传则以传值为准，否则后端按 moveOutDate 自动算
+        if (dto.prepaidRefundAmount != null) {
+          activeTenant.prepaidRefundAmount = dto.prepaidRefundAmount;
+        } else {
+          activeTenant.prepaidRefundAmount = await this.computePrepaidRefundFor(
+            activeTenant,
+            moveOutDate,
+          );
+        }
+
         await this.tenantRepository.save(activeTenant);
+
+        // P1: Cancel tenant's pending/partial/overdue bills so they don't keep
+        // showing in rent-list催收 / stats待收 / overdue cron. Paid bills are
+        // kept for history. status=4 means "退租作废".
+        await this.billRepository
+          .createQueryBuilder()
+          .update(Bill)
+          .set({ status: 4 })
+          .where('tenant_id = :tid', { tid: activeTenant.id })
+          .andWhere('status IN (:...statuses)', { statuses: [0, 2, 3] })
+          .execute();
       }
       return room;
     }
@@ -348,6 +484,39 @@ export class RoomService {
 
     Object.assign(room, rest);
     return this.roomRepository.save(room);
+  }
+
+  /**
+   * P0-B helper: compute prepaid rent refund for an early move-out.
+   *
+   * Algorithm mirrors TenantService.computePrepaidRefund. Finds the latest paid
+   * bill, looks at its periodEnd, computes unused days from moveOutDate to end
+   * of that month, multiplies by monthly rent / 30 (standard 日租金 convention).
+   */
+  private async computePrepaidRefundFor(
+    tenant: Tenant,
+    moveOutDate: string,
+  ): Promise<number> {
+    const latestPaidBill = await this.billRepository.findOne({
+      where: { tenantId: tenant.id, status: 1 },
+      order: { periodEnd: 'DESC' },
+    });
+    if (!latestPaidBill) return 0;
+
+    const effectivePeriodEnd = latestPaidBill.periodEnd || latestPaidBill.period;
+    const periodEndDate = dayjs(effectivePeriodEnd + '-01').endOf('month');
+    const moveOutDay = dayjs(moveOutDate);
+    const unusedDays = periodEndDate.diff(moveOutDay, 'day');
+    if (unusedDays <= 0) return 0;
+
+    const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
+    if (!room) return 0;
+    const monthlyRent = Number(room.rent) || 0;
+    if (monthlyRent <= 0) return 0;
+
+    const dailyRate = monthlyRent / 30;
+    const refund = Math.round(dailyRate * unusedDays * 100) / 100;
+    return Math.max(0, refund);
   }
 
   /** Delete room */

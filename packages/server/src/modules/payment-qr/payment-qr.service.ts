@@ -43,8 +43,10 @@ export class PaymentQrService {
         payeeName: c.payeeName || '',
         note: c.note || '',
       })),
-      payeeName: landlord?.name || '',
-      payeeNote: '',
+      // payeeName/payeeNote live on the landlord, not per-QR — return the real
+      // values so the qr-code page can pre-fill the form.
+      payeeName: landlord?.defaultPayeeName || '',
+      payeeNote: landlord?.paymentNote || '',
     };
   }
 

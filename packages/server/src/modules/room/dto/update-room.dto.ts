@@ -58,4 +58,33 @@ export class UpdateRoomDto {
   @IsOptional()
   @IsString()
   action?: string;
+
+  // Deposit refund fields — only used when action='checkout'
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  depositStatus?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  depositRefundAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  depositDeductReason?: string;
+
+  // P0-B/C: 退租水电读数 + 预付租金退还（前端可传，否则后端自动算）
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  moveOutReading?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  prepaidRefundAmount?: number;
 }

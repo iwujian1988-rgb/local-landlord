@@ -9,9 +9,10 @@ import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
+import { SingleCharge } from '../rent/single-charge.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Room, Bill, Tenant, Property, Landlord, FeeItem, PaymentQr])],
+  imports: [TypeOrmModule.forFeature([Room, Bill, Tenant, Property, Landlord, FeeItem, PaymentQr, SingleCharge])],
   controllers: [StatsController],
   providers: [StatsService],
   exports: [StatsService],

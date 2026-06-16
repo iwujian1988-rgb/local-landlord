@@ -43,6 +43,19 @@ async function bootstrap() {
       (app as NestExpressApplication).useStaticAssets(adminDist, { prefix: '/' });
     }
   }
+  // H5 bill page (served from packages/h5 build output, copied into public/h5)
+  const h5Dist = join(__dirname, '..', 'public', 'h5');
+  if (!existsSync(h5Dist)) {
+    // dev fallback: cwd/public/h5
+  }
+  if (existsSync(h5Dist)) {
+    (app as NestExpressApplication).useStaticAssets(h5Dist, { prefix: '/h5/' });
+  } else {
+    const h5Dev = join(process.cwd(), 'public', 'h5');
+    if (existsSync(h5Dev)) {
+      (app as NestExpressApplication).useStaticAssets(h5Dev, { prefix: '/h5/' });
+    }
+  }
 
   const port = process.env.PORT || 3000;
   await app.listen(port);

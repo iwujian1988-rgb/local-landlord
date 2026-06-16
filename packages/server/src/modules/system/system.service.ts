@@ -18,7 +18,7 @@ import { Landlord } from '../landlord/landlord.entity';
 @Injectable()
 export class SystemService {
   private readonly defaultSystemParams: Record<string, any> = {
-    appName: '本地房东',
+    appName: '五联人家',
     maxRoomPerProperty: 100,
     enableAutoRemind: true,
     remindDays: 3,

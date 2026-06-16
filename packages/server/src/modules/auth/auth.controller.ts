@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, Headers, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Headers, UseGuards, BadRequestException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { WechatLoginDto } from './dto/wechat-login.dto';
@@ -43,6 +43,15 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(user.id, dto, user.isAdmin);
+  }
+
+  @Delete('account')
+  @UseGuards(JwtAuthGuard)
+  async deleteAccount(@CurrentUser() user: any) {
+    if (user.isAdmin) {
+      throw new BadRequestException('管理员账号请通过后台管理注销');
+    }
+    return this.authService.deleteAccount(user.id);
   }
 
   @Post('admin/login')
