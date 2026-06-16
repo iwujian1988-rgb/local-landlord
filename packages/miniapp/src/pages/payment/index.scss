@@ -120,9 +120,21 @@
   margin-top: 8px;
 }
 
+.payment-qr-tip {
+  display: block;
+  font-size: 24px;
+  color: var(--text-hint, #A89B8C);
+  text-align: center;
+  margin-top: 16px;
+}
+
 /* Action Buttons */
+.payment-primary-cta {
+  padding: 32px 32px 0;
+}
+
 .payment-actions {
-  padding: 32px;
+  padding: 24px 32px 32px;
   display: flex;
   gap: 16px;
 }
@@ -158,9 +170,50 @@
     color: var(--text-secondary, #7A6F64);
     border: 4px solid var(--bg-soft, #F5EDE2);
   }
+
+  &.full {
+    width: 100%;
+    box-shadow: 0 12px 36px rgba(245, 215, 142, 0.5);
+  }
+
+  &.loading {
+    opacity: 0.6;
+    pointer-events: none;
+  }
 }
 
 .payment-scroll { flex: 1; }
 .payment-note { font-size: var(--font-sm, 30px); color: var(--text-hint); padding: 12px 32px; }
 .payment-qr-img { width: 360px; height: 360px; margin: 0 auto; }
 .payment-btn-text { font-size: var(--font-base, 34px); font-weight: 700; }
+
+.payment-qr-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.payment-qr-chip {
+  padding: 10px 24px;
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  border: 2px solid transparent;
+}
+
+.payment-qr-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.payment-qr-chip-text {
+  font-size: 24px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.payment-qr-chip.active .payment-qr-chip-text {
+  color: var(--accent-dk);
+  font-weight: 600;
+}

@@ -19,6 +19,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { SystemModule } from './modules/system/system.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { ShareModule } from './modules/share/share.module';
 import { HealthController } from './modules/health/health.controller';
 
 @Module({
@@ -39,12 +40,15 @@ import { HealthController } from './modules/health/health.controller';
           const password = configService.get<string>('DB_PASSWORD', '');
           const database = configService.get<string>('DB_DATABASE', 'local_landlord');
 
-          // Auto-create database, drop first if has corrupt schema
+          // Create database only if missing — never drop. (Previous impl dropped on every boot,
+          // which wiped production data on each container restart.)
           const conn = await mysql.createConnection({ host, port, user: username, password });
-          await conn.query(`DROP DATABASE IF EXISTS \`${database}\``);
-          await conn.query(`CREATE DATABASE \`${database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+          await conn.query(
+            `CREATE DATABASE IF NOT EXISTS \`${database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+          );
           await conn.end();
 
+          const isProd = configService.get('NODE_ENV') === 'production';
           return {
             type: 'mysql' as const,
             host,
@@ -53,15 +57,16 @@ import { HealthController } from './modules/health/health.controller';
             password,
             database,
             autoLoadEntities: true,
-            synchronize: true,
-            logging: false,
+            // synchronize=true is risky in prod (auto-ALTERs tables). Disable for prod, use migrations.
+            synchronize: !isProd,
+            logging: !isProd,
           };
         }
 
         // Default: sqljs for development
         return {
           type: 'sqljs' as const,
-          location: 'data/local_landlord.sqlite',
+          location: configService.get('DB_LOCATION', 'data/local_landlord.sqlite'),
           autoSave: true,
           autoLoadEntities: true,
           synchronize: configService.get('NODE_ENV') === 'development',
@@ -83,6 +88,7 @@ import { HealthController } from './modules/health/health.controller';
     SystemModule,
     UploadModule,
     SubscriptionModule,
+    ShareModule,
   ],
   controllers: [HealthController],
   providers: [

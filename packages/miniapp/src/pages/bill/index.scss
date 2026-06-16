@@ -8,6 +8,22 @@
   height: calc(100vh - 88px);
 }
 
+/* Cycle banner — shown for multi-month bills (押X付Y where Y > 1) */
+.bill-cycle-banner {
+  margin: 24px 32px 0;
+  padding: 24px 32px;
+  border-radius: var(--radius-md, 32px);
+  background: rgba(245, 215, 142, 0.25);
+  border: 2px solid rgba(245, 215, 142, 0.6);
+}
+
+.bill-cycle-text {
+  font-size: var(--font-sm, 28px);
+  color: var(--text-primary, #4A4038);
+  font-weight: 500;
+  line-height: 1.5;
+}
+
 /* Elder Card */
 .elder-card {
   margin: 0 32px 24px;

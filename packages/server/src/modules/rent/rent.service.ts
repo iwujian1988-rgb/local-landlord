@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import dayjs from 'dayjs';
 import { SingleCharge } from './single-charge.entity';
 import { RentRecord } from './rent-record.entity';
 import { Room } from '../room/room.entity';
@@ -28,12 +29,19 @@ export interface PendingEntry {
   tenantId: number | null;
   contractEndDate: string;
   rentDay: number;
+  payMonths: number;
   billId: number | null;
   billStatus: number;
+  billPeriod: string | null;
+  billPeriodEnd: string | null;
   totalAmount: number;
+  paidAmount: number;
   overdueDays: number;
   daysUntil: number;
   hasOverdue: boolean;
+  // When current month is NOT a due-month (押X付Y cycle off), this is the
+  // next month where rent should be collected. Format: 'YYYY-MM'.
+  nextDueMonth: string | null;
 }
 
 export interface PendingRentGroup {
@@ -41,6 +49,8 @@ export interface PendingRentGroup {
   approaching: PendingEntry[];
   overdue: PendingEntry[];
   completed: PendingEntry[];
+  // Tenants whose payMonths cycle means no rent is due this month.
+  upcoming: PendingEntry[];
 }
 
 @Injectable()
@@ -70,18 +80,26 @@ export class RentService {
     }
   }
 
+  /** Verify single_charge belongs to landlord (via room → property chain) */
+  async verifySingleChargeOwnership(singleChargeId: number, landlordId: number): Promise<void> {
+    const charge = await this.singleChargeRepository.findOne({ where: { id: singleChargeId } });
+    if (!charge) throw new NotFoundException('收款记录不存在');
+    await this.verifyRoomOwnership(charge.roomId, landlordId);
+  }
+
   /**
-   * Pending rent list: grouped by today/approaching/overdue/completed
-   * Bucket rules per API-CONTRACT.md:
-   *   today       — today == rentDay, current bill unpaid
-   *   approaching — rentDay - today ∈ [1, 3], current bill unpaid
-   *   overdue     — today > rentDay (current bill unpaid) OR has prior-period unpaid bills
-   *   completed   — current bill paid
+   * Pending rent list: grouped by today/approaching/overdue/completed/upcoming
+   * Bucket rules:
+   *   today       — current month is a due-month, today == rentDay, current bill unpaid
+   *   approaching — current month is a due-month, rentDay - today ∈ [1, 3], current bill unpaid
+   *   overdue     — current month is a due-month, today > rentDay (bill unpaid) OR has prior-period unpaid bills
+   *   completed   — current bill (covering this month) paid
+   *   upcoming    — current month is NOT a due-month (押X付Y cycle off), show next due month
    */
   async getPendingRent(landlordId: number): Promise<PendingRentGroup> {
     const properties = await this.propertyRepository.find({ where: { landlordId } });
     if (properties.length === 0) {
-      return { today: [], approaching: [], overdue: [], completed: [] };
+      return { today: [], approaching: [], overdue: [], completed: [], upcoming: [] };
     }
     const propertyMap = new Map<number, Property>();
     for (const p of properties) propertyMap.set(p.id, p);
@@ -91,7 +109,7 @@ export class RentService {
       where: { propertyId: In(propertyIds), status: 1 },
     });
     if (rentedRooms.length === 0) {
-      return { today: [], approaching: [], overdue: [], completed: [] };
+      return { today: [], approaching: [], overdue: [], completed: [], upcoming: [] };
     }
 
     const roomIds = rentedRooms.map(r => r.id);
@@ -103,34 +121,66 @@ export class RentService {
     for (const t of allTenants) tenantMap.set(t.roomId, t);
 
     const now = new Date();
-    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
     const todayDate = now.getDate();
 
-    const currentBills = await this.billRepository.find({
-      where: { roomId: In(roomIds), period: monthStr },
-    });
+    // Find any bill that covers the current month (handles multi-month cycles).
+    const coveringBills = await this.billRepository
+      .createQueryBuilder('bill')
+      .where('bill.room_id IN (:...roomIds)', { roomIds })
+      .andWhere(
+        '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
+        'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
+        { monthStr },
+      )
+      .getMany();
     const currentBillMap = new Map<number, Bill>();
-    for (const b of currentBills) currentBillMap.set(b.roomId, b);
+    for (const b of coveringBills) currentBillMap.set(b.roomId, b);
 
+    // For prior-overdue detection: any unpaid bill whose coverage window ended before this month.
     const unpaidBills = await this.billRepository.find({
-      where: { roomId: In(roomIds), status: 0 },
+      where: { roomId: In(roomIds), status: In([0, 2, 3]) },
     });
     const priorOverdueMap = new Map<number, boolean>();
     for (const b of unpaidBills) {
-      if (b.period < monthStr) priorOverdueMap.set(b.roomId, true);
+      const effectiveEnd = b.periodEnd || b.period;
+      if (effectiveEnd < monthStr) priorOverdueMap.set(b.roomId, true);
     }
 
     const todayList: PendingEntry[] = [];
     const approachingList: PendingEntry[] = [];
     const overdueList: PendingEntry[] = [];
     const completedList: PendingEntry[] = [];
+    const upcomingList: PendingEntry[] = [];
 
     for (const room of rentedRooms) {
       const tenant = tenantMap.get(room.id) || null;
       const bill = currentBillMap.get(room.id) || null;
       const prop = propertyMap.get(room.propertyId);
       const rentDay = tenant?.rentDay ?? 10;
+      const payMonths = tenant?.payMonths ?? 1;
       const hasPriorOverdue = priorOverdueMap.get(room.id) || false;
+
+      // Cycle check: is current month a due-month?
+      let isDueMonth = true;
+      let nextDueMonth: string | null = null;
+      if (tenant && payMonths > 1) {
+        const moveIn = dayjs(tenant.moveInDate);
+        const monthsSinceMoveIn = (currentYear - moveIn.year()) * 12 + (currentMonth - moveIn.month());
+        if (monthsSinceMoveIn < 0) {
+          // Tenant moves in future — first due is the first rentDay at/after moveIn
+          isDueMonth = false;
+          nextDueMonth = dayjs(moveIn).format('YYYY-MM');
+        } else if (monthsSinceMoveIn % payMonths === 0) {
+          isDueMonth = true;
+        } else {
+          isDueMonth = false;
+          const monthsAhead = payMonths - (monthsSinceMoveIn % payMonths);
+          nextDueMonth = dayjs(monthStr + '-01').add(monthsAhead, 'month').format('YYYY-MM');
+        }
+      }
 
       let overdueDays = 0;
       if (todayDate > rentDay) overdueDays = todayDate - rentDay;
@@ -148,25 +198,46 @@ export class RentService {
         tenantId: tenant?.id || null,
         contractEndDate: tenant?.contractEndDate || '',
         rentDay,
+        payMonths,
         billId: bill?.id || null,
         billStatus: bill?.status ?? 0,
-        totalAmount: Number(bill?.totalAmount) || Number(room.rent) || 0,
+        billPeriod: bill?.period || null,
+        billPeriodEnd: bill?.periodEnd || null,
+        totalAmount: Number(bill?.totalAmount) || (Number(room.rent) || 0) * payMonths,
+        paidAmount: Number(bill?.paidAmount) || 0,
         overdueDays,
         daysUntil,
         hasOverdue: hasPriorOverdue,
+        nextDueMonth,
       };
 
+      // Paid bills always show in completed, regardless of cycle.
       if (bill && bill.status === 1) {
         completedList.push(entry);
-      } else if (hasPriorOverdue || todayDate > rentDay) {
+        continue;
+      }
+
+      // Prior overdue always shows in overdue (e.g., last cycle's unpaid bill).
+      if (hasPriorOverdue) {
+        overdueList.push(entry);
+        continue;
+      }
+
+      // If current month is not a due-month, this tenant goes to "upcoming".
+      if (!isDueMonth) {
+        upcomingList.push(entry);
+        continue;
+      }
+
+      // Otherwise bucket by today vs rentDay as before.
+      if (todayDate > rentDay) {
         overdueList.push(entry);
       } else if (todayDate === rentDay) {
         todayList.push(entry);
       } else if (daysUntil >= 1 && daysUntil <= 3) {
         approachingList.push(entry);
-      } else {
-        // Not due yet (daysUntil > 3), don't show in any bucket
       }
+      // daysUntil > 3: not yet due, don't show
     }
 
     return {
@@ -174,6 +245,7 @@ export class RentService {
       approaching: approachingList,
       overdue: overdueList,
       completed: completedList,
+      upcoming: upcomingList,
     };
   }
 

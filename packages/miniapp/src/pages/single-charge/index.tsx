@@ -88,23 +88,24 @@ export default function SingleCharge() {
         if (!res.confirm) return;
         setSubmitting(true);
         try {
-          await post(`/rent/rooms/${selectedRoomId}/single-charge`, {
+          const res = await post<{ id: number }>(`/rent/rooms/${selectedRoomId}/single-charge`, {
             feeType: finalFeeType,
             amount: Number(amount),
             note,
           });
+          const singleChargeId = res.data?.id || 0;
           Taro.showToast({ title: '已保存，正在跳转到付款页...', icon: 'none', duration: 1500 });
+          setTimeout(() => {
+            setSubmitting(false);
+            Taro.navigateTo({
+              url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${encodeURIComponent(finalFeeType)}&note=${encodeURIComponent(note)}&singleChargeId=${singleChargeId}`
+            });
+          }, 1500);
         } catch (err) {
           Taro.showToast({ title: '保存失败', icon: 'none' });
           setSubmitting(false);
           return;
         }
-        setTimeout(() => {
-          setSubmitting(false);
-          Taro.navigateTo({
-            url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${encodeURIComponent(finalFeeType)}&note=${encodeURIComponent(note)}`
-          });
-        }, 1500);
       },
     });
   }, [selectedRoomId, feeType, customFeeType, useCustomType, amount, note, submitting]);

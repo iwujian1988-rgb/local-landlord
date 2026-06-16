@@ -5,9 +5,10 @@ import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
 import { useState, useCallback, useMemo } from 'react';
-import { get, post } from '../../services/request';
+import { get, post, put } from '../../services/request';
 import { uploadFiles } from '../../services/upload';
 import { requestNotification } from '../../services/notification';
+import { forwardBillShare } from '../../services/share';
 import './index.scss';
 
 interface BillItem {
@@ -20,12 +21,18 @@ interface BillItem {
 interface ApiBillData {
   roomName: string;
   tenantName: string;
+  billId: number | null;
+  period: string;
+  periodEnd: string | null;
   billItems: BillItem[];
 }
 
 interface PageData {
   roomName: string;
   tenantName: string;
+  billId: number | null;
+  period: string;
+  periodEnd: string | null;
   billItems: BillItem[];
   photos: string[];
   loading: boolean;
@@ -38,6 +45,9 @@ interface PageData {
 const emptyPageData: PageData = {
   roomName: '',
   tenantName: '-',
+  billId: null,
+  period: '',
+  periodEnd: null,
   billItems: [],
   photos: [],
   loading: false,
@@ -46,6 +56,12 @@ const emptyPageData: PageData = {
   submitting: false,
   confirmVisible: false,
 };
+
+function formatPeriodRange(period: string, periodEnd: string | null): string {
+  if (!period) return '';
+  if (!periodEnd || periodEnd === period) return period;
+  return `${period} ~ ${periodEnd}`;
+}
 
 export default function Bill() {
   const routerParams = Taro.getCurrentInstance().router?.params || {};
@@ -65,6 +81,9 @@ export default function Bill() {
           ...prev,
           roomName: res.data.roomName || '',
           tenantName: tName,
+          billId: res.data.billId ?? null,
+          period: res.data.period || '',
+          periodEnd: res.data.periodEnd || null,
           billItems: res.data.billItems || [],
         }));
         Taro.setNavigationBarTitle({ title: `通知${tName}交租` });
@@ -125,11 +144,57 @@ export default function Bill() {
     });
   }, [data.uploading]);
 
-  const handleSendBill = useCallback(() => {
-    Taro.navigateTo({
-      url: `/pages/payment/index?roomId=${roomId}&amount=${totalAmount}&billId=${Date.now()}`
-    });
-  }, [roomId, totalAmount]);
+  const handleSendBill = useCallback(async () => {
+    if (data.submitting) return;
+    setData(prev => ({ ...prev, submitting: true }));
+    try {
+      let billId = data.billId;
+
+      if (billId) {
+        // Bill already exists (cron pre-generated) — update items + mark sent
+        await put(`/bills/${billId}/send`, { items: data.billItems });
+      } else {
+        // Fallback: cron hasn't generated for this cycle yet — create on demand
+        const res = await post<{ id: number }>(`/rooms/${roomId}/bills`, {
+          period: data.period,
+          tenantId,
+          items: data.billItems,
+          totalAmount,
+          photos: data.photos,
+        });
+        billId = res.data?.id || 0;
+
+        // If POST didn't return an id (e.g. bill already exists), look up via pending
+        if (!billId) {
+          const pendingRes = await get<any>('/rent/pending');
+          const allEntries = [
+            ...(pendingRes.data?.today || []),
+            ...(pendingRes.data?.approaching || []),
+            ...(pendingRes.data?.overdue || []),
+            ...(pendingRes.data?.upcoming || []),
+          ];
+          const match = allEntries.find((e: any) => e.roomId === roomId);
+          billId = match?.billId || 0;
+        }
+      }
+
+      if (!billId) {
+        Taro.showToast({ title: '生成账单失败', icon: 'none' });
+        return;
+      }
+      // Persist newly-created billId so a second tap doesn't re-POST and hit
+      // "该周期已存在账单".
+      if (!data.billId) {
+        setData(prev => ({ ...prev, billId }));
+      }
+      await forwardBillShare(billId);
+    } catch (err) {
+      console.error('[Bill] 发送账单失败:', err);
+      Taro.showToast({ title: '生成账单失败，请重试', icon: 'none' });
+    } finally {
+      setData(prev => ({ ...prev, submitting: false }));
+    }
+  }, [roomId, tenantId, data.billId, data.period, data.billItems, data.photos, totalAmount, data.submitting]);
 
   const handleCopyText = useCallback(() => {
     const month = new Date().getMonth() + 1;
@@ -142,28 +207,59 @@ export default function Bill() {
     });
   }, [data.billItems, data.tenantName, data.roomName, totalAmount]);
 
-  const handleConfirmPaid = useCallback(async () => {
+  const handleConfirmPaid = useCallback(async (actualAmount?: number) => {
+    // requestSubscribeMessage MUST run inside the user TAP gesture's sync call
+    // stack. Any await/setTimeout before it breaks the chain and triggers
+    // "can only be invoked by user TAP gesture" error. Call it FIRST.
+    requestNotification();
     if (data.submitting) return;
     setData(prev => ({ ...prev, submitting: true, confirmVisible: false }));
     try {
-      const now = new Date();
-      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      await post(`/rooms/${roomId}/bills`, {
-        period,
-        tenantId,
-        items: data.billItems,
-        totalAmount,
-        photos: data.photos,
+      // Prefer the already-loaded billId (cron pre-generated). Fall back to pending lookup.
+      let billId = data.billId || 0;
+
+      if (!billId) {
+        const pendingRes = await get<any>('/rent/pending');
+        const allEntries = [
+          ...(pendingRes.data?.today || []),
+          ...(pendingRes.data?.approaching || []),
+          ...(pendingRes.data?.overdue || []),
+          ...(pendingRes.data?.upcoming || []),
+        ];
+        const match = allEntries.find((e: any) => e.roomId === roomId);
+        billId = match?.billId || 0;
+      }
+
+      // Last resort: create on demand
+      if (!billId) {
+        const createRes = await post<{ id: number }>(`/rooms/${roomId}/bills`, {
+          period: data.period,
+          tenantId,
+          items: data.billItems,
+          totalAmount,
+          photos: data.photos,
+        });
+        billId = createRes.data?.id || 0;
+      }
+
+      if (!billId) {
+        throw new Error('未找到账单');
+      }
+
+      await put(`/bills/${billId}/confirm`, { actualAmount });
+      const isPartial = actualAmount != null && actualAmount < totalAmount;
+      Taro.showToast({
+        title: isPartial ? '已记录部分付款' : '已标记为已收',
+        icon: 'none',
+        duration: 2000,
       });
-      Taro.showToast({ title: '已标记为已收', icon: 'none', duration: 2000 });
-      requestNotification();
     } catch (err) {
       console.error('[Bill] 标记已收失败:', err);
       Taro.showToast({ title: '操作失败', icon: 'none' });
     } finally {
       setData(prev => ({ ...prev, submitting: false }));
     }
-  }, [roomId, tenantId, data.billItems, totalAmount, data.photos, data.submitting]);
+  }, [roomId, tenantId, data.billId, data.period, data.billItems, totalAmount, data.photos, data.submitting]);
 
   return (
     <View className="page-bill">
@@ -172,6 +268,13 @@ export default function Bill() {
         {data.error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
         {!data.loading && !data.error && (
           <>
+            {data.periodEnd && data.periodEnd !== data.period && (
+              <View className="bill-cycle-banner">
+                <Text className="bill-cycle-text">
+                  本次收款周期：{formatPeriodRange(data.period, data.periodEnd)}（共 {data.billItems.reduce((s, i) => s + (i.type === 'fixed' ? 1 : 0), 0) > 0 ? '含多月房租' : ''}）
+                </Text>
+              </View>
+            )}
             <View className="elder-card">
               <Text className="elder-card-title">第一步：算一下这个月多少钱</Text>
               <Text className="elder-card-desc">房租已经填好了，水电有变动就改一下。</Text>
@@ -211,7 +314,7 @@ export default function Bill() {
             </View>
 
             <View className="elder-card">
-              <Text className="elder-card-title">第二步：拍一张表照片</Text>
+              <Text className="elder-card-title">第二步：拍几张表的照片</Text>
               <Text className="elder-card-desc">比如电表、水表。没有也可以不拍。</Text>
 
               <View className="bill-photo-btn" onClick={handlePhotoUpload}>
@@ -257,6 +360,7 @@ export default function Bill() {
         visible={data.confirmVisible}
         title="确认已收款"
         amount={totalAmount}
+        editableAmount
         confirmText="确认已收"
         onConfirm={handleConfirmPaid}
         onCancel={() => setData(prev => ({ ...prev, confirmVisible: false }))}
