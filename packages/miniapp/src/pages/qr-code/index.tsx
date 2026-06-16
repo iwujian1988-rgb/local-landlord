@@ -110,34 +110,55 @@ export default function QrCode() {
     Taro.showToast({ title: '已设为默认', icon: 'none', duration: 2000 });
   }, []);
 
+  const [saving, setSaving] = useState(false);
+
   const handleSave = useCallback(async () => {
-    const currentCodes = codes.filter(c => c.imageUrl);
-    for (const code of currentCodes) {
-      if (code.id) {
-        await put(`/payment-qr/${code.id}`, {
-          type: code.type,
-          label: code.label,
-          imageUrl: code.imageUrl,
-          isDefault: code.isDefault,
-          payeeName,
-          payeeNote,
-        });
-      } else {
-        await post('/payment-qr', {
-          type: code.type,
-          label: code.label,
-          imageUrl: code.imageUrl,
-          isDefault: code.isDefault,
-          payeeName,
-          payeeNote,
-        });
+    if (saving) return;
+    setSaving(true);
+    try {
+      // 1. Persist landlord-level payee info (defaultPayeeName + paymentNote)
+      const profileRes = await put('/auth/profile', {
+        defaultPayeeName: payeeName,
+        paymentNote: payeeNote,
+      });
+      if (profileRes.code !== 0) {
+        throw new Error(profileRes.message || '收款人信息保存失败');
       }
+
+      // 2. Persist each uploaded QR (only image + default flag — payeeName/note
+      //    belong to the landlord, not the QR)
+      const currentCodes = codes.filter(c => c.imageUrl);
+      for (const code of currentCodes) {
+        const payload = {
+          type: code.type,
+          label: code.label,
+          imageUrl: code.imageUrl,
+          isDefault: code.isDefault,
+        };
+        const res = code.id
+          ? await put(`/payment-qr/${code.id}`, payload)
+          : await post('/payment-qr', payload);
+        if (res.code !== 0) {
+          throw new Error(res.message || `${code.label} 保存失败`);
+        }
+      }
+
+      Taro.showToast({ title: '设置已保存', icon: 'success', duration: 1500 });
+      setTimeout(() => {
+        Taro.navigateBack();
+      }, 800);
+    } catch (err: any) {
+      console.error('[QrCode] 保存失败:', err);
+      Taro.showModal({
+        title: '保存失败',
+        content: err?.message || '网络可能有点问题，请检查后重试',
+        showCancel: false,
+        confirmText: '知道了',
+      });
+    } finally {
+      setSaving(false);
     }
-    Taro.showToast({ title: '设置已保存', icon: 'none', duration: 2000 });
-    setTimeout(() => {
-      Taro.navigateBack();
-    }, 800);
-  }, [codes, payeeName, payeeNote]);
+  }, [saving, codes, payeeName, payeeNote]);
 
   const handlePreview = useCallback(() => {
     Taro.navigateTo({ url: '/pages/payment/index' });
@@ -244,8 +265,11 @@ export default function QrCode() {
         <View className="qr-action-btn secondary" onClick={handlePreview}>
           <Text className="qr-action-btn-text secondary-text">预览付款页</Text>
         </View>
-        <View className="qr-action-btn primary" onClick={handleSave}>
-          <Text className="qr-action-btn-text">保存</Text>
+        <View
+          className={`qr-action-btn primary${saving ? ' disabled' : ''}`}
+          onClick={saving ? undefined : handleSave}
+        >
+          <Text className="qr-action-btn-text">{saving ? '保存中...' : '保存'}</Text>
         </View>
       </View>
 

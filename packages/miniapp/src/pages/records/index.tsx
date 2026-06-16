@@ -7,15 +7,14 @@ import { get } from '../../services/request';
 import { useState, useCallback, useMemo } from 'react';
 import './index.scss';
 
-type FilterKey = 'all' | 'bill' | 'single' | 'deposit' | 'paid' | 'unpaid';
+type FilterKey = 'all' | 'overdue' | 'paid' | 'unpaid' | 'single';
 
 const filters: { key: FilterKey; label: string }[] = [
   { key: 'all', label: '全部' },
-  { key: 'bill', label: '账单' },
-  { key: 'single', label: '单独收' },
-  { key: 'deposit', label: '押金' },
+  { key: 'overdue', label: '逾期' },
   { key: 'paid', label: '已收' },
   { key: 'unpaid', label: '未收' },
+  { key: 'single', label: '单独收' },
 ];
 
 interface RecordItem {
@@ -28,9 +27,9 @@ interface RecordItem {
 
 const filterMapping: Record<FilterKey, string[]> = {
   all: [],
-  bill: ['bill_sent', 'bill_paid'],
+  // 逾期 is matched specially via title substring — backend has no dedicated type
+  overdue: [],
   single: ['single_charge', 'single_paid'],
-  deposit: ['deposit'],
   paid: ['bill_paid', 'single_paid'],
   unpaid: ['bill_sent', 'single_charge', 'reminder'],
 };
@@ -75,6 +74,10 @@ export default function Records() {
   });
 
   const filteredRecords = useMemo(() => {
+    if (activeFilter === 'overdue') {
+      // Overdue reminders have type='reminder' and title containing '逾期'
+      return records.filter((r) => r.type === 'reminder' && (r.title || '').includes('逾期'));
+    }
     const types = filterMapping[activeFilter];
     if (!types || types.length === 0) return records;
     return records.filter((r) => types.includes(r.type));

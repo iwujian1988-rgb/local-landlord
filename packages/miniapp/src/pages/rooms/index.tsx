@@ -107,8 +107,11 @@ export default function Rooms() {
                         </View>
                       </View>
                       <View className="room-card-meta">
+                        {room.propertyName && (
+                          <Text className="room-card-property">{room.propertyName}</Text>
+                        )}
                         {room.tenantName && (
-                          <Text className="room-card-property">{room.tenantName}</Text>
+                          <Text className="room-card-tenant">· {room.tenantName}</Text>
                         )}
                         <Text className="room-card-rent">{room.rent}元/月</Text>
                       </View>

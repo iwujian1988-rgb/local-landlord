@@ -61,8 +61,32 @@ export default function AddRoomPhoto() {
             setUploading(false);
           });
       },
+      fail: (err) => {
+        const msg = err?.errMsg || '';
+        // User cancelled — silent
+        if (msg.includes('cancel')) return;
+        // Permission denied — guide to settings
+        if (msg.includes('auth') || msg.includes('fail')) {
+          Taro.showModal({
+            title: '相机/相册权限未开启',
+            content: '请在微信设置中开启相机和相册权限，或者跳过照片直接填写房间信息',
+            confirmText: '去设置',
+            cancelText: '跳过照片',
+            success: (r) => {
+              if (r.confirm) {
+                Taro.openSetting({});
+              }
+            },
+          });
+        }
+      },
     });
   }, [photos.length]);
+
+  const handleSkip = useCallback(() => {
+    Taro.removeStorageSync('tempRoomPhotos');
+    Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${propertyId}` });
+  }, [propertyId]);
 
   return (
     <View className="page-add-room-photo">
@@ -113,6 +137,9 @@ export default function AddRoomPhoto() {
       <View className="photo-actions">
         <View className="next-btn" onClick={goNext}>
           <Text className="next-btn-text">下一步</Text>
+        </View>
+        <View className="skip-link" onClick={handleSkip}>
+          <Text className="skip-link-text">跳过拍照，直接填写</Text>
         </View>
       </View>
     </View>

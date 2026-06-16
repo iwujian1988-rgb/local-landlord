@@ -7,8 +7,9 @@ import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useCallback, useState } from 'react';
 import { get, put } from '../../services/request';
-import { WX_TEMPLATE_RENT, WX_TEMPLATE_OVERDUE } from '../../config';
 import { requestNotification } from '../../services/notification';
+import { forwardBillShare, generateAndCopyShareLink } from '../../services/share';
+import { RENT_LIST_TAB_INDEX } from '../../constants/app';
 import './index.scss';
 
 interface PendingEntry {
@@ -21,12 +22,17 @@ interface PendingEntry {
   tenantId: number | null;
   contractEndDate: string;
   rentDay: number;
+  payMonths: number;
   billId: number | null;
   billStatus: number;
+  billPeriod: string | null;
+  billPeriodEnd: string | null;
   totalAmount: number;
+  paidAmount: number;
   overdueDays: number;
   daysUntil: number;
   hasOverdue: boolean;
+  nextDueMonth: string | null;
 }
 
 interface PendingResponse {
@@ -34,15 +40,24 @@ interface PendingResponse {
   approaching: PendingEntry[];
   overdue: PendingEntry[];
   completed: PendingEntry[];
+  upcoming: PendingEntry[];
 }
 
-type Bucket = 'overdue' | 'today' | 'approaching';
+type Bucket = 'overdue' | 'today' | 'approaching' | 'upcoming';
 
 interface DisplayItem {
   entry: PendingEntry;
   bucket: Bucket;
   label: string;
   desc: string;
+}
+
+function periodLabel(entry: PendingEntry): string {
+  if (!entry.billPeriod) return '';
+  if (!entry.billPeriodEnd || entry.billPeriodEnd === entry.billPeriod) {
+    return entry.billPeriod;
+  }
+  return `${entry.billPeriod} ~ ${entry.billPeriodEnd}`;
 }
 
 function buildDisplayItems(data: PendingResponse): DisplayItem[] {
@@ -56,6 +71,11 @@ function buildDisplayItems(data: PendingResponse): DisplayItem[] {
   for (const e of data.approaching) {
     items.push({ entry: e, bucket: 'approaching', label: `${e.daysUntil}天后`, desc: `还有${e.daysUntil}天` });
   }
+  for (const e of data.upcoming) {
+    const nextMonth = e.nextDueMonth || '';
+    const payMonthsLabel = e.payMonths > 1 ? ` · 每${e.payMonths}个月收` : '';
+    items.push({ entry: e, bucket: 'upcoming', label: `下次${nextMonth}`, desc: `下次${nextMonth}收租${payMonthsLabel}` });
+  }
   return items;
 }
 
@@ -63,6 +83,7 @@ export default function RentList() {
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmItem, setConfirmItem] = useState<DisplayItem | null>(null);
   const [activeItems, setActiveItems] = useState<DisplayItem[]>([]);
+  const [upcomingItems, setUpcomingItems] = useState<DisplayItem[]>([]);
   const [completedItems, setCompletedItems] = useState<PendingEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -73,9 +94,23 @@ export default function RentList() {
     setError(false);
     try {
       const res = await get<PendingResponse>('/rent/pending');
-      const data = res.data || { today: [], approaching: [], overdue: [], completed: [] };
-      setActiveItems(buildDisplayItems(data));
-      setCompletedItems(data.completed);
+      const data = res.data || { today: [], approaching: [], overdue: [], completed: [], upcoming: [] };
+      const allItems = buildDisplayItems(data);
+      setActiveItems(allItems.filter(i => i.bucket !== 'upcoming'));
+      setUpcomingItems(allItems.filter(i => i.bucket === 'upcoming'));
+      setCompletedItems(data.completed || []);
+
+      // Sync tab badge with remaining pending count (excludes upcoming — those aren't due yet)
+      const remaining = (data.today?.length || 0) + (data.approaching?.length || 0) + (data.overdue?.length || 0);
+      try {
+        if (remaining > 0) {
+          Taro.setTabBarBadge({ index: RENT_LIST_TAB_INDEX, text: String(Math.min(remaining, 99)) });
+        } else {
+          Taro.removeTabBarBadge({ index: RENT_LIST_TAB_INDEX });
+        }
+      } catch (e) {
+        // ignore
+      }
     } catch (err) {
       console.error('[RentList] 加载数据失败:', err);
       setError(true);
@@ -109,14 +144,25 @@ export default function RentList() {
     setConfirmVisible(true);
   }, []);
 
-  const handleConfirmSubmit = useCallback(async () => {
+  const handleConfirmSubmit = useCallback(async (actualAmount?: number) => {
+    // requestSubscribeMessage MUST run inside the user TAP gesture's sync call
+    // stack. Call it before any await.
+    requestNotification();
     if (!confirmItem?.entry.billId) return;
     setConfirmVisible(false);
 
     try {
-      await put(`/bills/${confirmItem.entry.billId}/confirm`, {});
-      requestNotification();
-      Taro.showToast({ title: '已标记收到', icon: 'none', duration: 1500 });
+      await put(`/bills/${confirmItem.entry.billId}/confirm`, {
+        actualAmount,
+      });
+      // Compare against remaining balance to detect true partial payment
+      const remaining = confirmItem.entry.totalAmount - (confirmItem.entry.paidAmount || 0);
+      const isPartial = actualAmount != null && actualAmount < remaining;
+      Taro.showToast({
+        title: isPartial ? '已记录部分付款' : '已标记收到',
+        icon: 'none',
+        duration: 1500,
+      });
       loadData();
     } catch (err) {
       console.error('[RentList] 标记失败:', err);
@@ -126,44 +172,46 @@ export default function RentList() {
 
   const overdueItems = activeItems.filter(i => i.bucket === 'overdue');
 
-  const handleBatchConfirm = useCallback(async () => {
+  const handleBatchRemind = useCallback(async () => {
     if (batchLoading) return;
     Taro.showModal({
-      title: '批量标记已收',
-      content: `确认将 ${overdueItems.length} 笔逾期款项全部标记为已收到？`,
-      confirmText: '全部确认',
+      title: '批量发送提醒',
+      content: `将为 ${overdueItems.length} 笔逾期款项生成账单链接并复制汇总文字到剪贴板，方便你逐个发给租客。`,
+      confirmText: '开始生成',
       cancelText: '取消',
       success: async (res) => {
         if (!res.confirm) return;
         setBatchLoading(true);
+        const lines: string[] = [];
         let successCount = 0;
-        for (const item of overdueItems) {
+        let failCount = 0;
+        const limit = overdueItems.slice(0, 10);
+        for (const item of limit) {
           if (item.entry.billId) {
-            try {
-              await put(`/bills/${item.entry.billId}/confirm`, {});
+            const result = await generateAndCopyShareLink(item.entry.billId);
+            if (result) {
+              lines.push(`${item.entry.roomName} · ${item.entry.tenantName}：${result.shareUrl}`);
               successCount++;
-            } catch (err) {
-              console.error('[RentList] 批量标记失败:', err);
+            } else {
+              failCount++;
             }
           }
         }
+        const extraCount = Math.max(0, overdueItems.length - limit.length);
+        const summary = lines.join('\n')
+          + (extraCount > 0 ? `\n…等 ${extraCount} 笔` : '')
+          + (failCount > 0 ? `\n（${failCount} 笔生成失败）` : '');
+        Taro.setClipboardData({ data: summary, success: () => {} });
         setBatchLoading(false);
-        Taro.showToast({ title: `已标记 ${successCount} 笔`, icon: 'none', duration: 2000 });
-        loadData();
+        Taro.showModal({
+          title: '汇总已复制到剪贴板',
+          content: `成功 ${successCount} 笔${failCount > 0 ? `，失败 ${failCount} 笔` : ''}。粘贴到微信群发或逐个发给租客。`,
+          confirmText: '我知道了',
+          showCancel: false,
+        });
       },
     });
-  }, [overdueItems, batchLoading, loadData]);
-
-  const requestNotify = useCallback(() => {
-    const tmplIds = [WX_TEMPLATE_RENT, WX_TEMPLATE_OVERDUE].filter(Boolean);
-    if (tmplIds.length === 0) return;
-    Taro.requestSubscribeMessage({
-      tmplIds,
-      entityIds: tmplIds,
-      success: () => {},
-      fail: () => {},
-    });
-  }, []);
+  }, [overdueItems, batchLoading]);
 
   // Summary numbers
   const totalPending = activeItems.reduce((s, i) => s + (i.entry.totalAmount ?? i.entry.rent ?? 0), 0);
@@ -204,56 +252,94 @@ export default function RentList() {
           </View>
         )}
 
-        {activeItems.map((item, idx) => (
-          <View key={idx} className="rent-item-card">
-            <View className="rent-item-top">
-              <View className="rent-item-info">
-                <Text className="rent-item-name">{item.entry.roomName} · {item.entry.tenantName}</Text>
-                <Text className="rent-item-amount">{item.entry.totalAmount.toLocaleString()} 元</Text>
-              </View>
-              <View className={`rent-tag ${item.bucket === 'overdue' ? 'tag-red' : item.bucket === 'today' ? 'tag-accent' : 'tag-default'}`}>
-                <Text className="rent-tag-text">{item.label}</Text>
-              </View>
-            </View>
-
-            {item.bucket === 'overdue' && (
-              <Text className="rent-item-desc overdue-text">{item.desc}</Text>
-            )}
-
-            <View className="rent-item-actions">
-              {item.bucket === 'overdue' && item.entry.overdueDays > 1 && (
-                <View
-                  className="rent-btn secondary"
-                  onClick={() => {
-                    Taro.setClipboardData({
-                      data: `${item.entry.tenantName || '租客'}你好，你的房租${item.entry.totalAmount || ''}元已经逾期${item.entry.overdueDays}天了，请尽快安排，谢谢！`,
-                    });
-                  }}
-                >
-                  <Text className="rent-btn-text">催一下</Text>
+        {activeItems.map((item, idx) => {
+          const isPartial = item.entry.billStatus === 3 && item.entry.paidAmount > 0;
+          const buttonLabel = isPartial ? '补齐尾款' : '已收到';
+          return (
+            <View key={idx} className="rent-item-card">
+              <View className="rent-item-top">
+                <View className="rent-item-info">
+                  <Text className="rent-item-name">{item.entry.roomName} · {item.entry.tenantName}</Text>
+                  <Text className="rent-item-amount">{item.entry.totalAmount.toLocaleString()} 元</Text>
+                  {periodLabel(item.entry) && (
+                    <Text className="rent-item-period">{periodLabel(item.entry)}</Text>
+                  )}
                 </View>
+                <View className={`rent-tag ${item.bucket === 'overdue' ? 'tag-red' : item.bucket === 'today' ? 'tag-accent' : 'tag-default'}`}>
+                  <Text className="rent-tag-text">{isPartial ? '部分付款' : item.label}</Text>
+                </View>
+              </View>
+
+              {isPartial && (
+                <Text className="rent-item-desc overdue-text">已收 {item.entry.paidAmount.toLocaleString()} / {item.entry.totalAmount.toLocaleString()} 元</Text>
               )}
-              <View
-                className={`rent-btn primary${item.bucket === 'overdue' && item.entry.overdueDays <= 1 ? ' full' : ''}`}
-                onClick={() => handleConfirm(item)}
-              >
-                <Text className="rent-btn-text">已收到</Text>
+
+              {!isPartial && item.bucket === 'overdue' && (
+                <Text className="rent-item-desc overdue-text">{item.desc}</Text>
+              )}
+
+              <View className="rent-item-actions">
+                {item.bucket === 'overdue' && item.entry.overdueDays >= 1 && !isPartial && (
+                  <View
+                    className="rent-btn secondary"
+                    onClick={() => {
+                      if (item.entry.billId) {
+                        forwardBillShare(item.entry.billId);
+                      } else {
+                        Taro.setClipboardData({
+                          data: `${item.entry.tenantName || '租客'}你好，你的房租${item.entry.totalAmount || ''}元已经逾期${item.entry.overdueDays}天了，请尽快安排，谢谢！`,
+                        });
+                      }
+                    }}
+                  >
+                    <Text className="rent-btn-text">催一下</Text>
+                  </View>
+                )}
+                <View
+                  className={`rent-btn primary${item.bucket === 'overdue' && item.entry.overdueDays <= 1 ? ' full' : ''}`}
+                  onClick={() => handleConfirm(item)}
+                >
+                  <Text className="rent-btn-text">{buttonLabel}</Text>
+                </View>
               </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
 
         {overdueItems.length >= 2 && (
           <View className="batch-actions">
             <View
               className={`batch-btn ${batchLoading ? 'disabled' : ''}`}
-              onClick={batchLoading ? undefined : handleBatchConfirm}
+              onClick={batchLoading ? undefined : handleBatchRemind}
             >
               <Text className="batch-btn-text">
-                {batchLoading ? '处理中...' : `全部标记已收（${overdueItems.length}笔）`}
+                {batchLoading ? '生成中...' : `批量发送提醒（${overdueItems.length}笔）`}
               </Text>
             </View>
           </View>
+        )}
+
+        {upcomingItems.length > 0 && (
+          <>
+            <View className="rent-section-header">
+              <Text className="rent-section-title">下次收款（非本月周期）</Text>
+              <Text className="rent-section-count">{upcomingItems.length}间</Text>
+            </View>
+            {upcomingItems.map((item, idx) => (
+              <View key={idx} className="rent-item-card">
+                <View className="rent-item-top">
+                  <View className="rent-item-info">
+                    <Text className="rent-item-name">{item.entry.roomName} · {item.entry.tenantName}</Text>
+                    <Text className="rent-item-amount">{item.entry.totalAmount.toLocaleString()} 元</Text>
+                    <Text className="rent-item-period">{item.desc}</Text>
+                  </View>
+                  <View className="rent-tag tag-default">
+                    <Text className="rent-tag-text">{item.label}</Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </>
         )}
 
         {!loading && activeItems.length === 0 && completedItems.length === 0 && (
@@ -283,6 +369,8 @@ export default function RentList() {
         visible={confirmVisible}
         title="确认已收款"
         amount={confirmItem?.entry.totalAmount || 0}
+        paidAmount={confirmItem?.entry.paidAmount || 0}
+        editableAmount
         confirmText="确认已收"
         onConfirm={handleConfirmSubmit}
         onCancel={() => setConfirmVisible(false)}

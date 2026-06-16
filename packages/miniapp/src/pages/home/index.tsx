@@ -3,16 +3,18 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import { useState, useCallback } from 'react';
 import { get } from '../../services/request';
 import { useAuthStore } from '../../store/useAuthStore';
-import { requestNotification } from '../../services/notification';
+import { useGuideStore } from '../../store/useGuideStore';
+// requestNotification removed — see useDidShow comment below.
+import { APP_NAME, RENT_LIST_TAB_INDEX } from '../../constants/app';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import heroImg from '../../assets/home/home-hero-illustration.png';
 import loginHeroImg from '../../assets/home/login-hero-illustration.png';
 import bellImg from '../../assets/home/home-reminder-bell.png';
-import roomIcon from '../../assets/home/home-icon-room.png';
+import billIcon from '../../assets/home/home-icon-checkin.png';
+import rentIcon from '../../assets/home/home-icon-room.png';
+import addIcon from '../../assets/home/home-icon-source.png';
 import statsIcon from '../../assets/home/home-icon-stats.png';
-import checkinIcon from '../../assets/home/home-icon-checkin.png';
-import sourceIcon from '../../assets/home/home-icon-source.png';
 import './index.scss';
 
 const getGreeting = () => {
@@ -24,6 +26,21 @@ const getGreeting = () => {
   if (h < 18) return '下午好';
   return '晚上好';
 };
+
+// Filter out legacy dirty data like "房东OP11N23A" — these came from an old
+// auto-name scheme that appended openId prefixes. We collapse them to empty
+// so the greeting just says "下午好" without a name.
+const cleanProfileName = (name: string): string => {
+  if (!name) return '';
+  if (/^房东[A-Za-z0-9]{3,}$/.test(name)) return '';
+  return name;
+};
+
+interface VacantRoom {
+  roomId: number;
+  roomName: string;
+  propertyName: string;
+}
 
 interface PageData {
   greeting: string;
@@ -37,12 +54,14 @@ interface PageData {
   profileName: string;
   expiringContracts: any[];
   discoveryAlerts: any[];
+  vacantRooms: VacantRoom[];
 }
 
 const emptyData: PageData = {
   greeting: '', pendingCount: 0, pendingDesc: '', pendingHouseholds: 0,
   monthlyCollected: 0, showRoomGuide: false, showTenantGuide: false,
   showQrGuide: false, profileName: '', expiringContracts: [], discoveryAlerts: [],
+  vacantRooms: [],
 };
 
 export default function Home() {
@@ -53,16 +72,29 @@ export default function Home() {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
 
   const handleLogin = async () => {
+    if (loginLoading) return;
     setLoginLoading(true);
     try {
       await useAuthStore.getState().login();
-    } catch {
-      Taro.showToast({ title: '登录失败，请检查网络', icon: 'none' });
-    } finally {
       setLoginLoading(false);
       loadData();
-      // Accumulate notification credits after login
-      setTimeout(() => requestNotification(), 500);
+      // Note: requestSubscribeMessage cannot be called here — it must run
+      // inside the user TAP gesture's sync stack, but we're now past an await.
+      // Subscription requests are made from action buttons (confirm payment,
+      // save tenant) where the sync chain is preserved.
+    } catch (err: any) {
+      setLoginLoading(false);
+      Taro.showModal({
+        title: '登录失败',
+        content: err?.message || '网络可能有点问题，请检查后重试',
+        confirmText: '重试',
+        cancelText: '稍后再说',
+        success: (res) => {
+          if (res.confirm) {
+            setTimeout(() => handleLogin(), 100);
+          }
+        },
+      });
     }
   };
 
@@ -88,7 +120,24 @@ export default function Home() {
         profileName: s.profileName || '',
         expiringContracts: s.expiringContracts || [],
         discoveryAlerts: s.discoveryAlerts || [],
+        vacantRooms: s.vacantRooms || [],
       });
+      useGuideStore.getState().setFromStats({
+        showRoomGuide: s.showRoomGuide,
+        showTenantGuide: s.showTenantGuide,
+        showQrGuide: s.showQrGuide,
+        firstVacantRoomId: s.firstVacantRoomId,
+      });
+      // Sync rent-list tab badge with pending count
+      try {
+        if (s.pendingCount > 0) {
+          Taro.setTabBarBadge({ index: RENT_LIST_TAB_INDEX, text: String(Math.min(s.pendingCount, 99)) });
+        } else {
+          Taro.removeTabBarBadge({ index: RENT_LIST_TAB_INDEX });
+        }
+      } catch (e) {
+        // setTabBarBadge may fail on first render; ignore
+      }
     } catch (err) {
       console.error('[Home] 加载数据失败:', err);
       setError(true);
@@ -98,25 +147,35 @@ export default function Home() {
   }, []);
 
   useDidShow(() => {
-    Taro.setNavigationBarTitle({ title: '本地房东' });
+    Taro.setNavigationBarTitle({ title: APP_NAME });
     setTimeout(loadData, 100);
-    // Accumulate notification credits on each home page visit
-    if (useAuthStore.getState().isLoggedIn) {
-      setTimeout(() => requestNotification(), 2000);
-    }
+    // Note: requestSubscribeMessage is NOT called here — it requires a user
+    // TAP gesture's sync stack. Page-load prompts would fail. Subscription
+    // requests are tied to user-initiated actions (confirm/save buttons).
   });
 
   const hasPendingActions = data.pendingCount > 0 || data.expiringContracts.length > 0;
 
   return (
     <ScrollView className="page-home" scrollY>
+      {!isLoggedIn && Taro.getStorageSync('guest_mode') && (
+        <View className="guest-banner">
+          <View className="guest-banner-body">
+            <Text className="guest-banner-title">访客模式</Text>
+            <Text className="guest-banner-desc">登录后可添加房源、收租等</Text>
+          </View>
+          <View className="guest-banner-btn" onClick={handleLogin}>
+            <Text className="guest-banner-btn-text">{loginLoading ? '登录中...' : '登录'}</Text>
+          </View>
+        </View>
+      )}
       {!isLoggedIn && (
         <View className="login-section">
           <View className="login-card">
             <View className="login-brand">
-              <Text className="login-brand-text">五联人家 · 轻松管房收租</Text>
+              <Text className="login-brand-text">{APP_NAME} · 轻松管房收租</Text>
             </View>
-            <Text className="login-title">欢迎使用五联人家</Text>
+            <Text className="login-title">欢迎使用{APP_NAME}</Text>
             <View className="login-subtitle">
               <View className="login-line" />
               <Text className="login-subtitle-text">请先登录以使用全部功能</Text>
@@ -138,8 +197,12 @@ export default function Home() {
         <>
           {/* Greeting */}
           <View className="greeting">
-            <Text className="greeting-name">{data.profileName}{data.profileName ? '，' : ''}{data.greeting}</Text>
-            <Text className="greeting-subtitle">{hasPendingActions ? '有事情需要你处理' : '今天要做的事'}</Text>
+            <View className="greeting-name-wrap">
+              <Text className="greeting-name">{cleanProfileName(data.profileName) ? `${cleanProfileName(data.profileName)}，` : ''}{data.greeting}</Text>
+            </View>
+            <View className="greeting-subtitle-wrap">
+              <Text className="greeting-subtitle">{hasPendingActions ? '有事情需要你处理' : '今天要做的事'}</Text>
+            </View>
           </View>
 
           {/* Hero or Action cards */}
@@ -220,7 +283,10 @@ export default function Home() {
 
           {/* Monthly Collected */}
           {data.monthlyCollected > 0 && (
-            <View className="monthly-card">
+            <View
+              className="monthly-card"
+              onClick={() => Taro.navigateTo({ url: '/pages/rent-stats/index' })}
+            >
               <View className="monthly-row">
                 <View className="monthly-left">
                   <Text className="monthly-title">本月已收到</Text>
@@ -238,27 +304,27 @@ export default function Home() {
           <View className="function-section">
             <View className="function-header">
               <Text className="function-title">常用功能</Text>
-              <Text className="function-desc">快速管理房间、租客和收款码</Text>
+              <Text className="function-desc">高频操作一键直达</Text>
             </View>
             <View className="function-grid">
               <View className="feature-card" onClick={() => Taro.switchTab({ url: '/pages/rooms/index' })}>
-                <View className="feature-icon room"><Image src={roomIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">房间资料</Text>
+                <View className="feature-icon room"><Image src={billIcon} mode="aspectFit" /></View>
+                <Text className="feature-label">我的房间</Text>
+                <Text className="feature-arrow">›</Text>
+              </View>
+              <View className="feature-card" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
+                <View className="feature-icon stats"><Image src={rentIcon} mode="aspectFit" /></View>
+                <Text className="feature-label">收租列表</Text>
+                <Text className="feature-arrow">›</Text>
+              </View>
+              <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/add-room-photo/index' })}>
+                <View className="feature-icon checkin"><Image src={addIcon} mode="aspectFit" /></View>
+                <Text className="feature-label">添加房间</Text>
                 <Text className="feature-arrow">›</Text>
               </View>
               <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/rent-stats/index' })}>
-                <View className="feature-icon stats"><Image src={statsIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">简单统计</Text>
-                <Text className="feature-arrow">›</Text>
-              </View>
-              <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/fee-setup/index' })}>
-                <View className="feature-icon checkin"><Image src={checkinIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">收费项目</Text>
-                <Text className="feature-arrow">›</Text>
-              </View>
-              <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/property-manage/index' })}>
-                <View className="feature-icon source"><Image src={sourceIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">房源管理</Text>
+                <View className="feature-icon source"><Image src={statsIcon} mode="aspectFit" /></View>
+                <Text className="feature-label">收租统计</Text>
                 <Text className="feature-arrow">›</Text>
               </View>
             </View>
@@ -269,8 +335,8 @@ export default function Home() {
             <View className="guide-card">
               <Text className="guide-card-title">还没有房间</Text>
               <Text className="guide-card-desc">你还没有添加房间，收租需要先有房间哦</Text>
-              <View className="guide-card-btn" onClick={() => Taro.switchTab({ url: '/pages/rooms/index' })}>
-                <Text className="guide-card-btn-text">添加房间</Text>
+              <View className="guide-card-btn" onClick={() => Taro.navigateTo({ url: '/pages/add-property/index' })}>
+                <Text className="guide-card-btn-text">添加房源</Text>
               </View>
             </View>
           )}
@@ -279,7 +345,30 @@ export default function Home() {
             <View className="guide-card">
               <Text className="guide-card-title">房间空着呢</Text>
               <Text className="guide-card-desc">房间还是空的，去登记租客信息吧</Text>
-              <View className="guide-card-btn" onClick={() => Taro.switchTab({ url: '/pages/rooms/index' })}>
+              <View
+                className="guide-card-btn"
+                onClick={() => {
+                  const rooms = data.vacantRooms || [];
+                  if (rooms.length === 0) {
+                    Taro.switchTab({ url: '/pages/rooms/index' });
+                    return;
+                  }
+                  if (rooms.length === 1) {
+                    Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${rooms[0].roomId}` });
+                    return;
+                  }
+                  // Multiple vacant rooms — let the user pick
+                  Taro.showActionSheet({
+                    itemList: rooms.map(r => r.propertyName ? `${r.roomName}（${r.propertyName}）` : r.roomName),
+                    success: (res) => {
+                      const picked = rooms[res.tapIndex];
+                      if (picked) {
+                        Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${picked.roomId}` });
+                      }
+                    },
+                  });
+                }}
+              >
                 <Text className="guide-card-btn-text">去登记</Text>
               </View>
             </View>
@@ -289,7 +378,7 @@ export default function Home() {
             <View className="guide-card">
               <Text className="guide-card-title">设置收款码</Text>
               <Text className="guide-card-desc">设置收款码后租客可以直接扫码付款</Text>
-              <View className="guide-card-btn" onClick={() => Taro.switchTab({ url: '/pages/my/index' })}>
+              <View className="guide-card-btn" onClick={() => Taro.navigateTo({ url: '/pages/qr-code/index' })}>
                 <Text className="guide-card-btn-text">去设置</Text>
               </View>
             </View>

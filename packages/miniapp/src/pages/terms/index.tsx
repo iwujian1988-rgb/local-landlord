@@ -1,5 +1,6 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
+import { POLICY_UPDATED_AT } from '../../constants/app';
 import './index.scss';
 
 export default function Terms() {
@@ -12,7 +13,7 @@ export default function Terms() {
       <ScrollView className="content-scroll" scrollY>
         <View className="policy-content">
           <Text className="policy-title">用户协议</Text>
-          <Text className="policy-update">更新日期：2026年1月1日</Text>
+          <Text className="policy-update">更新日期：{POLICY_UPDATED_AT}</Text>
 
           <View className="policy-section">
             <Text className="section-title">1. 接受条款</Text>
@@ -66,7 +67,7 @@ export default function Terms() {
           <View className="policy-section">
             <Text className="section-title">8. 联系我们</Text>
             <Text className="section-text">
-              如果您对本协议有任何疑问，请通过以下方式联系我们：客服电话 400-888-8888
+              如果您对本协议有任何疑问，请通过「我的」页面底部的「客服反馈」联系我们。
             </Text>
           </View>
         </View>

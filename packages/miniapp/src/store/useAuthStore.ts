@@ -45,18 +45,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const res = await post<any>('/auth/cloud-login', {});
         data = res.data || res;
       } else {
-        // wx.login → code → server verifies, fallback to dev login
-        try {
-          const { code } = await Taro.login();
-          if (!code) throw new Error('wx.login 失败');
-
-          const resp = await post<any>('/auth/wechat/login', { code });
-          data = resp.data || resp;
-        } catch {
-          // Fallback: use dev login for testing
-          const resp = await post<any>('/auth/wechat/login', { code: 'dev_test' });
-          data = resp.data || resp;
+        // wx.login → code → server verifies via code2Session
+        const { code } = await Taro.login();
+        if (!code) {
+          throw new Error('微信登录失败，请检查微信后重试');
         }
+        const resp = await post<any>('/auth/wechat/login', { code });
+        if (resp.code !== 0) {
+          throw new Error(resp.message || '微信登录失败，请稍后重试');
+        }
+        data = resp.data || resp;
       }
 
       if (!data.token) throw new Error('服务端未返回 token');

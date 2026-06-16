@@ -92,17 +92,24 @@
 }
 
 .rent-item-name {
-  font-size: 30px;
-  font-weight: 600;
+  font-size: 34px;
+  font-weight: 700;
   color: var(--text-primary, #4A4038);
   display: block;
 }
 
 .rent-item-amount {
-  font-size: 40px;
-  font-weight: 800;
-  color: var(--accent-dk, #E8C76A);
-  margin-top: 8px;
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text-secondary, #7A6F64);
+  margin-top: 6px;
+  display: block;
+}
+
+.rent-item-period {
+  font-size: 22px;
+  color: var(--text-muted, #A89B8C);
+  margin-top: 4px;
   display: block;
 }
 

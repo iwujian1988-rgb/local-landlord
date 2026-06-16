@@ -152,7 +152,7 @@ export default function RoomList() {
           <Text className="stats-link-text">＋ 添加房间</Text>
         </View>
         <View className="stats-link-btn" onClick={goToRentStats}>
-          <Text className="stats-link-text">查看统计</Text>
+          <Text className="stats-link-text">收租统计</Text>
         </View>
       </View>
 

@@ -111,6 +111,17 @@ export default function Contracts() {
     setDeleteVisible(true);
   }, []);
 
+  const handlePreview = useCallback((doc: DocumentItem) => {
+    if (!doc.imageUrl) {
+      Taro.showToast({ title: '该文件暂不支持预览', icon: 'none' });
+      return;
+    }
+    Taro.previewImage({
+      urls: [doc.imageUrl],
+      current: doc.imageUrl,
+    });
+  }, []);
+
   const handleDeleteConfirm = useCallback(async () => {
     if (!deleteTargetId) return;
     setDeleteVisible(false);
@@ -158,7 +169,11 @@ export default function Contracts() {
               <EmptyState title="没有匹配的合同收据" description="换个筛选条件试试" />
             ) : (
               filteredDocs.map((doc) => (
-                <View key={doc.id} className="doc-card" onClick={() => handleDeleteRequest(doc.id)}>
+                <View
+                  key={doc.id}
+                  className="doc-card"
+                  onClick={() => handlePreview(doc)}
+                >
                   <View className="doc-thumb" style={{ background: docThumbColors[doc.type] || docThumbColors.other }}>
                     {doc.imageUrl ? (
                       <Image src={doc.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-xs)' }} />
@@ -170,7 +185,15 @@ export default function Contracts() {
                     <Text className="doc-name">{doc.name}</Text>
                     <Text className="doc-date">{doc.date} 上传</Text>
                   </View>
-                  <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1, flexShrink: 0 }}>›</Text>
+                  <View
+                    className="doc-delete-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteRequest(doc.id);
+                    }}
+                  >
+                    <Text className="doc-delete-text">删除</Text>
+                  </View>
                 </View>
               ))
             )}

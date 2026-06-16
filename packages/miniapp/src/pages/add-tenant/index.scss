@@ -194,3 +194,48 @@
   font-weight: 700;
   color: var(--text-primary, #4A4038);
 }
+
+/* P0-A: 入住实收 toggle + sub-fields */
+.form-toggle-row {
+  padding: 28px 32px;
+  border: 4px solid var(--bg-soft, #F5EDE2);
+  border-radius: 32px;
+  background: var(--cream, #FFFDF9);
+
+  &.on {
+    border-color: var(--accent, #F5D78E);
+    background: rgba(245, 215, 142, 0.18);
+  }
+}
+
+.form-toggle-text {
+  display: block;
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary, #4A4038);
+}
+
+.form-toggle-hint {
+  display: block;
+  font-size: 24px;
+  color: var(--text-hint, #A89B8C);
+  margin-top: 8px;
+}
+
+.form-sub-fields {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-sub-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-sub-label {
+  font-size: 26px;
+  color: var(--text-secondary, #7A6F64);
+}

@@ -8,7 +8,7 @@ import { get } from '../../services/request';
 import rentHeroImg from '../../assets/rent-stats/rent-hero-objects.png';
 import './index.scss';
 
-type Period = 'month' | 'lastMonth' | 'quarter' | 'year' | 'custom';
+type Period = 'month' | 'lastMonth' | 'quarter' | 'year';
 
 const periods: { key: Period; label: string }[] = [
   { key: 'month', label: '本月' },
@@ -58,7 +58,7 @@ export default function RentStats() {
     setError(false);
     try {
       const res = await get<StatsData>('/stats/rent', {
-        period: p === 'custom' ? 'month' : p,
+        period: p,
         propertyId: routePropertyId || undefined,
       });
       if (res.code === 0 && res.data) {
@@ -71,6 +71,27 @@ export default function RentStats() {
       setLoading(false);
     }
   }, [routePropertyId]);
+
+  const handleCopySummary = useCallback(() => {
+    const s = statsData;
+    const lines: string[] = [];
+    lines.push(`【${s.monthLabel}收租汇总】`);
+    lines.push(`应收：${s.totalExpected.toLocaleString()} 元`);
+    lines.push(`已收：${s.totalCollected.toLocaleString()} 元`);
+    lines.push(`未收：${s.totalPending.toLocaleString()} 元`);
+    lines.push(`收款率：${s.totalRate}%`);
+    if (s.propertyStats.length > 0) {
+      lines.push('');
+      lines.push('按房源：');
+      s.propertyStats.forEach((p) => {
+        lines.push(`· ${p.name} ${p.collected.toLocaleString()}/${p.expected.toLocaleString()}元 (${p.rate}%)`);
+      });
+    }
+    Taro.setClipboardData({
+      data: lines.join('\n'),
+      success: () => Taro.showToast({ title: '汇总已复制，可粘贴到微信', icon: 'none', duration: 2000 }),
+    });
+  }, [statsData]);
 
   useEffect(() => {
     Taro.setNavigationBarTitle({ title: '收租统计' });
@@ -85,12 +106,7 @@ export default function RentStats() {
             <View
               key={p.key}
               className={`filter-tab ${period === p.key ? 'active' : ''}`}
-              onClick={() => {
-                setPeriod(p.key);
-                if (p.key === 'custom') {
-                  Taro.showToast({ title: '已切换到自定义周期', icon: 'none', duration: 2000 });
-                }
-              }}
+              onClick={() => setPeriod(p.key)}
             >
               <Text className="filter-tab-text">{p.label}</Text>
             </View>
@@ -130,7 +146,7 @@ export default function RentStats() {
 
             <View className="section-header">
               <Text className="section-title">按房源统计</Text>
-              <Text className="section-more" onClick={() => Taro.showToast({ title: '即将支持导出功能', icon: 'none', duration: 2000 })}>↗ 导出</Text>
+              <Text className="section-more" onClick={handleCopySummary}>复制汇总</Text>
             </View>
 
             {statsData.propertyStats.length === 0 && (
@@ -159,11 +175,8 @@ export default function RentStats() {
             ))}
 
             <View className="bottom-actions">
-              <View className="bottom-btn secondary" onClick={() => Taro.showToast({ title: '已切换到自定义周期', icon: 'none', duration: 2000 })}>
-                <Text>▣ 选择周期</Text>
-              </View>
-              <View className="bottom-btn primary" onClick={() => Taro.showToast({ title: '即将支持导出功能', icon: 'none', duration: 2000 })}>
-                <Text>↗ 导出统计</Text>
+              <View className="bottom-btn primary" onClick={handleCopySummary}>
+                <Text>复制汇总到剪贴板</Text>
               </View>
             </View>
           </>

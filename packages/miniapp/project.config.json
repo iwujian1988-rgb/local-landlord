@@ -2,7 +2,7 @@
   "miniprogramRoot": "dist/",
   "cloudfunctionRoot": "cloudfunctions/",
   "projectname": "local-landlord",
-  "description": "本地房东 - 管房管租管收租",
+  "description": "五联人家 - 管房管租管收租",
   "appid": "wx5c21ac52560dcb27",
   "setting": {
     "urlCheck": false,

@@ -5,11 +5,12 @@
 /* Filter tabs - matches HTML .filter-tabs L422-449 */
 .records-filter {
   display: flex;
-  gap: 8px;
-  padding: 0 16px;
-  margin-bottom: 14px;
+  gap: 12px;
+  padding: 12px 24px 16px;
+  margin-bottom: 6px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
 }
 
 .records-filter::-webkit-scrollbar {
@@ -17,28 +18,28 @@
 }
 
 .filter-tab {
-  padding: 10px 20px;
+  padding: 14px 28px;
   border-radius: 999px;
   font-size: var(--font-sm);
-  font-weight: 500;
+  font-weight: 600;
   background: var(--cream);
   color: var(--text-secondary);
-  box-shadow: 0 2px 8px rgba(74, 64, 56, 0.04);
   white-space: nowrap;
-  transition: all 0.3s ease;
-  border: none;
-  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
   font-family: inherit;
+  flex-shrink: 0;
 }
 
 .filter-tab.active {
-  background: var(--text-primary);
+  background: var(--accent-dk);
   color: #fff;
+  box-shadow: 0 6px 16px rgba(240, 100, 62, 0.25);
 }
 
 .filter-tab-text {
   font-size: var(--font-sm);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Scroll container */

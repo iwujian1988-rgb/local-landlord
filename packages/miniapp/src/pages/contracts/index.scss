@@ -124,3 +124,14 @@
   font-weight: 700;
   color: var(--text-secondary);
 }
+
+.doc-delete-btn {
+  padding: 12px 20px;
+  flex-shrink: 0;
+}
+
+.doc-delete-text {
+  font-size: 26px;
+  color: #d9534f;
+  font-weight: 500;
+}

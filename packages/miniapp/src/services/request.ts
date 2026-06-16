@@ -8,8 +8,29 @@ export interface ApiResponse<T = unknown> {
   message: string;
 }
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryReLogin(): Promise<boolean> {
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+  isRefreshing = true;
+  refreshPromise = useAuthStore
+    .getState()
+    .login()
+    .then(() => true)
+    .catch(() => false)
+    .finally(() => {
+      isRefreshing = false;
+      refreshPromise = null;
+    });
+  return refreshPromise;
+}
+
 const request = async <T = unknown>(
   options: Taro.request.Option,
+  allowRelogin = true,
 ): Promise<ApiResponse<T>> => {
   const token = useAuthStore.getState().token || Taro.getStorageSync('auth_token') || '';
 
@@ -26,7 +47,7 @@ const request = async <T = unknown>(
       data = await callContainer<T>(options, mergedHeader);
     } else {
       const res = await Taro.request({
-        timeout: 5000,
+        timeout: 10000,
         ...options,
         url: `${API_BASE_URL}${options.url}`,
         header: mergedHeader,
@@ -35,14 +56,26 @@ const request = async <T = unknown>(
     }
 
     if (data.code === 401) {
+      if (allowRelogin && !useAuthStore.getState().loginLoading) {
+        const ok = await tryReLogin();
+        if (ok) {
+          return request<T>(options, false);
+        }
+      }
       Taro.removeStorageSync('auth_token');
       useAuthStore.getState().logout();
       Taro.reLaunch({ url: '/pages/home/index' });
-      throw new Error('未登录');
+      throw new Error('登录已过期，请重新登录');
     }
 
     return data;
   } catch (err: any) {
+    const msg = err?.errMsg || err?.message || '';
+    if (msg.includes('timeout')) {
+      Taro.showToast({ title: '网络较慢，请稍后再试', icon: 'none', duration: 2000 });
+    } else if (msg.includes('fail') || msg.includes('network')) {
+      Taro.showToast({ title: '网络连接失败，请检查网络', icon: 'none', duration: 2000 });
+    }
     throw err;
   }
 };

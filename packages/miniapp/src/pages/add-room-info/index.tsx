@@ -14,7 +14,6 @@ export default function AddRoomInfo() {
 
   const [name, setName] = useState('');
   const [rent, setRent] = useState('');
-  const [deposit, setDeposit] = useState('');
   const [area, setArea] = useState('');
   const [floor, setFloor] = useState('');
   const [orientation, setOrientation] = useState('');
@@ -59,7 +58,6 @@ export default function AddRoomInfo() {
         setIsEdit(true);
         setName(found.name || '');
         setRent(String(found.rent || ''));
-        setDeposit(found.deposit ? String(found.deposit) : '');
         setArea(found.area || '');
         setFloor(found.floor || '');
         setOrientation(found.orientation || '');
@@ -91,7 +89,6 @@ export default function AddRoomInfo() {
       if (draft) {
         setName(draft.name || '');
         setRent(draft.rent || '');
-        setDeposit(draft.deposit || '');
         setArea(draft.area || '');
         setFloor(draft.floor || '');
         setOrientation(draft.orientation || '');
@@ -108,7 +105,7 @@ export default function AddRoomInfo() {
   useDidHide(() => {
     if (roomId <= 0) {
       const formData = {
-        name, rent, deposit, area, floor, orientation,
+        name, rent, area, floor, orientation,
         selectedFacilities, note, status, availableType, availableDate,
       };
       if (name || rent) {
@@ -141,7 +138,6 @@ export default function AddRoomInfo() {
       rent: Number(rent),
       status: status === 'rented' ? 1 : 0,
       availableDate: availableType === 'date' ? availableDate : '随时可入住',
-      deposit: deposit ? Number(deposit) : undefined,
       area: area.trim() || undefined,
       floor: floor.trim() || undefined,
       orientation: orientation.trim() || undefined,
@@ -182,18 +178,16 @@ export default function AddRoomInfo() {
           },
         });
       } else {
-        // Room is vacant — just go back
-        Taro.showToast({ title: '房间已保存', icon: 'none', duration: 1500 });
-        setTimeout(() => {
-          Taro.switchTab({ url: '/pages/rooms/index' });
-        }, 1000);
+        // Room is vacant — go straight back to room list, no nag
+        Taro.showToast({ title: '房间已保存', icon: 'success', duration: 1500 });
+        setTimeout(() => Taro.switchTab({ url: '/pages/rooms/index' }), 1200);
       }
     } catch (err) {
       console.error('[AddRoomInfo] 保存房间失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });
       setSaving(false);
     }
-  }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, deposit, area, floor, orientation, selectedFacilities, note, images]);
+  }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, area, floor, orientation, selectedFacilities, note, images]);
 
   const handleAddImage = useCallback(() => {
     if (uploading) return;
@@ -326,17 +320,6 @@ export default function AddRoomInfo() {
 
       {showMore && (
         <View className="more-section">
-          <View className="form-group">
-            <Text className="form-label">押金</Text>
-            <Input
-              className="form-input"
-              type="digit"
-              placeholder="输入押金金额"
-              value={deposit}
-              onInput={(e) => setDeposit(e.detail.value)}
-              placeholderStyle="color: #B5A99A"
-            />
-          </View>
           <View className="form-group">
             <Text className="form-label">面积</Text>
             <Input

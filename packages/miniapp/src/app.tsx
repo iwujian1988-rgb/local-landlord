@@ -20,6 +20,18 @@ function App({ children }: { children: ReactNode }) {
     if (savedToken) {
       useAuthStore.setState({ token: savedToken, isLoggedIn: true });
     }
+
+    const hasOnboarded = Taro.getStorageSync('has_onboarded');
+    const launchPage = Taro.getCurrentInstance().router?.path || '';
+    const isInsideTab = launchPage.startsWith('pages/home') ||
+      launchPage.startsWith('pages/rooms') ||
+      launchPage.startsWith('pages/rent-list') ||
+      launchPage.startsWith('pages/my');
+
+    // Cold launch into a tab page and user hasn't onboarded → route to onboarding
+    if (!hasOnboarded && isInsideTab) {
+      Taro.reLaunch({ url: '/pages/onboarding/index' });
+    }
   });
   return <ErrorBoundary>{children}</ErrorBoundary>;
 }

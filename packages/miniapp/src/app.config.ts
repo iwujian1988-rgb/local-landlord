@@ -1,5 +1,6 @@
 export default defineAppConfig({
   pages: [
+    'pages/onboarding/index',
     'pages/home/index',
     'pages/rooms/index',
     'pages/room-list/index',
@@ -21,6 +22,8 @@ export default defineAppConfig({
     'pages/property-manage/index',
     'pages/privacy/index',
     'pages/terms/index',
+    'pages/account/index',
+    'pages/share-webview/index',
   ],
   tabBar: {
     color: '#8B7E74',
@@ -37,7 +40,7 @@ export default defineAppConfig({
   window: {
     backgroundTextStyle: 'light',
     navigationBarBackgroundColor: '#FDF8F3',
-    navigationBarTitleText: '本地房东',
+    navigationBarTitleText: '五联人家',
     navigationBarTextStyle: 'black',
   },
 });

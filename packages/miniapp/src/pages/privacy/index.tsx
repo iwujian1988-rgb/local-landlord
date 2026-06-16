@@ -1,5 +1,6 @@
 import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
+import { POLICY_UPDATED_AT } from '../../constants/app';
 import './index.scss';
 
 export default function Privacy() {
@@ -12,7 +13,7 @@ export default function Privacy() {
       <ScrollView className="content-scroll" scrollY>
         <View className="policy-content">
           <Text className="policy-title">隐私政策</Text>
-          <Text className="policy-update">更新日期：2026年1月1日</Text>
+          <Text className="policy-update">更新日期：{POLICY_UPDATED_AT}</Text>
 
           <View className="policy-section">
             <Text className="section-title">1. 信息收集</Text>
@@ -59,7 +60,7 @@ export default function Privacy() {
           <View className="policy-section">
             <Text className="section-title">7. 联系我们</Text>
             <Text className="section-text">
-              如果您对本隐私政策有任何疑问或建议，请通过以下方式联系我们：客服电话 400-888-8888
+              如果您对本隐私政策有任何疑问或建议，请通过「我的」页面底部的「客服反馈」联系我们，我们会尽快回复。
             </Text>
           </View>
         </View>

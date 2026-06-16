@@ -75,7 +75,7 @@ export default function FeeSetup() {
       }
       if (roomRes.code === 0 && roomRes.data) {
         setRoomName(roomRes.data.name || '');
-        Taro.setNavigationBarTitle({ title: `${roomRes.data.name || '房间'} · 每月要收哪些钱` });
+        Taro.setNavigationBarTitle({ title: `${roomRes.data.name || '房间'} · 每月收费项目` });
       }
     } catch (err) {
       console.error('[FeeSetup] 加载数据失败:', err);
@@ -175,7 +175,7 @@ export default function FeeSetup() {
     );
   }
 
-  const title = roomName ? `${roomName} · 每月要收哪些钱` : '每月要收哪些钱';
+  const title = roomName ? `${roomName} · 每月收费项目` : '每月收费项目';
 
   return (
     <View className="page-fee-setup">
