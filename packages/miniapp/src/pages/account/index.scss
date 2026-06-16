@@ -1,0 +1,120 @@
+.page-account {
+  min-height: 100vh;
+  background: var(--bg-page);
+  padding: 24px;
+}
+
+.content-scroll {
+  height: 100vh;
+}
+
+.account-section {
+  margin-bottom: 32px;
+}
+
+.section-title {
+  display: block;
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  padding: 0 8px;
+}
+
+.section-title.danger {
+  color: #d9534f;
+}
+
+.account-card,
+.info-card,
+.danger-card {
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(74, 64, 56, 0.04);
+}
+
+.account-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--bg-soft);
+}
+
+.account-row:last-child {
+  border-bottom: none;
+}
+
+.account-label {
+  font-size: 28px;
+  color: var(--text-secondary);
+}
+
+.account-value {
+  font-size: 28px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.info-text {
+  font-size: 26px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.danger-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.danger-info {
+  flex: 1;
+}
+
+.danger-title {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  color: #d9534f;
+  margin-bottom: 6px;
+}
+
+.danger-desc {
+  display: block;
+  font-size: 24px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.danger-bullet {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.danger-bullet-item {
+  font-size: 24px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.danger-btn {
+  background: #d9534f;
+  border-radius: var(--radius-md);
+  padding: 18px 28px;
+  flex-shrink: 0;
+}
+
+.danger-btn.disabled {
+  opacity: 0.5;
+}
+
+.danger-btn-text {
+  color: #fff;
+  font-size: 26px;
+  font-weight: 600;
+  white-space: nowrap;
+}

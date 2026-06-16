@@ -9,20 +9,22 @@ import iconFee from '../../assets/my/icon-fee-item.png';
 import iconPrivacy from '../../assets/my/icon-privacy.png';
 import iconAgreement from '../../assets/my/icon-agreement.png';
 import iconFaq from '../../assets/my/icon-faq.png';
+import { APP_NAME, APP_VERSION, SUPPORT_EMAIL } from '../../constants/app';
 import './index.scss';
 
 interface MenuItem {
   icon: string;
   label: string;
   url?: string;
-  toast?: string;
+  action?: 'feedback' | 'about';
 }
 
 const menuItems: MenuItem[] = [
   { icon: iconPayment, label: '默认收款码', url: '/pages/qr-code/index' },
-  { icon: iconFee, label: '常用收费项目', url: '/pages/fee-setup/index' },
+  { icon: iconFee, label: '每月收费项目', url: '/pages/fee-setup/index' },
   { icon: iconPrivacy, label: '隐私政策', url: '/pages/privacy/index' },
   { icon: iconAgreement, label: '用户协议', url: '/pages/terms/index' },
+  { icon: iconAgreement, label: '账户管理', url: '/pages/account/index' },
 ];
 
 const faqItems = [
@@ -40,11 +42,22 @@ export default function My() {
   const [loginLoading, setLoginLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (loginLoading) return;
     setLoginLoading(true);
     try {
       await useAuthStore.getState().login();
-    } catch {
-      Taro.showToast({ title: '登录失败，请检查网络', icon: 'none' });
+    } catch (err: any) {
+      Taro.showModal({
+        title: '登录失败',
+        content: err?.message || '网络可能有点问题，请检查后重试',
+        confirmText: '重试',
+        cancelText: '稍后再说',
+        success: (res) => {
+          if (res.confirm) {
+            setTimeout(() => handleLogin(), 100);
+          }
+        },
+      });
     } finally {
       setLoginLoading(false);
     }
@@ -57,8 +70,32 @@ export default function My() {
   const handleMenuItem = (item: MenuItem) => {
     if (item.url) {
       Taro.navigateTo({ url: item.url });
-    } else if (item.toast) {
-      Taro.showToast({ title: item.toast, icon: 'none', duration: 2000 });
+      return;
+    }
+    if (item.action === 'feedback') {
+      Taro.showModal({
+        title: '客服反馈',
+        content: `遇到问题或建议反馈，请发邮件到：\n${SUPPORT_EMAIL}\n（点「复制」可复制邮箱地址）`,
+        confirmText: '复制邮箱',
+        cancelText: '关闭',
+        success: (r) => {
+          if (r.confirm) {
+            Taro.setClipboardData({
+              data: SUPPORT_EMAIL,
+              success: () => Taro.showToast({ title: '邮箱已复制', icon: 'none' }),
+            });
+          }
+        },
+      });
+      return;
+    }
+    if (item.action === 'about') {
+      Taro.showModal({
+        title: `关于${APP_NAME}`,
+        content: `版本 ${APP_VERSION}\n\n本应用是一个面向房东的免费房屋管理工具，提供房源、租客、账单和收租提醒。本应用不直接处理资金，收款通过您自己的收款码完成。`,
+        showCancel: false,
+        confirmText: '知道了',
+      });
     }
   };
 
@@ -85,7 +122,7 @@ export default function My() {
       {!isLoggedIn ? (
         <View className="login-state">
           <Image className="login-state-avatar" src={avatarImg} mode="aspectFit" />
-          <Text className="login-state-title">欢迎使用本地房东</Text>
+          <Text className="login-state-title">欢迎使用{APP_NAME}</Text>
           <Text className="login-state-desc">登录后可管理房间和收租</Text>
           <View className="login-state-btn" onClick={handleLogin}>
             <Text className="login-state-btn-text">{loginLoading ? '登录中...' : '微信一键登录'}</Text>
@@ -93,7 +130,6 @@ export default function My() {
         </View>
       ) : (
         <>
-          {/* Profile Hero */}
           <View className="profile-hero">
             <Image className="profile-avatar-img" src={avatarImg} mode="aspectFit" />
             <View className="profile-info">
@@ -103,7 +139,6 @@ export default function My() {
             <Image className="profile-ill" src={heroIll} mode="aspectFit" />
           </View>
 
-          {/* Menu List */}
           <View className="menu-panel menu-main">
             {menuItems.map((item, idx) => (
               <View key={idx} className="menu-item" onClick={() => handleMenuItem(item)}>
@@ -114,7 +149,6 @@ export default function My() {
             ))}
           </View>
 
-          {/* FAQ */}
           <Text className="faq-title">常见问题</Text>
           <View className="menu-panel faq-panel">
             {faqItems.map((faq, idx) => (
@@ -133,11 +167,24 @@ export default function My() {
             ))}
           </View>
 
-          {/* Logout */}
+          <View className="menu-panel menu-secondary">
+            <View className="menu-item" onClick={() => handleMenuItem({ action: 'feedback', label: '客服反馈', icon: iconFaq })}>
+              <Image className="menu-icon-img" src={iconFaq} mode="aspectFit" />
+              <Text className="menu-text">客服反馈</Text>
+              <Text className="menu-arrow">›</Text>
+            </View>
+            <View className="menu-item" onClick={() => handleMenuItem({ action: 'about', label: `关于${APP_NAME}`, icon: iconPrivacy })}>
+              <Image className="menu-icon-img" src={iconPrivacy} mode="aspectFit" />
+              <Text className="menu-text">{`关于${APP_NAME}`}</Text>
+              <Text className="menu-arrow">›</Text>
+            </View>
+          </View>
+
           <View className="logout-section">
             <View className="logout-btn" onClick={handleLogout}>
               <Text className="logout-btn-text">退出登录</Text>
             </View>
+            <Text className="version-text">版本 {APP_VERSION}</Text>
           </View>
         </>
       )}
