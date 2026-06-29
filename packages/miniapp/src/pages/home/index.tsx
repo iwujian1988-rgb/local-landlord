@@ -27,12 +27,14 @@ const getGreeting = () => {
   return '晚上好';
 };
 
-// Filter out legacy dirty data like "房东OP11N23A" — these came from an old
-// auto-name scheme that appended openId prefixes. We collapse them to empty
-// so the greeting just says "下午好" without a name.
+// Filter out legacy dirty data like "房东OP11N23A" / "房东op11n3a-" — these
+// came from an old auto-name scheme that appended openId prefixes (possibly
+// with trailing punctuation). Detect "房东 + purely ASCII suffix" → collapse
+// to just "房东" (keep the role label, drop the noise). Legit names like
+// "房东小明" / "张三" are preserved as-is.
 const cleanProfileName = (name: string): string => {
   if (!name) return '';
-  if (/^房东[A-Za-z0-9]{3,}$/.test(name)) return '';
+  if (/^房东[a-zA-Z0-9\-_.]+$/.test(name)) return '房东';
   return name;
 };
 
@@ -108,9 +110,10 @@ export default function Home() {
     try {
       const statsRes = await get<any>('/stats/home');
       const s = statsRes.data || {};
+      const todoCount = Number(s.todoCount || 0);
       setData({
         greeting: getGreeting(),
-        pendingCount: s.todoCount || 0,
+        pendingCount: todoCount,
         pendingDesc: s.pendingDesc || '',
         pendingHouseholds: s.pendingHouseholds || 0,
         monthlyCollected: s.monthlyCollected || 0,
@@ -130,8 +133,8 @@ export default function Home() {
       });
       // Sync rent-list tab badge with pending count
       try {
-        if (s.pendingCount > 0) {
-          Taro.setTabBarBadge({ index: RENT_LIST_TAB_INDEX, text: String(Math.min(s.pendingCount, 99)) });
+        if (todoCount > 0) {
+          Taro.setTabBarBadge({ index: RENT_LIST_TAB_INDEX, text: String(Math.min(todoCount, 99)) });
         } else {
           Taro.removeTabBarBadge({ index: RENT_LIST_TAB_INDEX });
         }

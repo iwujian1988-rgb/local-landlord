@@ -139,8 +139,10 @@ export class TenantService {
       for (const fee of feeItems) {
         if (!fee.enabled) continue;
         const baseAmt = Number(fee.amount) || 0;
-        // Fixed items × payMonths; manual items start at 0
-        const amt = fee.type === 0 ? baseAmt * payMonths : 0;
+        // Fixed items × payMonths — unless cycleMode='monthly' (e.g. 停车管理费
+        // charged per-month regardless of payMonths). Manual items start at 0.
+        const multiply = fee.type === 0 && fee.cycleMode !== 'monthly';
+        const amt = fee.type === 0 ? (multiply ? baseAmt * payMonths : baseAmt) : 0;
         items.push({ feeName: fee.name, amount: amt });
         totalAmount += amt;
       }
@@ -250,11 +252,21 @@ export class TenantService {
   /**
    * Compute prepaid rent refund for early move-out.
    *
-   * Algorithm: find the latest paid (status=1) bill for this tenant, look at its
-   * periodEnd (the last month of prepayment). Unused days = days between
-   * moveOutDate and end of periodEnd month. Refund = unusedDays × (monthly rent / 30).
+   * Algorithm: find the latest paid (status=1) bill for this tenant, look at
+   * its [period..periodEnd] cycle (the months of prepayment). The refund covers
+   * TWO classes of days that the tenant paid for but didn't actually use:
    *
-   * Returns 0 if no paid bill exists, or moveOutDate is after periodEnd (no refund due).
+   *   1. overpaidBeforeMoveIn — days between period start and moveInDate when
+   *      the tenant moved in mid-month but the bill charged for the whole month.
+   *      E.g. moveIn=4/15, period='2026-04' → landlord charged 4/1-4/14 unfairly.
+   *
+   *   2. unusedAfterMoveOut — days between moveOutDate and end of periodEnd
+   *      month (the original logic; covers early move-out at the tail).
+   *
+   * Refund = (overpaidBeforeMoveIn + unusedAfterMoveOut) × (monthly rent / 30).
+   *
+   * Returns 0 if no paid bill exists, or moveOutDate is at/after end of
+   * periodEnd month AND moveInDate was on/before period start.
    */
   async computePrepaidRefund(tenant: Tenant): Promise<number> {
     if (!tenant.moveOutDate) return 0;
@@ -267,11 +279,23 @@ export class TenantService {
 
     // Use periodEnd if set, else period (legacy single-month bills)
     const effectivePeriodEnd = latestPaidBill.periodEnd || latestPaidBill.period;
+    const periodStart = dayjs(latestPaidBill.period + '-01').startOf('day');
     const periodEndDate = dayjs(effectivePeriodEnd + '-01').endOf('month');
-    const moveOutDay = dayjs(tenant.moveOutDate);
 
-    const unusedDays = periodEndDate.diff(moveOutDay, 'day');
-    if (unusedDays <= 0) return 0;
+    const moveOutDay = dayjs(tenant.moveOutDate);
+    const moveInDay = tenant.moveInDate ? dayjs(tenant.moveInDate) : null;
+
+    // Days charged for but tenant hadn't moved in yet (move-in was mid-cycle)
+    const overpaidBeforeMoveIn =
+      moveInDay && moveInDay.isAfter(periodStart)
+        ? moveInDay.diff(periodStart, 'day')
+        : 0;
+
+    // Days charged for but tenant has already moved out (tail of cycle)
+    const unusedAfterMoveOut = Math.max(0, periodEndDate.diff(moveOutDay, 'day'));
+
+    const totalUnusedDays = overpaidBeforeMoveIn + unusedAfterMoveOut;
+    if (totalUnusedDays <= 0) return 0;
 
     const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
     if (!room) return 0;
@@ -280,7 +304,7 @@ export class TenantService {
 
     // Standard landlord convention: 日租金 = 月租 / 30 (not / 实际天数)
     const dailyRate = monthlyRent / 30;
-    const refund = Math.round(dailyRate * unusedDays * 100) / 100;
+    const refund = Math.round(dailyRate * totalUnusedDays * 100) / 100;
     return Math.max(0, refund);
   }
 

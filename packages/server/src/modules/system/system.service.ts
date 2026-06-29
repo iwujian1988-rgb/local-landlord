@@ -14,6 +14,7 @@ import { Document } from '../document/document.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
 import { Landlord } from '../landlord/landlord.entity';
+import { StatsService } from '../stats/stats.service';
 
 @Injectable()
 export class SystemService {
@@ -57,6 +58,7 @@ export class SystemService {
     private readonly landlordRepository: Repository<Landlord>,
     @InjectEntityManager()
     private readonly entityManager: EntityManager,
+    private readonly statsService: StatsService,
   ) {}
 
   // ========== Property management ==========
@@ -87,14 +89,16 @@ export class SystemService {
     if (data.landlordId) {
       const count = await this.propertyRepository.count({ where: { landlordId: data.landlordId } });
       const landlord = await this.landlordRepository.findOne({ where: { id: data.landlordId } });
-      if (landlord) {
-        if (landlord.status === 0) {
-          throw new BadRequestException('账号已禁用，无法创建房源');
-        }
-        const max = landlord.maxProperties ?? 10;
-        if (max > 0 && count >= max) {
-          throw new BadRequestException(`[30003] 房源数量已达上限（${max}套），无法继续添加`);
-        }
+      if (!landlord) {
+        // B1-related: reject unknown landlordId early instead of saving an orphan property.
+        throw new NotFoundException(`房东 ${data.landlordId} 不存在`);
+      }
+      if (landlord.status === 0) {
+        throw new BadRequestException('账号已禁用，无法创建房源');
+      }
+      const max = landlord.maxProperties ?? 10;
+      if (max > 0 && count >= max) {
+        throw new BadRequestException(`[30003] 房源数量已达上限（${max}套），无法继续添加`);
       }
     }
     const property = this.propertyRepository.create(data);
@@ -178,6 +182,14 @@ export class SystemService {
   async updateRoom(id: number, data: Partial<Room>) {
     const room = await this.roomRepository.findOne({ where: { id } });
     if (!room) throw new NotFoundException('房间不存在');
+    // B7 fix: when relocating a room to a different property, validate the target
+    // property exists; otherwise we'd silently leave an orphan room row.
+    if (data.propertyId != null && data.propertyId !== room.propertyId) {
+      const target = await this.propertyRepository.findOne({ where: { id: data.propertyId } });
+      if (!target) {
+        throw new NotFoundException(`房源 ${data.propertyId} 不存在，无法迁移房间`);
+      }
+    }
     Object.assign(room, data);
     return this.roomRepository.save(room);
   }
@@ -215,7 +227,23 @@ export class SystemService {
   }
 
   async createTenant(data: Partial<Tenant>) {
-    const tenant = this.tenantRepository.create({ ...data, status: data.status ?? 1 });
+    // B2-related: validate room exists before insert; otherwise sql.js throws
+    // a raw 500 NOT NULL/FK error that leaks to the client.
+    if (data.roomId != null) {
+      const room = await this.roomRepository.findOne({ where: { id: data.roomId } });
+      if (!room) {
+        throw new NotFoundException(`房间 ${data.roomId} 不存在，无法新增租客`);
+      }
+    }
+    // B9 fix: tenant.move_in_date is NOT NULL in the schema but the DTO marks
+    // it optional. Without a default, admin createTenant returns a raw 500.
+    // Mirror the landlord flow (tenant.service.ts:74-75) by defaulting to today.
+    const today = new Date().toISOString().slice(0, 10);
+    const tenant = this.tenantRepository.create({
+      ...data,
+      moveInDate: data.moveInDate || today,
+      status: data.status ?? 1,
+    });
     return this.tenantRepository.save(tenant);
   }
 
@@ -314,14 +342,11 @@ export class SystemService {
 
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const bills = await this.billRepository.find();
-    const monthBills = bills.filter(b => b.period === monthStart);
-    const monthExpected = monthBills.reduce((sum, b) => sum + Number(b.totalAmount), 0);
-    const monthCollected = monthBills
-      .filter(b => b.status === 1)
-      .reduce((sum, b) => sum + Number(b.totalAmount), 0);
-    const collectionRate = monthExpected > 0 ? Math.round((monthCollected / monthExpected) * 100) : 0;
-    const overdueBillCount = monthBills.filter(b => b.status === 2).length;
+    const rentStats = await this.getAggregatedRentStatsForPeriod(monthStart);
+    const monthExpected = rentStats.expectedAmount;
+    const monthCollected = rentStats.collectedAmount;
+    const collectionRate = rentStats.collectionRate;
+    const overdueBillCount = rentStats.overdueCount;
 
     return {
       totalLandlords,
@@ -428,8 +453,12 @@ export class SystemService {
         results.push({ billId: id, reminded: false, reason: '账单不存在' });
         continue;
       }
-      if (bill.status !== 0) {
-        results.push({ billId: id, reminded: false, reason: '账单状态不是待支付' });
+      // B5 fix: only paid bills (status=1) should be skipped.
+      // Previously this rejected anything that wasn't status=0, which silently
+      // swallowed overdue bills (status=2) — exactly the bills admins most need
+      // to chase down via batch remind.
+      if (bill.status === 1) {
+        results.push({ billId: id, reminded: false, reason: '账单已确认收款，无需催缴' });
         continue;
       }
       const title = `催缴提醒-${bill.period}`;
@@ -463,25 +492,20 @@ export class SystemService {
   // ========== Statistics (admin view) ==========
 
   async getAdminRentStats(period?: string) {
-    const allBills = await this.billRepository.find();
-
     if (period) {
-      const periodBills = allBills.filter(b => b.period === period);
-      const expected = periodBills.reduce((sum, b) => sum + Number(b.totalAmount), 0);
-      const collected = periodBills
-        .filter(b => b.status === 1)
-        .reduce((sum, b) => sum + Number(b.totalAmount), 0);
-      const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+      const stat = await this.getAggregatedRentStatsForPeriod(period);
       return {
         list: [{
           period,
-          expectedAmount: expected,
-          collectedAmount: collected,
-          collectionRate: rate,
-          billCount: periodBills.length,
-          collectedCount: periodBills.filter(b => b.status === 1).length,
+          expectedAmount: stat.expectedAmount,
+          collectedAmount: stat.collectedAmount,
+          pendingAmount: stat.pendingAmount,
+          refundAmount: stat.refundAmount,
+          collectionRate: stat.collectionRate,
+          billCount: stat.billCount,
+          collectedCount: stat.collectedCount,
         }],
-        totalBills: allBills.length,
+        totalBills: stat.billCount,
       };
     }
 
@@ -491,24 +515,56 @@ export class SystemService {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     });
 
-    const stats = periods.map(p => {
-      const periodBills = allBills.filter(b => b.period === p);
-      const expected = periodBills.reduce((sum, b) => sum + Number(b.totalAmount), 0);
-      const collected = periodBills
-        .filter(b => b.status === 1)
-        .reduce((sum, b) => sum + Number(b.totalAmount), 0);
-      const rate = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+    const stats = await Promise.all(periods.map(async (p) => {
+      const stat = await this.getAggregatedRentStatsForPeriod(p);
       return {
         period: p,
-        expectedAmount: expected,
-        collectedAmount: collected,
-        collectionRate: rate,
-        billCount: periodBills.length,
-        collectedCount: periodBills.filter(b => b.status === 1).length,
+        expectedAmount: stat.expectedAmount,
+        collectedAmount: stat.collectedAmount,
+        pendingAmount: stat.pendingAmount,
+        refundAmount: stat.refundAmount,
+        collectionRate: stat.collectionRate,
+        billCount: stat.billCount,
+        collectedCount: stat.collectedCount,
       };
-    });
+    }));
 
-    return { list: stats, totalBills: allBills.length };
+    return { list: stats, totalBills: stats.reduce((sum, s) => sum + s.billCount, 0) };
+  }
+
+  private async getAggregatedRentStatsForPeriod(period: string) {
+    const landlords = await this.landlordRepository.find();
+    let expectedAmount = 0;
+    let collectedAmount = 0;
+    let pendingAmount = 0;
+    let refundAmount = 0;
+    let billCount = 0;
+    let collectedCount = 0;
+    let overdueCount = 0;
+
+    for (const landlord of landlords) {
+      const stats = await this.statsService.getRentStatsV2(landlord.id, period);
+      expectedAmount += Number(stats.totalExpected) || 0;
+      collectedAmount += Number(stats.totalCollected) || 0;
+      pendingAmount += Number(stats.totalPending) || 0;
+      for (const prop of stats.propertyStats || []) {
+        refundAmount += Number(prop.refund) || 0;
+        billCount += Number(prop.received || 0) + Number(prop.overdue || 0);
+        collectedCount += Number(prop.received) || 0;
+        overdueCount += Number(prop.overdue) || 0;
+      }
+    }
+
+    return {
+      expectedAmount,
+      collectedAmount,
+      pendingAmount,
+      refundAmount,
+      collectionRate: expectedAmount > 0 ? Math.round((collectedAmount / expectedAmount) * 1000) / 10 : 0,
+      billCount,
+      collectedCount,
+      overdueCount,
+    };
   }
 
   async getAdminOccupancyStats() {
@@ -638,6 +694,14 @@ export class SystemService {
   }
 
   async createLandlord(data: { name: string; phone: string; defaultPayeeName?: string; paymentNote?: string; avatar?: string; maxProperties?: number; status?: number }) {
+    // B8 fix: a phone number is the tenant-facing identifier for a landlord;
+    // duplicates confuse tenants and complicate support lookups.
+    if (data.phone) {
+      const exists = await this.landlordRepository.findOne({ where: { phone: data.phone } });
+      if (exists) {
+        throw new BadRequestException('手机号已被其他房东使用');
+      }
+    }
     const landlord = this.landlordRepository.create({
       ...data,
       openId: `admin_${Date.now()}`,
@@ -651,6 +715,13 @@ export class SystemService {
   async updateLandlord(id: number, data: Partial<Landlord>) {
     const landlord = await this.landlordRepository.findOne({ where: { id } });
     if (!landlord) throw new NotFoundException('房东不存在');
+    // B8 fix: when phone is being changed, ensure no other landlord already owns it.
+    if (data.phone && data.phone !== landlord.phone) {
+      const dup = await this.landlordRepository.findOne({ where: { phone: data.phone } });
+      if (dup && dup.id !== id) {
+        throw new BadRequestException('手机号已被其他房东使用');
+      }
+    }
     Object.assign(landlord, data);
     return this.landlordRepository.save(landlord);
   }
@@ -689,6 +760,12 @@ export class SystemService {
   }
 
   async createContract(data: { roomId: number; name: string; imageUrl: string; note?: string }) {
+    // B3 fix: reject contract upload when the target room does not exist;
+    // otherwise we'd insert a dangling Document referencing a non-existent room.
+    const room = await this.roomRepository.findOne({ where: { id: data.roomId } });
+    if (!room) {
+      throw new NotFoundException(`房间 ${data.roomId} 不存在，无法上传合同`);
+    }
     const doc = this.documentRepository.create({
       roomId: data.roomId,
       type: 1,

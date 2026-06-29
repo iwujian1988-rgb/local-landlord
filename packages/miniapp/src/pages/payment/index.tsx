@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import { useState, useCallback, useMemo } from 'react';
 import { get } from '../../services/request';
 import { generateAndCopyShareLink, forwardSingleChargeShare } from '../../services/share';
+import { resolveAsset } from '../../config';
 import './index.scss';
 
 interface PaymentItem {
@@ -51,6 +52,7 @@ export default function Payment() {
   const [error, setError] = useState(false);
   const [savingQr, setSavingQr] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
+  const resolvedQrImageUrl = useMemo(() => resolveAsset(qrImageUrl), [qrImageUrl]);
 
   const period = useMemo(() => {
     const now = new Date();
@@ -109,10 +111,10 @@ export default function Payment() {
 
   // Save QR code to album (real download via temp file)
   const handleSaveQr = useCallback(() => {
-    if (!qrImageUrl || savingQr) return;
+    if (!resolvedQrImageUrl || savingQr) return;
     setSavingQr(true);
     Taro.getImageInfo({
-      src: qrImageUrl,
+      src: resolvedQrImageUrl,
       success: (info) => {
         Taro.saveImageToPhotosAlbum({
           filePath: info.path,
@@ -140,7 +142,7 @@ export default function Payment() {
       },
       complete: () => setSavingQr(false),
     });
-  }, [qrImageUrl, savingQr]);
+  }, [resolvedQrImageUrl, savingQr]);
 
   // Copy bill text to clipboard
   const handleShare = useCallback(() => {
@@ -212,7 +214,7 @@ export default function Payment() {
           <Text className="payment-qr-title">请扫码支付</Text>
           {qrImageUrl ? (
             <>
-              <Image className="payment-qr-img" src={qrImageUrl} mode="aspectFit" showMenuByLongpress />
+              <Image className="payment-qr-img" src={resolvedQrImageUrl} mode="aspectFit" showMenuByLongpress />
               <Text className="payment-qr-tip">长按收款码可保存或转发给租客</Text>
               {qrCodes.length > 1 && (
                 <View className="payment-qr-chips">

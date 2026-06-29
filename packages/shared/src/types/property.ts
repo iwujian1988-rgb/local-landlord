@@ -22,6 +22,13 @@ export interface CreatePropertyDTO {
   note?: string;
 }
 
+/** Admin-only variant: the admin backend needs to specify landlordId in the
+ *  body because there's no JWT-derived landlord context (unlike the landlord
+ *  API which gets landlordId from the token). */
+export interface CreateAdminPropertyDTO extends CreatePropertyDTO {
+  landlordId: number;
+}
+
 export interface UpdatePropertyDTO {
   name?: string;
   address?: string;

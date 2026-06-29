@@ -13,6 +13,13 @@ interface FeeSetting {
   amount: string;
   enabled: boolean;
   isRent: boolean;
+  /**
+   * Only meaningful when type==='fixed'. Controls whether the amount multiplies
+   * by payMonths at bill-generation time:
+   * - 'rent'    → ×payMonths (default). E.g. 房租/网费.
+   * - 'monthly' → ×1 regardless. E.g. 停车管理费 charged per-month.
+   */
+  cycleMode: 'rent' | 'monthly';
 }
 
 interface RoomOption {
@@ -70,6 +77,7 @@ export default function FeeSetup() {
           amount: String(f.amount || ''),
           enabled: f.enabled !== false,
           isRent: f.isRent || false,
+          cycleMode: f.cycleMode === 'monthly' ? 'monthly' : 'rent',
         }));
         setFees(items);
       }
@@ -111,6 +119,12 @@ export default function FeeSetup() {
     );
   }, []);
 
+  const updateCycleMode = useCallback((idx: number, mode: 'rent' | 'monthly') => {
+    setFees((prev) =>
+      prev.map((f, i) => (i === idx ? { ...f, cycleMode: mode } : f))
+    );
+  }, []);
+
   const updateName = useCallback((idx: number, value: string) => {
     setFees((prev) =>
       prev.map((f, i) => (i === idx ? { ...f, name: value } : f))
@@ -121,8 +135,24 @@ export default function FeeSetup() {
     if (submitting || !effectiveRoomId) return;
     setSubmitting(true);
     try {
-      await post(`/rooms/${effectiveRoomId}/fee-items`, { fees });
-      Taro.showToast({ title: '已保存', icon: 'none', duration: 1500 });
+      // Coerce amount from input-string to number before POSTing — the input
+      // stores strings, but the backend decimal column should receive numbers
+      // to avoid relying on SQLite's implicit string→decimal coercion (which
+      // silently rounds/truncates in some edge cases).
+      const payload = fees.map(f => ({
+        ...f,
+        amount: f.type === 'manual' ? 0 : (Number(f.amount) || 0),
+      }));
+      await post(`/rooms/${effectiveRoomId}/fee-items`, { fees: payload });
+      Taro.showToast({ title: '已保存', icon: 'success', duration: 1500 });
+      // Navigate back after the toast so the landlord sees confirmation
+      // feedback instead of being left on the same page wondering if it worked.
+      setTimeout(() => {
+        Taro.navigateBack({ delta: 1 }).catch(() => {
+          // No back stack (e.g. deep-linked) — switch to rooms tab as fallback
+          Taro.switchTab({ url: '/pages/rooms/index' }).catch(() => {});
+        });
+      }, 800);
     } catch (err) {
       console.error('[FeeSetup] 保存失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });
@@ -134,7 +164,7 @@ export default function FeeSetup() {
   const addCustomFee = useCallback(() => {
     setFees((prev) => [
       ...prev,
-      { name: '', type: 'fixed', amount: '', enabled: true, isRent: false },
+      { name: '', type: 'fixed', amount: '', enabled: true, isRent: false, cycleMode: 'rent' },
     ]);
   }, []);
 
@@ -206,7 +236,11 @@ export default function FeeSetup() {
                       />
                     )}
                     <Text className="fee-desc">
-                      {fee.isRent ? '每月都收' : fee.type === 'fixed' ? '跟房租一起收' : '每月手动填写'}
+                      {fee.isRent
+                        ? '每月都收'
+                        : fee.type === 'fixed'
+                          ? (fee.cycleMode === 'monthly' ? '按月单独收' : '跟房租一起收')
+                          : '每月手动填写'}
                     </Text>
                   </View>
                   {fee.type === 'fixed' && fee.enabled ? (
@@ -228,6 +262,25 @@ export default function FeeSetup() {
                     className={`toggle-switch ${fee.enabled ? 'on' : ''} ${fee.isRent ? 'disabled' : ''}`}
                     onClick={() => !fee.isRent && toggleEnabled(idx)}
                   />
+                  {/* Cycle mode picker — only for fixed-type, non-rent fees.
+                      'rent' multiplies amount by payMonths at bill time,
+                      'monthly' keeps it at 1 month regardless of payMonths. */}
+                  {fee.type === 'fixed' && !fee.isRent && fee.enabled && (
+                    <View className="fee-cycle-row">
+                      <View
+                        className={`cycle-chip ${fee.cycleMode === 'rent' ? 'active' : ''}`}
+                        onClick={() => updateCycleMode(idx, 'rent')}
+                      >
+                        <Text className="cycle-chip-text">跟房租一起收</Text>
+                      </View>
+                      <View
+                        className={`cycle-chip ${fee.cycleMode === 'monthly' ? 'active' : ''}`}
+                        onClick={() => updateCycleMode(idx, 'monthly')}
+                      >
+                        <Text className="cycle-chip-text">按月单独收</Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               ))
             )}

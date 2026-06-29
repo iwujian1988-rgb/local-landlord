@@ -89,7 +89,7 @@ export default function RentList() {
   const [error, setError] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (): Promise<DisplayItem[]> => {
     setLoading(true);
     setError(false);
     try {
@@ -111,9 +111,11 @@ export default function RentList() {
       } catch (e) {
         // ignore
       }
+      return allItems;
     } catch (err) {
       console.error('[RentList] 加载数据失败:', err);
       setError(true);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -126,15 +128,16 @@ export default function RentList() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: '收租' });
-    loadData().then(() => {
+    // Use the data returned from loadData directly — closures over `activeItems`
+    // state would see stale (empty) values on first mount, breaking deep-link
+    // auto-open of the confirm modal when arriving from a bill notification.
+    loadData().then((allItems) => {
       if (pushBillId > 0) {
-        setTimeout(() => {
-          const match = activeItems.find(i => i.entry.billId === pushBillId);
-          if (match) {
-            setConfirmItem(match);
-            setConfirmVisible(true);
-          }
-        }, 300);
+        const match = allItems.find(i => i.entry.billId === pushBillId);
+        if (match) {
+          setConfirmItem(match);
+          setConfirmVisible(true);
+        }
       }
     });
   });
@@ -214,8 +217,13 @@ export default function RentList() {
   }, [overdueItems, batchLoading]);
 
   // Summary numbers
-  const totalPending = activeItems.reduce((s, i) => s + (i.entry.totalAmount ?? i.entry.rent ?? 0), 0);
-  const totalCollected = completedItems.reduce((s, e) => s + (e.totalAmount ?? e.rent ?? 0), 0);
+  const totalPending = activeItems.reduce((s, i) => {
+    const total = i.entry.totalAmount ?? i.entry.rent ?? 0;
+    const paid = i.entry.paidAmount || 0;
+    return s + Math.max(total - paid, 0);
+  }, 0);
+  const totalCollected = completedItems.reduce((s, e) => s + (e.totalAmount ?? e.rent ?? 0), 0)
+    + activeItems.reduce((s, i) => s + (i.entry.paidAmount || 0), 0);
 
   return (
     <View className="page-rent-list">
@@ -353,7 +361,30 @@ export default function RentList() {
             <Text className="rent-link-text">收租统计</Text>
             <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>›</Text>
           </View>
-          <View className="rent-link-item" onClick={() => Taro.navigateTo({ url: '/pages/rent-stats/index' })}>
+          <View className="rent-link-item" onClick={async () => {
+            // Records page is per-room — ask which room rather than silently
+            // landing on the stats page (the previous behavior, which was a
+            // dead-end since the link text promised "history records").
+            try {
+              const res = await get<any[]>('/rooms');
+              const rooms = res.data || [];
+              if (rooms.length === 0) {
+                Taro.showToast({ title: '还没有房间，先去添加', icon: 'none' });
+                return;
+              }
+              Taro.showActionSheet({
+                itemList: rooms.map(r => r.name || `房间${r.id}`),
+                success: (s) => {
+                  const room = rooms[s.tapIndex];
+                  if (room) {
+                    Taro.navigateTo({ url: `/pages/records/index?roomId=${room.id}` });
+                  }
+                },
+              });
+            } catch {
+              Taro.showToast({ title: '加载失败', icon: 'none' });
+            }
+          }}>
             <Icon name="clock" size={28} color="var(--text-secondary)" />
             <Text className="rent-link-text">历史收租记录</Text>
             <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>›</Text>

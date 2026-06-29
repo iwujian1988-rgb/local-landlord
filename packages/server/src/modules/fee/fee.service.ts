@@ -48,6 +48,7 @@ export class FeeService {
       amount: Number(f.amount) || 0,
       enabled: !!f.enabled,
       isRent: !!f.isRent,
+      cycleMode: (f.cycleMode === 'monthly' ? 'monthly' : 'rent'),
     }));
   }
 
@@ -69,10 +70,21 @@ export class FeeService {
     const entities = fees.map((fee, index) => this.feeItemRepository.create({
       roomId,
       name: fee.name,
-      type: fee.type === 'fixed' ? 0 : 1,
-      amount: fee.amount || 0,
+      // Accept both the documented 'fixed'/'manual' strings and the legacy
+      // 0/1 numbers. Anything else is rejected so silent coercion can't turn
+      // a typo'd type into the wrong billing mode (which would zero out the
+      // amount on the auto-generated bill).
+      type: this.normalizeFeeType(fee.type),
+      // Coerce to number — frontend input may arrive as string, and relying on
+      // SQLite's implicit string→decimal coercion can silently lose precision.
+      amount: Number(fee.amount) || 0,
       enabled: fee.enabled !== false ? 1 : 0,
       isRent: fee.isRent ? 1 : 0,
+      // cycleMode only matters for fixed-type fees (controls ×payMonths or not).
+      // Default to 'rent' (matches historical behavior) when missing.
+      cycleMode: fee.type === 'manual' || fee.type === 1
+        ? 'rent'
+        : this.normalizeCycleMode(fee.cycleMode),
       sortOrder: index,
     }));
 
@@ -84,6 +96,7 @@ export class FeeService {
       amount: Number(f.amount) || 0,
       enabled: !!f.enabled,
       isRent: !!f.isRent,
+      cycleMode: (f.cycleMode === 'monthly' ? 'monthly' : 'rent'),
     }));
   }
 
@@ -133,5 +146,25 @@ export class FeeService {
     for (let i = 0; i < ids.length; i++) {
       await this.feeItemRepository.update({ id: ids[i], roomId }, { sortOrder: i });
     }
+  }
+
+  /** Coerce fee type from request body to the DB tinyint (0=fixed, 1=manual). */
+  private normalizeFeeType(t: unknown): number {
+    if (t === 'fixed' || t === 0) return 0;
+    if (t === 'manual' || t === 1) return 1;
+    throw new BadRequestException(
+      `费用项 type 必须是 'fixed' 或 'manual'，收到 ${JSON.stringify(t)}`,
+    );
+  }
+
+  /**
+   * Coerce cycle mode from request body to the DB varchar.
+   * Only meaningful for fixed-type fees — controls whether the amount
+   * multiplies by payMonths ('rent') or stays at 1 month ('monthly').
+   * Defaults to 'rent' (historical behavior) when missing or unrecognized.
+   */
+  private normalizeCycleMode(m: unknown): string {
+    if (m === 'monthly') return 'monthly';
+    return 'rent';
   }
 }

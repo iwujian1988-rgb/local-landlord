@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository, InjectEntityManager } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Repository, EntityManager, In } from 'typeorm';
@@ -15,6 +15,7 @@ import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 
 @Injectable()
 export class BillService {
+  private readonly logger = new Logger(BillService.name);
   constructor(
     @InjectRepository(Bill)
     private readonly billRepository: Repository<Bill>,
@@ -225,6 +226,11 @@ export class BillService {
           }),
         );
         await manager.save(newItems);
+        // Keep the in-memory items collection in sync with the DB; otherwise
+        // saving `bill` below triggers TypeORM to null out the FK on rows that
+        // are no longer in the stale collection, which fails because
+        // bill_item.bill_id is NOT NULL.
+        bill.items = newItems;
         bill.totalAmount = items.reduce((s, i) => s + (Number(i.amount) || 0), 0);
       }
 
@@ -238,6 +244,8 @@ export class BillService {
     roomName: string;
     tenantName: string;
     billId: number | null;
+    billStatus: number;
+    paidAmount: number;
     period: string;
     periodEnd: string | null;
     billItems: any[];
@@ -277,15 +285,16 @@ export class BillService {
 
     const feeItems = await this.feeItemRepository.find({ where: { roomId }, order: { sortOrder: 'ASC' } });
 
-    const billItems = feeItems.map(fee => {
+    const billItems = feeItems.length > 0 ? feeItems.map(fee => {
       const matchedBillItem = currentBillWithItems?.items?.find(bi => bi.feeName === fee.name);
       let amount: number;
       if (matchedBillItem) {
         amount = Number(matchedBillItem.amount);
       } else if (fee.enabled) {
-        // No draft yet — pre-fill based on type and tenant's payMonths.
-        // Fixed items get × payMonths (rent for the whole cycle); manual items default to 0.
-        amount = fee.type === 0 ? (Number(fee.amount) || 0) * payMonths : 0;
+        // No draft yet — pre-fill based on type, cycleMode, and tenant's payMonths.
+        // cycleMode='monthly' keeps fee at ×1 regardless of payMonths (e.g. 停车管理费).
+        const multiply = fee.type === 0 && fee.cycleMode !== 'monthly';
+        amount = fee.type === 0 ? (multiply ? (Number(fee.amount) || 0) * payMonths : (Number(fee.amount) || 0)) : 0;
       } else {
         amount = 0;
       }
@@ -295,12 +304,26 @@ export class BillService {
         type: fee.type === 0 ? 'fixed' : 'manual',
         feeId: fee.id,
       };
-    });
+    }) : (currentBillWithItems?.items?.length
+      ? currentBillWithItems.items.map(item => ({
+          name: item.feeName,
+          amount: Number(item.amount) || 0,
+          type: 'fixed',
+          feeId: undefined,
+        }))
+      : [{
+          name: '房租',
+          amount: (Number(room.rent) || 0) * payMonths,
+          type: 'fixed',
+          feeId: undefined,
+        }]);
 
     return {
       roomName: room.name,
       tenantName: tenant?.name || '',
       billId: currentBillWithItems?.id || null,
+      billStatus: currentBillWithItems?.status ?? 0,
+      paidAmount: Number(currentBillWithItems?.paidAmount) || 0,
       period: currentBillWithItems?.period || monthStr,
       periodEnd: currentBillWithItems?.periodEnd || null,
       billItems,
@@ -318,13 +341,15 @@ export class BillService {
     const currentMonth = now.month();
     const currentYear = now.year();
 
-    // Single query: find all unpaid bills with their tenant's rentDay
+    // Find unpaid AND partial-payment bills with their tenant's rentDay.
+    // status=0 (pending) and status=3 (partial) both represent outstanding
+    // balance that should flip to overdue once past the due date.
     const overdueBillIds: number[] = [];
 
     const unpaidBills = await this.billRepository
       .createQueryBuilder('bill')
       .leftJoinAndSelect('bill.tenant', 'tenant')
-      .where('bill.status = 0')
+      .where('bill.status IN (:...statuses)', { statuses: [0, 3] })
       .getMany();
 
     for (const bill of unpaidBills) {
@@ -365,5 +390,17 @@ export class BillService {
         .where('id IN (:...ids)', { ids: overdueBillIds })
         .execute();
     }
+
+    if (overdueBillIds.length > 0) {
+      this.logger.log(`Marked ${overdueBillIds.length} bills as overdue`);
+    }
+  }
+
+  /** API: manually trigger overdue marking. Returns count for visibility. */
+  async triggerMarkOverdue(): Promise<{ marked: number }> {
+    const before = await this.billRepository.count({ where: { status: 2 } });
+    await this.markOverdueBills();
+    const after = await this.billRepository.count({ where: { status: 2 } });
+    return { marked: Math.max(0, after - before) };
   }
 }

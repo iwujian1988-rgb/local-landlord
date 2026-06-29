@@ -8,6 +8,8 @@ import { useState, useCallback, useMemo } from 'react';
 import { get, post, put } from '../../services/request';
 import { uploadFiles } from '../../services/upload';
 import { requestNotification } from '../../services/notification';
+import { pickImages } from '../../utils/pick-image';
+import { resolveAsset } from '../../config';
 import { forwardBillShare } from '../../services/share';
 import './index.scss';
 
@@ -22,6 +24,8 @@ interface ApiBillData {
   roomName: string;
   tenantName: string;
   billId: number | null;
+  billStatus: number;
+  paidAmount: number;
   period: string;
   periodEnd: string | null;
   billItems: BillItem[];
@@ -31,6 +35,8 @@ interface PageData {
   roomName: string;
   tenantName: string;
   billId: number | null;
+  billStatus: number;
+  paidAmount: number;
   period: string;
   periodEnd: string | null;
   billItems: BillItem[];
@@ -46,6 +52,8 @@ const emptyPageData: PageData = {
   roomName: '',
   tenantName: '-',
   billId: null,
+  billStatus: 0,
+  paidAmount: 0,
   period: '',
   periodEnd: null,
   billItems: [],
@@ -82,6 +90,8 @@ export default function Bill() {
           roomName: res.data.roomName || '',
           tenantName: tName,
           billId: res.data.billId ?? null,
+          billStatus: res.data.billStatus ?? 0,
+          paidAmount: Number(res.data.paidAmount || 0),
           period: res.data.period || '',
           periodEnd: res.data.periodEnd || null,
           billItems: res.data.billItems || [],
@@ -121,27 +131,22 @@ export default function Bill() {
     });
   }, []);
 
-  const handlePhotoUpload = useCallback(() => {
+  const handlePhotoUpload = useCallback(async () => {
     if (data.uploading) return;
-    Taro.chooseImage({
-      count: 3,
-      sizeType: ['compressed'],
-      sourceType: ['camera', 'album'],
-      success: (res) => {
-        setData(prev => ({ ...prev, uploading: true }));
-        uploadFiles(res.tempFilePaths)
-          .then((results) => {
-            setData(prev => ({ ...prev, photos: [...prev.photos, ...results.map(r => r.url).filter(Boolean)] }));
-            Taro.showToast({ title: '账单照片已上传', icon: 'none', duration: 2000 });
-          })
-          .catch(() => {
-            Taro.showToast({ title: '照片上传失败，请重试', icon: 'none', duration: 2000 });
-          })
-          .finally(() => {
-            setData(prev => ({ ...prev, uploading: false }));
-          });
-      },
-    });
+    const picked = await pickImages({ count: 3, sourceType: ['camera', 'album'] });
+    if (picked.length === 0) return;
+    setData(prev => ({ ...prev, uploading: true }));
+    uploadFiles(picked.map(p => p.path))
+      .then((results) => {
+        setData(prev => ({ ...prev, photos: [...prev.photos, ...results.map(r => r.url).filter(Boolean)] }));
+        Taro.showToast({ title: '账单照片已上传', icon: 'none', duration: 2000 });
+      })
+      .catch(() => {
+        Taro.showToast({ title: '照片上传失败，请重试', icon: 'none', duration: 2000 });
+      })
+      .finally(() => {
+        setData(prev => ({ ...prev, uploading: false }));
+      });
   }, [data.uploading]);
 
   const handleSendBill = useCallback(async () => {
@@ -247,7 +252,8 @@ export default function Bill() {
       }
 
       await put(`/bills/${billId}/confirm`, { actualAmount });
-      const isPartial = actualAmount != null && actualAmount < totalAmount;
+      const remaining = Math.max(totalAmount - (data.paidAmount || 0), 0);
+      const isPartial = actualAmount != null && actualAmount < remaining;
       Taro.showToast({
         title: isPartial ? '已记录部分付款' : '已标记为已收',
         icon: 'none',
@@ -326,7 +332,7 @@ export default function Bill() {
                 <View className="bill-photo-grid">
                   {data.photos.map((src, idx) => (
                     <View key={idx} className="bill-photo-card">
-                      <Image className="bill-photo-img" src={src} mode="aspectFill" />
+                      <Image className="bill-photo-img" src={resolveAsset(src)} mode="aspectFill" />
                       <Text className="bill-photo-tag">账单照片</Text>
                     </View>
                   ))}
@@ -360,6 +366,7 @@ export default function Bill() {
         visible={data.confirmVisible}
         title="确认已收款"
         amount={totalAmount}
+        paidAmount={data.paidAmount}
         editableAmount
         confirmText="确认已收"
         onConfirm={handleConfirmPaid}

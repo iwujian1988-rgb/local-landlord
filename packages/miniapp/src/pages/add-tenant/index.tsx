@@ -258,28 +258,26 @@ export default function AddTenant() {
         await post(`/rooms/${urlRoomId}/tenant`, tenantData);
       }
       Taro.removeStorageSync('draft_tenant');
-      // Give landlord peace of mind: confirm the system will remind them
+      setSaving(false);
+
+      // Give landlord peace of mind: confirm the system will remind them.
+      // Do not navigate away until the landlord dismisses this modal; otherwise
+      // the route switch closes it immediately and the prompt only flashes.
       const rentDayLabel = rentDay === 0 ? '月底' : `每月${rentDay}号`;
       if (!isEdit) {
-        Taro.showModal({
+        await Taro.showModal({
           title: '租客已保存',
           content: `系统会在${rentDayLabel}自动提醒你收${name.trim()}的房租。合同到期前也会提醒你续签。`,
           showCancel: false,
           confirmText: '放心了',
         });
+        Taro.switchTab({ url: '/pages/home/index' });
       } else {
         Taro.showToast({ title: '租客信息已更新', icon: 'none', duration: 2000 });
-      }
-      setTimeout(() => {
-        setSaving(false);
-        if (isEdit) {
-          // Editing from room-detail — go back there
+        setTimeout(() => {
           Taro.navigateBack();
-        } else {
-          // New tenant registration flow — go to home, not back to add-room-info
-          Taro.switchTab({ url: '/pages/home/index' });
-        }
-      }, 800);
+        }, 800);
+      }
     } catch (err) {
       console.error('[AddTenant] 保存租客失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });

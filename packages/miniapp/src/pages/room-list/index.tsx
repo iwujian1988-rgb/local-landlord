@@ -57,6 +57,7 @@ export default function RoomList() {
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [propertyName, setPropertyName] = useState('');
+  const [rentStats, setRentStats] = useState({ expected: 0, collected: 0, rate: '0%' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const propertyId = Number(Taro.getCurrentInstance().router?.params?.propertyId) || 0;
@@ -76,6 +77,16 @@ export default function RoomList() {
         })) as RoomItem[];
         setRooms(enriched);
       }
+      const statsRes = await get<any>('/stats/rent', {
+        period: 'month',
+        propertyId,
+      });
+      const stats = statsRes.data || {};
+      setRentStats({
+        expected: Number(stats.totalExpected || 0),
+        collected: Number(stats.totalCollected || 0),
+        rate: `${Number(stats.totalRate || 0)}%`,
+      });
     } catch (err) {
       console.error('[RoomList] 加载房间失败:', err);
       setError(true);
@@ -114,12 +125,6 @@ export default function RoomList() {
   const vacantCount = rooms.filter((r) => r.status === 0 || r.displayStatus === 'vacant').length;
   const overdueCount = rooms.filter((r) => r.displayStatus === 'overdue').length;
 
-  const monthlyExpected = rooms.reduce((sum, r) => sum + (r.rent || 0), 0);
-  const monthlyCollected = rooms
-    .filter((r) => r.displayStatus === 'rented')
-    .reduce((sum, r) => sum + (r.rent || 0), 0);
-  const collectionRate = monthlyExpected > 0 ? `${((monthlyCollected / monthlyExpected) * 100).toFixed(1)}%` : '0%';
-
   return (
     <View className="page-room-list">
       {/* Quick stats tags */}
@@ -133,15 +138,15 @@ export default function RoomList() {
       {/* Stats cards */}
       <View className="stats-row">
         <View className="stat-card-item" onClick={goToRentStats}>
-          <Text className="stat-card-value">{monthlyExpected.toLocaleString()}</Text>
+          <Text className="stat-card-value">{rentStats.expected.toLocaleString()}</Text>
           <Text className="stat-card-label">本月应收</Text>
         </View>
         <View className="stat-card-item" onClick={goToRentStats}>
-          <Text className="stat-card-value green">{monthlyCollected.toLocaleString()}</Text>
+          <Text className="stat-card-value green">{rentStats.collected.toLocaleString()}</Text>
           <Text className="stat-card-label">本月已收</Text>
         </View>
         <View className="stat-card-item" onClick={goToRentStats}>
-          <Text className="stat-card-value red">{collectionRate}</Text>
+          <Text className="stat-card-value red">{rentStats.rate}</Text>
           <Text className="stat-card-label">收款率</Text>
         </View>
       </View>

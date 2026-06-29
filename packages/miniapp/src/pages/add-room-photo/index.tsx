@@ -2,6 +2,7 @@ import { View, Text } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { useCallback, useState, useEffect } from 'react';
 import { uploadFile } from '../../services/upload';
+import { pickImages } from '../../utils/pick-image';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import './index.scss';
@@ -35,52 +36,48 @@ export default function AddRoomPhoto() {
     Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${propertyId}` });
   }, [photos, propertyId]);
 
-  const handleAddPhoto = useCallback(() => {
+  const handleAddPhoto = useCallback(async () => {
     setUploadError(false);
-    Taro.chooseImage({
-      count: 9 - photos.length,
-      sizeType: ['compressed'],
-      sourceType: ['camera', 'album'],
-      success: (res) => {
-        setUploading(true);
-        const uploads = res.tempFiles.map((file: any) =>
-          uploadFile(file.path).then(r => ({
-            url: r.url,
-            fileID: r.fileID || r.url,
-          }))
-        );
-
-        Promise.all(uploads)
-          .then((newPhotos) => {
-            setPhotos((prev) => [...prev, ...newPhotos]);
-          })
-          .catch(() => {
-            setUploadError(true);
-          })
-          .finally(() => {
-            setUploading(false);
-          });
-      },
-      fail: (err) => {
-        const msg = err?.errMsg || '';
-        // User cancelled — silent
-        if (msg.includes('cancel')) return;
-        // Permission denied — guide to settings
-        if (msg.includes('auth') || msg.includes('fail')) {
-          Taro.showModal({
+    const picked = await pickImages({ count: 9 - photos.length, sourceType: ['camera', 'album'] });
+    if (picked.length === 0) {
+      // Either user cancelled or permission denied. Check scope to disambiguate.
+      try {
+        const setting = await Taro.getSetting();
+        const scope = setting.authSetting || {};
+        const camDenied = scope['scope.camera'] === false;
+        const albumDenied = scope['scope.writePhotosAlbum'] === false;
+        if (camDenied || albumDenied) {
+          const r = await Taro.showModal({
             title: '相机/相册权限未开启',
             content: '请在微信设置中开启相机和相册权限，或者跳过照片直接填写房间信息',
             confirmText: '去设置',
             cancelText: '跳过照片',
-            success: (r) => {
-              if (r.confirm) {
-                Taro.openSetting({});
-              }
-            },
           });
+          if (r.confirm) Taro.openSetting({});
+          return;
         }
-      },
-    });
+      } catch {
+        // getSetting failed — treat as plain cancel
+      }
+      return;
+    }
+    setUploading(true);
+    const uploads = picked.map((file) =>
+      uploadFile(file.path).then(r => ({
+        url: r.url,
+        fileID: r.fileID || r.url,
+      }))
+    );
+    Promise.all(uploads)
+      .then((newPhotos) => {
+        setPhotos((prev) => [...prev, ...newPhotos]);
+      })
+      .catch(() => {
+        setUploadError(true);
+      })
+      .finally(() => {
+        setUploading(false);
+      });
   }, [photos.length]);
 
   const handleSkip = useCallback(() => {

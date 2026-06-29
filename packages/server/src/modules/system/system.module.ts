@@ -15,9 +15,13 @@ import { Document } from '../document/document.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
 import { Landlord } from '../landlord/landlord.entity';
+import { StatsModule } from '../stats/stats.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Admin, SystemConfig, Property, Room, Tenant, Bill, BillItem, FeeItem, Document, RentRecord, SingleCharge, Landlord])],
+  imports: [
+    TypeOrmModule.forFeature([Admin, SystemConfig, Property, Room, Tenant, Bill, BillItem, FeeItem, Document, RentRecord, SingleCharge, Landlord]),
+    StatsModule,
+  ],
   controllers: [SystemController],
   providers: [SystemService, SeedService],
   exports: [SystemService],

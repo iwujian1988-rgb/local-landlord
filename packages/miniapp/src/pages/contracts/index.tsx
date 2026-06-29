@@ -8,6 +8,7 @@ import Icon from '../../components/Icon';
 import UploadModal, { UploadFile } from '../../components/UploadModal';
 import { get, post, del } from '../../services/request';
 import { uploadFile } from '../../services/upload';
+import { resolveAsset } from '../../config';
 import { useState, useCallback, useMemo } from 'react';
 import './index.scss';
 
@@ -39,6 +40,18 @@ const docThumbColors: Record<string, string> = {
   utility: 'linear-gradient(135deg, #e0e8f0, #c8d8e8)',
   maintenance: 'linear-gradient(135deg, #f5e8e8, #e8d0d0)',
   other: '#e8e0d5',
+};
+
+// Maps frontend filter key to the backend's tinyint type column.
+// See server document.service.ts DOC_TYPE_MAP for the reverse mapping.
+const FILTER_TO_DOC_TYPE: Record<FilterKey, number> = {
+  all: 5,           // default to 'other' when filter is 'all'
+  contract: 0,
+  receipt: 1,
+  utility: 2,
+  maintenance: 3,
+  deposit: 4,
+  other: 5,
 };
 
 export default function Contracts() {
@@ -85,16 +98,21 @@ export default function Contracts() {
     try {
       const result = await uploadFile(file.tempFilePath);
       const uploadedUrl = result.url;
+      // Honor the currently active filter when uploading — otherwise every
+      // uploaded doc lands in 'other' (type=5) and is invisible under the
+      // filter the landlord had selected.
+      const docType = FILTER_TO_DOC_TYPE[activeFilter] ?? 5;
+      const docTypeKey: string = activeFilter === 'all' ? 'other' : activeFilter;
       const newDoc: DocumentItem = {
         id: Date.now().toString(),
-        type: 'other',
+        type: docTypeKey,
         name: note || '新上传文件',
         date: new Date().toISOString().slice(0, 10),
         imageUrl: uploadedUrl,
         roomId: roomId > 0 ? roomId : undefined,
       };
       await post(`/rooms/${roomId}/documents`, {
-        type: 5,
+        type: docType,
         name: note || '新上传文件',
         imageUrl: uploadedUrl,
       });
@@ -104,7 +122,7 @@ export default function Contracts() {
     } catch {
       Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
     }
-  }, [roomId]);
+  }, [roomId, activeFilter]);
 
   const handleDeleteRequest = useCallback((docId: string) => {
     setDeleteTargetId(docId);
@@ -116,9 +134,10 @@ export default function Contracts() {
       Taro.showToast({ title: '该文件暂不支持预览', icon: 'none' });
       return;
     }
+    const previewUrl = resolveAsset(doc.imageUrl);
     Taro.previewImage({
-      urls: [doc.imageUrl],
-      current: doc.imageUrl,
+      urls: [previewUrl],
+      current: previewUrl,
     });
   }, []);
 
@@ -176,7 +195,7 @@ export default function Contracts() {
                 >
                   <View className="doc-thumb" style={{ background: docThumbColors[doc.type] || docThumbColors.other }}>
                     {doc.imageUrl ? (
-                      <Image src={doc.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-xs)' }} />
+                      <Image src={resolveAsset(doc.imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'var(--radius-xs)' }} />
                     ) : (
                       <Icon name="file-text" size={28} color="var(--accent-dk)" />
                     )}

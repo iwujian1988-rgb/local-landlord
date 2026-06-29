@@ -17,6 +17,8 @@ const periods: { key: Period; label: string }[] = [
   { key: 'year', label: '年度' },
 ];
 
+const clampRate = (rate: number) => Math.max(0, Math.min(rate || 0, 100));
+
 interface PropertyStat {
   name: string;
   rooms: number;
@@ -168,7 +170,7 @@ export default function RentStats() {
                   </View>
                 </View>
                 <View className="progress-bar">
-                  <View className="progress-fill" style={{ width: `${ps.rate}%` }} />
+                  <View className="progress-fill" style={{ width: `${clampRate(ps.rate)}%` }} />
                 </View>
                 <Text className="property-stat-footer">已收 {ps.collected.toLocaleString()} 元 · 未收 {ps.pending.toLocaleString()} 元</Text>
               </View>

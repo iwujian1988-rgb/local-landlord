@@ -219,7 +219,295 @@ export class StatsService {
     };
   }
 
-  /** 首页统计 */
+  /** 收租统计 V2：支持周期、单房源过滤，并排除纯空置房应收 */
+  async getRentStatsV2(landlordId: number, period: string = 'month', propertyId?: number) {
+    const now = new Date();
+    const periodInfo = this.resolveStatsPeriod(period, now);
+
+    const propertyWhere: any = { landlordId };
+    if (propertyId && Number.isFinite(propertyId)) {
+      propertyWhere.id = propertyId;
+    }
+
+    const properties = await this.propertyRepository.find({ where: propertyWhere });
+    const propertyIds = properties.map(p => p.id);
+    const allRooms = propertyIds.length > 0
+      ? await this.roomRepository.find({ where: { propertyId: In(propertyIds) } })
+      : [];
+    const allRoomIds = allRooms.map(r => r.id);
+
+    const confirmedSingleByRoom = new Map<number, number>();
+    const pendingSingleByRoom = new Map<number, number>();
+    if (allRoomIds.length > 0) {
+      const singles = await this.singleChargeRepository
+        .createQueryBuilder('sc')
+        .where('sc.room_id IN (:...ids)', { ids: allRoomIds })
+        .andWhere(
+          '((sc.status = 1 AND sc.paid_at >= :start AND sc.paid_at < :end) ' +
+          'OR (sc.status = 0 AND sc.created_at >= :start AND sc.created_at < :end))',
+          { start: periodInfo.startDate, end: periodInfo.endDate },
+        )
+        .getMany();
+      for (const s of singles) {
+        const amount = Number(s.amount) || 0;
+        if (s.status === 1) {
+          confirmedSingleByRoom.set(s.roomId, (confirmedSingleByRoom.get(s.roomId) || 0) + amount);
+        } else {
+          pendingSingleByRoom.set(s.roomId, (pendingSingleByRoom.get(s.roomId) || 0) + amount);
+        }
+      }
+    }
+
+    const refundByProperty = await this.getRefundsByPropertyForStats(propertyIds, periodInfo.startDate, periodInfo.endDate);
+
+    const roomsByProperty = new Map<number, Room[]>();
+    for (const room of allRooms) {
+      const list = roomsByProperty.get(room.propertyId) || [];
+      list.push(room);
+      roomsByProperty.set(room.propertyId, list);
+    }
+
+    const propStats: any[] = [];
+
+    for (const prop of properties) {
+      const rooms = roomsByProperty.get(prop.id) || [];
+      let expected = 0;
+      let collected = 0;
+      let pending = 0;
+      let received = 0;
+      let overdue = 0;
+
+      for (const room of rooms) {
+        const tenant = await this.tenantRepository.findOne({
+          where: { roomId: room.id, status: 1 },
+        });
+        const bills = await this.billRepository
+          .createQueryBuilder('bill')
+          .where('bill.room_id = :roomId', { roomId: room.id })
+          .andWhere('bill.status != :cancelled', { cancelled: 4 })
+          .andWhere('bill.period <= :endMonth', { endMonth: periodInfo.endMonth })
+          .andWhere('COALESCE(bill.period_end, bill.period) >= :startMonth', { startMonth: periodInfo.startMonth })
+          .orderBy('bill.period', 'ASC')
+          .getMany();
+
+        const billCoveredMonths = new Set<string>();
+        for (const bill of bills) {
+          const billTotal = Number(bill.totalAmount) || 0;
+          expected += billTotal;
+
+          for (const m of periodInfo.months) {
+            if (bill.period <= m && (bill.periodEnd || bill.period) >= m) {
+              billCoveredMonths.add(m);
+            }
+          }
+
+          if (bill.status === 1) {
+            collected += billTotal;
+            received++;
+          } else if (bill.status === 3) {
+            const paid = Number(bill.paidAmount) || 0;
+            const remaining = Math.max(billTotal - paid, 0);
+            collected += paid;
+            pending += remaining;
+            received++;
+            if (remaining > 0 && this.isBillOverdueForStats(bill, tenant, now)) {
+              overdue++;
+            }
+          } else {
+            pending += billTotal;
+            if (this.isBillOverdueForStats(bill, tenant, now)) {
+              overdue++;
+            }
+          }
+        }
+
+        // Vacant rooms must not create receivables. Historical bills above are
+        // still counted, so old/moved-out bills remain auditable.
+        if (tenant) {
+          const fees = await this.feeItemRepository.find({ where: { roomId: room.id } });
+          const rent = Number(room.rent) || 0;
+          const payMonths = tenant.payMonths ?? 1;
+          const cycleExpected = this.getEstimatedCycleExpectedForStats(fees, rent, payMonths);
+
+          for (const month of periodInfo.months) {
+            if (billCoveredMonths.has(month)) continue;
+            if (!this.isTenantDueMonthForStats(tenant, month, payMonths)) continue;
+
+            expected += cycleExpected;
+            pending += cycleExpected;
+            if (this.isEstimatedReceivableOverdueForStats(month, tenant, now)) {
+              overdue++;
+            }
+          }
+        }
+
+        const confirmedSingleForRoom = confirmedSingleByRoom.get(room.id) || 0;
+        if (confirmedSingleForRoom > 0) {
+          expected += confirmedSingleForRoom;
+          collected += confirmedSingleForRoom;
+          received++;
+        }
+        const pendingSingleForRoom = pendingSingleByRoom.get(room.id) || 0;
+        if (pendingSingleForRoom > 0) {
+          expected += pendingSingleForRoom;
+          pending += pendingSingleForRoom;
+          if (tenant && this.isEstimatedReceivableOverdueForStats(this.formatStatsMonth(now), tenant, now)) {
+            overdue++;
+          }
+        }
+      }
+
+      const refund = refundByProperty.get(prop.id) || 0;
+      if (refund > 0) {
+        collected -= refund;
+      }
+
+      if (expected > 0 || collected !== 0 || pending > 0) {
+        propStats.push({
+          name: prop.name,
+          rooms: rooms.length,
+          received,
+          overdue,
+          expected,
+          collected,
+          pending,
+          refund,
+          rate: expected > 0 ? Math.round((collected / expected) * 1000) / 10 : 0,
+        });
+      }
+    }
+
+    const totalExpected = propStats.reduce((s, p) => s + p.expected, 0);
+    const totalCollected = propStats.reduce((s, p) => s + p.collected, 0);
+    const totalPending = propStats.reduce((s, p) => s + p.pending, 0);
+
+    return {
+      period: periodInfo.startMonth,
+      monthLabel: periodInfo.label,
+      totalExpected,
+      totalCollected,
+      totalPending,
+      totalRate: totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 1000) / 10 : 0,
+      propertyStats: propStats,
+      periodComparison: {
+        current: totalCollected,
+        lastMonth: 0,
+        quarter: 0,
+        year: 0,
+      },
+    };
+  }
+
+  private resolveStatsPeriod(period: string, now: Date) {
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    let start = new Date(year, month, 1);
+    let monthsCount = 1;
+    let label = `${year} 年 ${month + 1} 月`;
+
+    if (/^\d{4}-\d{2}$/.test(period)) {
+      const [periodYear, periodMonth] = period.split('-').map(Number);
+      start = new Date(periodYear, periodMonth - 1, 1);
+      label = `${periodYear} 年 ${periodMonth} 月`;
+    } else if (period === 'lastMonth') {
+      start = new Date(year, month - 1, 1);
+      label = `${start.getFullYear()} 年 ${start.getMonth() + 1} 月`;
+    } else if (period === 'quarter') {
+      const quarterStartMonth = Math.floor(month / 3) * 3;
+      start = new Date(year, quarterStartMonth, 1);
+      monthsCount = 3;
+      label = `${year} 年第 ${Math.floor(month / 3) + 1} 季度`;
+    } else if (period === 'year') {
+      start = new Date(year, 0, 1);
+      monthsCount = month + 1;
+      label = `${year} 年`;
+    }
+
+    const months = Array.from({ length: monthsCount }, (_, i) => this.formatStatsMonth(this.addStatsMonths(start, i)));
+    const endDate = this.addStatsMonths(start, monthsCount);
+
+    return {
+      startDate: start,
+      endDate,
+      months,
+      startMonth: months[0],
+      endMonth: months[months.length - 1],
+      label,
+    };
+  }
+
+  private formatStatsMonth(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private addStatsMonths(date: Date, count: number): Date {
+    return new Date(date.getFullYear(), date.getMonth() + count, 1);
+  }
+
+  private getEstimatedCycleExpectedForStats(fees: FeeItem[], rent: number, payMonths: number): number {
+    let total = 0;
+    for (const f of fees) {
+      if (!f.enabled) continue;
+      if (f.type === 0) {
+        total += (Number(f.amount) || 0) * payMonths;
+      }
+    }
+    return total > 0 ? total : rent * payMonths;
+  }
+
+  private isTenantDueMonthForStats(tenant: Tenant, month: string, payMonths: number): boolean {
+    if (!tenant.moveInDate) return true;
+    const moveIn = new Date(tenant.moveInDate);
+    const [year, monthNumber] = month.split('-').map(Number);
+    const monthsSinceMoveIn = (year - moveIn.getFullYear()) * 12 + ((monthNumber - 1) - moveIn.getMonth());
+    return monthsSinceMoveIn >= 0 && monthsSinceMoveIn % payMonths === 0;
+  }
+
+  private isBillOverdueForStats(bill: Bill, tenant: Tenant | null, now: Date): boolean {
+    return this.isEstimatedReceivableOverdueForStats(bill.period, tenant, now);
+  }
+
+  private isEstimatedReceivableOverdueForStats(month: string, tenant: Tenant | null, now: Date): boolean {
+    const [year, monthNumber] = month.split('-').map(Number);
+    const rentDay = tenant?.rentDay ?? 10;
+    const lastDay = new Date(year, monthNumber, 0).getDate();
+    const dueDay = rentDay === 0 ? lastDay : Math.min(rentDay, lastDay);
+    const dueDate = new Date(year, monthNumber - 1, dueDay, 23, 59, 59, 999);
+    return now.getTime() > dueDate.getTime();
+  }
+
+  private async getRefundsByPropertyForStats(propertyIds: number[], startDate: Date, endDate: Date): Promise<Map<number, number>> {
+    const result = new Map<number, number>();
+    if (propertyIds.length === 0) return result;
+
+    const movedOutTenants = await this.tenantRepository
+      .createQueryBuilder('tenant')
+      .innerJoin(Room, 'room', 'room.id = tenant.room_id')
+      .where('room.property_id IN (:...propertyIds)', { propertyIds })
+      .andWhere('tenant.status = 0')
+      .andWhere('tenant.move_out_date >= :start AND tenant.move_out_date < :end', {
+        start: this.formatStatsDate(startDate),
+        end: this.formatStatsDate(endDate),
+      })
+      .select('room.property_id', 'propertyId')
+      .addSelect('tenant.deposit_refund_amount', 'depositRefundAmount')
+      .addSelect('tenant.prepaid_refund_amount', 'prepaidRefundAmount')
+      .getRawMany();
+
+    for (const row of movedOutTenants) {
+      const propertyId = Number(row.propertyId);
+      const amount = (Number(row.depositRefundAmount) || 0) + (Number(row.prepaidRefundAmount) || 0);
+      if (propertyId && amount > 0) {
+        result.set(propertyId, (result.get(propertyId) || 0) + amount);
+      }
+    }
+    return result;
+  }
+
+  private formatStatsDate(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
   async getHomeStats(landlordId: number): Promise<HomeStats> {
     const now = new Date();
     const hour = now.getHours();
@@ -248,6 +536,7 @@ export class StatsService {
     const currentMonth = now.getMonth();
     const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
     const today = now.getDate();
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
     let todoCount = 0;
     let pendingHouseholds = 0;
     const descParts: string[] = [];
@@ -259,6 +548,7 @@ export class StatsService {
         where: { roomId: room.id, status: 1 },
       });
       const rentDay = tenant?.rentDay ?? 10;
+      const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const payMonths = tenant?.payMonths ?? 1;
 
       // For multi-month cycles, skip tenants whose current month is not in cycle.
@@ -301,18 +591,22 @@ export class StatsService {
         todoCount++;
         pendingHouseholds++;
         descParts.push(`${tenant?.name || room.name}已逾期`);
-      } else if (bill && bill.status !== 1 && today > rentDay) {
+      } else if (bill && bill.status !== 1 && today > dueDay) {
         todoCount++;
         pendingHouseholds++;
-        descParts.push(`${tenant?.name || room.name}已逾期${today - rentDay}天`);
-      } else if (today === rentDay) {
+        descParts.push(`${tenant?.name || room.name}已逾期${today - dueDay}天`);
+      } else if (!bill && today > dueDay) {
+        todoCount++;
+        pendingHouseholds++;
+        descParts.push(`${tenant?.name || room.name}已逾期${today - dueDay}天`);
+      } else if (today === dueDay) {
         todoCount++;
         pendingHouseholds++;
         descParts.push(`${tenant?.name || room.name}今天该收`);
-      } else if (rentDay - today <= 3) {
+      } else if (dueDay > today && dueDay - today <= 3) {
         todoCount++;
         pendingHouseholds++;
-        descParts.push(`${tenant?.name || room.name}还有${rentDay - today}天`);
+        descParts.push(`${tenant?.name || room.name}还有${dueDay - today}天`);
       }
     }
 
@@ -347,6 +641,11 @@ export class StatsService {
         .select('SUM(sc.amount)', 'total')
         .getRawOne();
       monthlyCollected += Number(singleResult?.total) || 0;
+
+      const refundByProperty = await this.getRefundsByPropertyForStats(propertyIds, monthStart, monthEnd);
+      for (const refund of refundByProperty.values()) {
+        monthlyCollected -= refund;
+      }
     }
 
     // Guide flags

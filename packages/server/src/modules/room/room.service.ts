@@ -94,8 +94,11 @@ export class RoomService {
       }));
 
       const rentDay = tenant?.rentDay ?? 10;
-      const today = new Date().getDate();
-      const monthStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const now = new Date();
+      const today = now.getDate();
+      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       // Covering bill (multi-month aware), exclude cancelled
       const currentBill = await this.billRepository
         .createQueryBuilder('bill')
@@ -110,14 +113,14 @@ export class RoomService {
         .getOne();
 
       let overdueDays = 0;
-      if (room.status === 1 && currentBill && currentBill.status !== 1 && today > rentDay) {
-        overdueDays = today - rentDay;
+      if (room.status === 1 && currentBill && currentBill.status !== 1 && today > dueDay) {
+        overdueDays = today - dueDay;
       }
 
       let displayStatus = 'vacant';
       if (room.status === 1) {
         if (overdueDays > 0) displayStatus = 'overdue';
-        else if (rentDay - today >= 1 && rentDay - today <= 3) displayStatus = 'approaching';
+        else if (dueDay - today >= 1 && dueDay - today <= 3) displayStatus = 'approaching';
         else displayStatus = 'rented';
       }
 
@@ -169,6 +172,7 @@ export class RoomService {
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const today = now.getDate();
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 
     // Find bills covering current month — multi-month aware (押X付Y bills span
     // period..periodEnd). Exclude cancelled (status=4) so退租 rooms don't show
@@ -200,15 +204,16 @@ export class RoomService {
       const tenant = tenantMap.get(room.id);
       const bill = billMap.get(room.id);
       const rentDay = tenant?.rentDay ?? 10;
+      const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       let overdueDays = 0;
 
       let displayStatus = 'vacant';
       if (room.status === 1) {
-        const billOverdue = bill && bill.status !== 1 && today > rentDay;
+        const billOverdue = bill && bill.status !== 1 && today > dueDay;
         if (billOverdue) {
           displayStatus = 'overdue';
-          overdueDays = today - rentDay;
-        } else if (rentDay - today >= 1 && rentDay - today <= 3) {
+          overdueDays = today - dueDay;
+        } else if (dueDay - today >= 1 && dueDay - today <= 3) {
           displayStatus = 'approaching';
         } else {
           displayStatus = 'rented';
@@ -322,15 +327,17 @@ export class RoomService {
       .getOne();
     const rentDay = activeTenant?.rentDay ?? 10;
     const today = now.getDate();
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
     let overdueDays = 0;
-    if (room.status === 1 && currentBill && currentBill.status !== 1 && today > rentDay) {
-      overdueDays = today - rentDay;
+    if (room.status === 1 && currentBill && currentBill.status !== 1 && today > dueDay) {
+      overdueDays = today - dueDay;
     }
 
     let displayStatus = 'vacant';
     if (room.status === 1) {
       if (overdueDays > 0) displayStatus = 'overdue';
-      else if (rentDay - today >= 1 && rentDay - today <= 3) displayStatus = 'approaching';
+      else if (dueDay - today >= 1 && dueDay - today <= 3) displayStatus = 'approaching';
       else displayStatus = 'rented';
     }
 

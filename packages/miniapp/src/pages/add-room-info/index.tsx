@@ -3,6 +3,8 @@ import Taro, { useDidHide } from '@tarojs/taro';
 import { useState, useCallback, useEffect } from 'react';
 import { get, post, put } from '../../services/request';
 import { uploadFile } from '../../services/upload';
+import { normalizeUploadUrlForStorage, resolveAsset } from '../../config';
+import { pickImages } from '../../utils/pick-image';
 import './index.scss';
 
 const facilityOptions = ['有空调', '有独卫', '能做饭', '可养宠'];
@@ -42,12 +44,14 @@ export default function AddRoomInfo() {
     }
   }, [routePropertyId]);
 
-  // Pre-fill for edit mode
+  // Pre-fill for edit mode — roomId alone is sufficient to indicate edit.
+  // (propertyId is loaded from the API; requiring it in URL caused edit button
+  // to fall through to create path when roomId was the only param present.)
   useEffect(() => {
-    if (roomId && routePropertyId) {
+    if (roomId) {
       loadRoomForEdit(roomId);
     }
-  }, [roomId, routePropertyId]);
+  }, [roomId]);
 
   const loadRoomForEdit = async (rid: number) => {
     try {
@@ -142,7 +146,7 @@ export default function AddRoomInfo() {
       floor: floor.trim() || undefined,
       orientation: orientation.trim() || undefined,
       facilities: selectedFacilities.length > 0 ? selectedFacilities : undefined,
-      images: images.length > 0 ? images : [],
+      images: images.length > 0 ? images.map(normalizeUploadUrlForStorage) : [],
       note: note.trim() || undefined,
     };
 
@@ -189,25 +193,20 @@ export default function AddRoomInfo() {
     }
   }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, area, floor, orientation, selectedFacilities, note, images]);
 
-  const handleAddImage = useCallback(() => {
+  const handleAddImage = useCallback(async () => {
     if (uploading) return;
-    Taro.chooseImage({
-      count: 9 - images.length,
-      sizeType: ['compressed'],
-      sourceType: ['camera', 'album'],
-      success: (res) => {
-        setUploading(true);
-        const uploads = res.tempFiles.map((file: any) => uploadFile(file.path));
-        Promise.all(uploads)
-          .then((results) => {
-            setImages((prev) => [...prev, ...results.map(r => r.url).filter(Boolean)]);
-          })
-          .catch(() => {
-            Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
-          })
-          .finally(() => setUploading(false));
-      },
-    });
+    const picked = await pickImages({ count: 9 - images.length, sourceType: ['camera', 'album'] });
+    if (picked.length === 0) return;
+    setUploading(true);
+    const uploads = picked.map((file) => uploadFile(file.path));
+    Promise.all(uploads)
+      .then((results) => {
+        setImages((prev) => [...prev, ...results.map(r => r.url).filter(Boolean)]);
+      })
+      .catch(() => {
+        Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
+      })
+      .finally(() => setUploading(false));
   }, [images.length, uploading]);
 
   const handleRemoveImage = useCallback((idx: number) => {
@@ -222,7 +221,7 @@ export default function AddRoomInfo() {
         <View className="image-grid">
           {images.map((img, idx) => (
             <View key={idx} className="image-grid-item">
-              <Image className="image-thumb" src={img} mode="aspectFill" />
+              <Image className="image-thumb" src={resolveAsset(img)} mode="aspectFill" />
               <View className="image-remove" onClick={() => handleRemoveImage(idx)}>
                 <Text className="image-remove-text">×</Text>
               </View>

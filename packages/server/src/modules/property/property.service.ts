@@ -181,24 +181,27 @@ export class PropertyService {
       .createQueryBuilder('bill')
       .innerJoin('bill.room', 'room')
       .where('room.propertyId = :propertyId', { propertyId })
-      .andWhere('bill.status = 0')
+      .andWhere('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
       .andWhere('bill.period <= :period', { period: monthStr })
+      .andWhere('COALESCE(bill.period_end, bill.period) <= :period', { period: monthStr })
       .getCount();
 
-    // Monthly expected income
+    // Monthly expected income for active rented rooms only. This is not
+    // theoretical capacity; vacant rooms must not inflate "本月应收".
     let monthlyExpectedIncome = 0;
     for (const room of rooms) {
-      monthlyExpectedIncome += Number(room.rent) || 0;
-    }
-    const feeItems = await this.feeItemRepository
-      .createQueryBuilder('fi')
-      .innerJoin('fi.room', 'room')
-      .where('room.propertyId = :propertyId', { propertyId })
-      .andWhere('fi.enabled = 1')
-      .andWhere('fi.isRent = 0')
-      .getMany();
-    for (const item of feeItems) {
-      monthlyExpectedIncome += Number(item.amount) || 0;
+      if (room.status !== 1) continue;
+      const tenant = await this.tenantRepository.findOne({ where: { roomId: room.id, status: 1 } });
+      if (!tenant) continue;
+      const payMonths = tenant.payMonths ?? 1;
+      const feeItems = await this.feeItemRepository.find({ where: { roomId: room.id, enabled: 1 } });
+      let roomExpected = 0;
+      for (const item of feeItems) {
+        if (item.type === 0) {
+          roomExpected += (Number(item.amount) || 0) * (item.cycleMode === 'monthly' ? 1 : payMonths);
+        }
+      }
+      monthlyExpectedIncome += roomExpected > 0 ? roomExpected : (Number(room.rent) || 0) * payMonths;
     }
 
     return { roomCount, rentedCount, vacantCount, overdueCount, monthlyExpectedIncome };

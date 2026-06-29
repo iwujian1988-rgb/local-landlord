@@ -12,8 +12,9 @@ export class StatsController {
   async getRentStats(
     @CurrentUser() user: any,
     @Query('period') period?: string,
+    @Query('propertyId') propertyId?: string,
   ) {
-    return this.statsService.getRentStats(user.id, period || 'month');
+    return this.statsService.getRentStatsV2(user.id, period || 'month', propertyId ? Number(propertyId) : undefined);
   }
 
   @Get('home')

@@ -3,7 +3,7 @@ import { Box, Card, Typography, Table, TableBody, TableCell, TableContainer, Tab
 import { Add, Edit, Delete } from '@mui/icons-material';
 import { propertyApi, landlordApi } from '../../services/api';
 import { useAuthStore } from '../../store/useAuthStore';
-import type { Property, CreatePropertyDTO, Landlord } from '@local-landlord/shared';
+import type { Property, CreateAdminPropertyDTO, UpdatePropertyDTO, Landlord } from '@local-landlord/shared';
 import { AdminRole } from '@local-landlord/shared';
 
 /** Extended Property with joined fields returned by the admin API */
@@ -66,16 +66,33 @@ export default function PropertyList() {
       setToast({ message: '房源名称不能为空', severity: 'error' });
       return;
     }
+    if (!editData.id && !editData.landlordId) {
+      setToast({ message: '请选择所属房东', severity: 'error' });
+      return;
+    }
     try {
-      const payload: CreatePropertyDTO = {
-        name: editData.name,
-        address: editData.address || undefined,
-        coverImage: editData.coverImage || undefined,
-        note: editData.note || undefined,
-      };
       if (editData.id) {
+        // Editing an existing property only touches mutable fields; landlordId
+        // is intentionally not editable here (reassigning ownership is rare and
+        // would need its own workflow).
+        const payload: UpdatePropertyDTO = {
+          name: editData.name,
+          address: editData.address || undefined,
+          coverImage: editData.coverImage || undefined,
+          note: editData.note || undefined,
+        };
         await propertyApi.update(editData.id, payload);
       } else {
+        // B10 fix: previously landlordId from the dropdown was collected into
+        // editData but dropped from the POST body, so admin "新增房源" always
+        // failed with 400 (CreateAdminPropertyBodyDto.landlordId required).
+        const payload: CreateAdminPropertyDTO = {
+          name: editData.name,
+          address: editData.address || undefined,
+          coverImage: editData.coverImage || undefined,
+          note: editData.note || undefined,
+          landlordId: Number(editData.landlordId),
+        };
         await propertyApi.create(payload);
       }
       setOpen(false);

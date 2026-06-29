@@ -62,6 +62,8 @@ export default function Settings() {
     try {
       if (editData.id) {
         await adminApi.update(editData.id, { name: editData.name, role: editData.role } as any);
+        // B14 fix: password field previously had no `value` binding, so
+        // editData.password stayed empty and this branch was unreachable.
         if (editData.password) {
           await adminApi.resetPassword(editData.id, editData.password);
         }
@@ -193,16 +195,39 @@ export default function Settings() {
         {/* 系统参数 */}
         <Card sx={{ p: 3 }}>
           <Typography variant="h6" fontWeight={600} mb={2}>系统参数</Typography>
-          {Object.entries(params).map(([key, value]) => (
-            <TextField
-              key={key}
-              fullWidth
-              label={key}
-              value={value ?? ''}
-              onChange={(e) => setParams({ ...params, [key]: e.target.value })}
-              sx={{ mb: 2 }}
-            />
-          ))}
+          {Object.entries(params).map(([key, value]) => {
+            // B13 fix: previously every param was rendered as a free-text field
+            // and onChange coerced everything to string. Saving then sent
+            // `{ enableAutoRemind: "true", remindDays: "3", ... }` which the
+            // backend rejected because enableAutoRemind must be a real boolean.
+            const isBoolean = typeof value === 'boolean';
+            const isNumber = typeof value === 'number';
+            return (
+              <Box key={key} sx={{ mb: 2 }}>
+                {isBoolean ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Typography>{key}</Typography>
+                    <Switch
+                      checked={value === true}
+                      onChange={(e) => setParams({ ...params, [key]: e.target.checked })}
+                    />
+                  </Box>
+                ) : (
+                  <TextField
+                    fullWidth
+                    label={key}
+                    type={isNumber ? 'number' : 'text'}
+                    value={value ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const next = isNumber ? (raw === '' ? '' : Number(raw)) : raw;
+                      setParams({ ...params, [key]: next });
+                    }}
+                  />
+                )}
+              </Box>
+            );
+          })}
           <Button variant="contained" onClick={handleSaveParams} disabled={paramsSaving}
             sx={{ bgcolor: '#F5D78E', color: '#4A4038' }}>
             {paramsSaving ? '保存中...' : '保存参数'}
@@ -218,6 +243,7 @@ export default function Settings() {
           <TextField fullWidth label="姓名" value={editData.name || ''}
             onChange={(e) => setEditData({ ...editData, name: e.target.value })} sx={{ mb: 2 }} />
           <TextField fullWidth label="密码" type="password"
+            value={editData.password || ''}
             onChange={(e) => setEditData({ ...editData, password: e.target.value })} sx={{ mb: 2 }}
             helperText={editData.id ? '留空则不修改密码' : ''} />
         </DialogContent>

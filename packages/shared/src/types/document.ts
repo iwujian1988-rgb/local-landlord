@@ -23,3 +23,12 @@ export interface UploadDocumentDTO {
   imageUrl: string;
   note?: string;
 }
+
+/** Admin-only variant: admin backend requires roomId in the body and pins
+ *  type=CONTRACT server-side, so the client doesn't send `type`. */
+export interface UploadAdminDocumentDTO {
+  roomId: number;
+  name: string;
+  imageUrl: string;
+  note?: string;
+}

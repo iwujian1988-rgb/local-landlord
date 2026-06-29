@@ -1,6 +1,7 @@
 import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import EmptyState from '../../components/EmptyState';
+import { resolveAsset } from '../../config';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { get } from '../../services/request';
@@ -13,6 +14,8 @@ interface Room {
   name: string;
   rent: number;
   status: number;
+  displayStatus?: string;
+  overdueDays?: number;
   propertyId: number;
   propertyName?: string;
   tenantName?: string;
@@ -24,6 +27,8 @@ interface Property {
   name: string;
   address?: string;
 }
+
+type ListResponse<T> = T[] | { list?: T[] };
 
 export default function Rooms() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -38,7 +43,7 @@ export default function Rooms() {
     try {
       const [roomsRes, propsRes] = await Promise.all([
         get<Room[]>('/rooms'),
-        get<Property[]>('/properties'),
+        get<ListResponse<Property>>('/properties'),
       ]);
       if (roomsRes.code === 0) {
         setRooms(roomsRes.data || []);
@@ -78,8 +83,20 @@ export default function Rooms() {
     Taro.navigateTo({ url: '/pages/add-property/index' });
   };
 
-  const statusText = (status: number) => status === 1 ? '已出租' : '空着';
-  const statusClass = (status: number) => status === 1 ? 'rented' : 'vacant';
+  const getRoomDisplayStatus = (room: Room) => room.displayStatus || (room.status === 1 ? 'rented' : 'vacant');
+  const statusText = (room: Room) => {
+    const displayStatus = getRoomDisplayStatus(room);
+    if (displayStatus === 'overdue') return room.overdueDays && room.overdueDays > 0 ? `欠租${room.overdueDays}天` : '欠租';
+    if (displayStatus === 'approaching') return '待收租';
+    if (displayStatus === 'rented') return '已出租';
+    return '空着';
+  };
+  const statusClass = (room: Room) => {
+    const displayStatus = getRoomDisplayStatus(room);
+    if (displayStatus === 'overdue') return 'overdue';
+    if (displayStatus === 'approaching') return 'approaching';
+    return displayStatus === 'rented' ? 'rented' : 'vacant';
+  };
 
   return (
     <View className="page-rooms">
@@ -98,12 +115,12 @@ export default function Rooms() {
                     className="room-card"
                     onClick={() => Taro.navigateTo({ url: `/pages/room-detail/index?roomId=${room.id}` })}
                   >
-                    <Image className="room-card-img" src={(room.images && room.images.length > 0) ? room.images[0] : roomPlaceholder} mode="aspectFill" />
+                    <Image className="room-card-img" src={(room.images && room.images.length > 0) ? resolveAsset(room.images[0]) : roomPlaceholder} mode="aspectFill" />
                     <View className="room-card-main">
                       <View className="room-card-top">
                         <Text className="room-card-name">{room.name}</Text>
-                        <View className={`room-status ${statusClass(room.status)}`}>
-                          <Text>{statusText(room.status)}</Text>
+                        <View className={`room-status ${statusClass(room)}`}>
+                          <Text>{statusText(room)}</Text>
                         </View>
                       </View>
                       <View className="room-card-meta">

@@ -61,7 +61,7 @@ async function uploadViaBase64(filePath: string): Promise<UploadResult> {
 
   const res = await post<any>('/upload/base64', {
     data: `data:${mimeType};base64,${base64}`,
-    size: fileInfo.size,
+    size: 'size' in fileInfo ? fileInfo.size : 0,
   });
 
   if (res.code !== 0) {

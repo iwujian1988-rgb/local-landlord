@@ -45,6 +45,12 @@ export default function Records() {
   const [error, setError] = useState(false);
 
   const loadData = useCallback(async () => {
+    // No roomId → no records to fetch. Avoids 400 from /rooms/0/records.
+    if (!roomId) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(false);
     try {

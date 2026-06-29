@@ -1,5 +1,6 @@
 import { View, Text, Image } from '@tarojs/components';
 import type { Room } from '@local-landlord/shared';
+import { resolveAsset } from '../../config';
 import './index.scss';
 
 interface RoomCardProps {
@@ -28,7 +29,7 @@ export default function RoomCard({ room, onClick }: RoomCardProps) {
     <View className="room-card card" onClick={onClick}>
       <View className="room-card-body">
         {imageSrc ? (
-          <Image className="room-card-img" src={imageSrc} mode="aspectFill" />
+          <Image className="room-card-img" src={resolveAsset(imageSrc)} mode="aspectFill" />
         ) : (
           <View className="room-card-img room-card-img-placeholder">
             <Text style={{ fontSize: '40px', lineHeight: 1, color: '#B5A99A' }}>🏠</Text>

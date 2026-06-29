@@ -6,14 +6,114 @@ import { SystemService } from './system.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { CreateTenantDto } from '../tenant/dto/create-tenant.dto';
 import { UpdateTenantDto } from '../tenant/dto/update-tenant.dto';
-import { CreatePropertyDto } from '../property/dto/create-property.dto';
 import { UpdatePropertyDto } from '../property/dto/update-property.dto';
-import { IsOptional, IsString, IsNumber, IsInt, IsArray, IsDateString, ValidateNested } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsInt, IsArray, IsDateString, ValidateNested, IsIn, Min, Max, IsNotEmpty, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** DTOs for admin endpoints that previously used `any` */
+
+// B1 fix: admin needs to specify landlordId when creating property for a landlord.
+// The shared CreatePropertyDto lacks this field because the landlord-facing flow
+// pulls landlordId from JWT, not the body.
+class CreateAdminPropertyBodyDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  coverImage?: string;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @IsInt()
+  @Type(() => Number)
+  landlordId: number;
+}
+
+// B2 fix: admin needs to specify roomId when creating tenant for a room.
+// The shared CreateTenantDto lacks this field because the landlord-facing flow
+// takes roomId from the URL path.
+class CreateAdminTenantBodyDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(32)
+  name: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  phone: string;
+
+  @IsInt()
+  @Type(() => Number)
+  roomId: number;
+
+  @IsOptional()
+  @IsDateString()
+  moveInDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  contractEndDate?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(31)
+  @Type(() => Number)
+  rentDay?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  @Type(() => Number)
+  payMonths?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  deposit?: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @IsOptional()
+  @IsInt()
+  @IsIn([0, 1])
+  @Type(() => Number)
+  status?: number;
+
+  @IsOptional()
+  @IsString()
+  initialPaymentMethod?: string;
+
+  @IsOptional()
+  @IsDateString()
+  initialPaymentDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  initialPaymentAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  moveInReading?: string;
+}
 
 class CreateAdminDto {
   @IsString()
@@ -38,11 +138,13 @@ class UpdateAdminDto {
 
   @IsOptional()
   @IsInt()
+  @IsIn([0, 1])
   @Type(() => Number)
   role?: number;
 
   @IsOptional()
   @IsInt()
+  @IsIn([0, 1])
   @Type(() => Number)
   status?: number;
 }
@@ -132,6 +234,7 @@ class CreateRoomBodyDto {
 
 class UpdateRoomStatusDto {
   @IsInt()
+  @IsIn([0, 1])
   @Type(() => Number)
   status: number;
 }
@@ -224,6 +327,7 @@ class UpdateLandlordBodyDto {
 
 class UpdateLandlordStatusDto {
   @IsInt()
+  @IsIn([0, 1])
   @Type(() => Number)
   status: number;
 }
@@ -242,10 +346,12 @@ class UpdateNotificationsDto {
 class UpdateSystemParamsDto {
   @IsOptional()
   @IsString()
+  @MaxLength(32)
   appName?: string;
 
   @IsOptional()
   @IsInt()
+  @Min(1)
   @Type(() => Number)
   maxRoomPerProperty?: number;
 
@@ -254,11 +360,14 @@ class UpdateSystemParamsDto {
 
   @IsOptional()
   @IsInt()
+  @Min(1)
+  @Max(30)
   @Type(() => Number)
   remindDays?: number;
 
   @IsOptional()
   @IsInt()
+  @Min(1)
   @Type(() => Number)
   dataRetentionDays?: number;
 }
@@ -303,7 +412,7 @@ export class SystemController {
   }
 
   @Post('properties')
-  async createProperty(@Body() body: CreatePropertyDto) {
+  async createProperty(@Body() body: CreateAdminPropertyBodyDto) {
     return this.systemService.createProperty(body);
   }
 
@@ -367,7 +476,7 @@ export class SystemController {
   }
 
   @Post('tenants')
-  async createTenant(@Body() body: CreateTenantDto) {
+  async createTenant(@Body() body: CreateAdminTenantBodyDto) {
     return this.systemService.createTenant(body);
   }
 

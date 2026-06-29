@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Box, Card, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, IconButton, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, TextField, Chip, Tabs, Tab, Snackbar, Alert } from '@mui/material';
 import { Add, Edit, Delete, Logout } from '@mui/icons-material';
 import { tenantApi } from '../../services/api';
-import type { Tenant, CreateTenantDTO, UpdateTenantDTO } from '@local-landlord/shared';
+import type { Tenant, CreateAdminTenantDTO, UpdateTenantDTO } from '@local-landlord/shared';
 import { TenantStatus } from '@local-landlord/shared';
 
 /** Extended Tenant with joined fields returned by the admin API */
@@ -49,9 +49,16 @@ export default function TenantList() {
         await tenantApi.update(editData.id, dto);
         setToast({ message: '租客信息已更新', severity: 'success' });
       } else {
-        const dto: CreateTenantDTO = {
+        if (!editData.roomId) {
+          setToast({ message: '请填写房间ID', severity: 'error' });
+          return;
+        }
+        // B11 fix: roomId was collected in the form but dropped from the POST
+        // body, so admin "登记租客" always 400'd with `roomId required`.
+        const dto: CreateAdminTenantDTO = {
           name: editData.name || '',
           phone: editData.phone || '',
+          roomId: Number(editData.roomId),
           moveInDate: editData.moveInDate || '',
           contractEndDate: editData.contractEndDate || '',
           rentDay: editData.rentDay ?? 1,

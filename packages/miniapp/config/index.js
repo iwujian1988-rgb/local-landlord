@@ -9,7 +9,11 @@ const config = {
   outputRoot: 'dist',
   plugins: ['@tarojs/plugin-framework-react'],
   defineConstants: {
-    API_BASE: '"http://127.0.0.1:3000/api"',
+    API_BASE: '"http://127.0.0.1:3100/api"',
+    APP_USE_CLOUD: 'false',
+    APP_CLOUD_ENV_ID: '""',
+    APP_CLOUD_SVC: '""',
+    APP_H5_BASE: '""',
   },
   copy: { patterns: [], options: {} },
   framework: 'react',

@@ -43,9 +43,4 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   note?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  status?: number;
 }

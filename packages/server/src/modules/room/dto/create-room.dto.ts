@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, Min, Max, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, Min, Max, MaxLength, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateRoomDto {
@@ -15,6 +15,7 @@ export class CreateRoomDto {
 
   @IsOptional()
   @IsNumber()
+  @IsIn([0, 1])
   @Type(() => Number)
   status?: number;
 

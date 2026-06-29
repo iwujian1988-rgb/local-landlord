@@ -125,11 +125,13 @@ export class RentService {
     const currentYear = now.getFullYear();
     const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
     const todayDate = now.getDate();
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
     // Find any bill that covers the current month (handles multi-month cycles).
     const coveringBills = await this.billRepository
       .createQueryBuilder('bill')
       .where('bill.room_id IN (:...roomIds)', { roomIds })
+      .andWhere('bill.status != :cancelled', { cancelled: 4 })
       .andWhere(
         '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
         'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
@@ -160,6 +162,7 @@ export class RentService {
       const bill = currentBillMap.get(room.id) || null;
       const prop = propertyMap.get(room.propertyId);
       const rentDay = tenant?.rentDay ?? 10;
+      const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const payMonths = tenant?.payMonths ?? 1;
       const hasPriorOverdue = priorOverdueMap.get(room.id) || false;
 
@@ -183,10 +186,10 @@ export class RentService {
       }
 
       let overdueDays = 0;
-      if (todayDate > rentDay) overdueDays = todayDate - rentDay;
+      if (todayDate > dueDay) overdueDays = todayDate - dueDay;
 
       let daysUntil = 0;
-      if (todayDate < rentDay) daysUntil = rentDay - todayDate;
+      if (todayDate < dueDay) daysUntil = dueDay - todayDate;
 
       const entry: PendingEntry = {
         roomId: room.id,
@@ -230,9 +233,9 @@ export class RentService {
       }
 
       // Otherwise bucket by today vs rentDay as before.
-      if (todayDate > rentDay) {
+      if (todayDate > dueDay) {
         overdueList.push(entry);
-      } else if (todayDate === rentDay) {
+      } else if (todayDate === dueDay) {
         todayList.push(entry);
       } else if (daysUntil >= 1 && daysUntil <= 3) {
         approachingList.push(entry);

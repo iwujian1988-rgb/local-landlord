@@ -1,4 +1,6 @@
-export default defineAppConfig({
+type AppConfig = Parameters<typeof defineAppConfig>[0];
+
+const appConfig: AppConfig = {
   pages: [
     'pages/onboarding/index',
     'pages/home/index',
@@ -43,4 +45,8 @@ export default defineAppConfig({
     navigationBarTitleText: '五联人家',
     navigationBarTextStyle: 'black',
   },
-});
+};
+
+const config: AppConfig = defineAppConfig(appConfig) as AppConfig;
+
+export default config;

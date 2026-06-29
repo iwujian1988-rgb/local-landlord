@@ -1,5 +1,6 @@
 import { Controller, Post, UseGuards } from '@nestjs/common';
 import { SubscriptionService } from './subscription.service';
+import { BillService } from '../bill/bill.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -8,7 +9,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(0)
 export class SubscriptionController {
-  constructor(private readonly subscriptionService: SubscriptionService) {}
+  constructor(
+    private readonly subscriptionService: SubscriptionService,
+    private readonly billService: BillService,
+  ) {}
 
   @Post('trigger-auto-bills')
   async triggerAutoBills() {
@@ -28,6 +32,11 @@ export class SubscriptionController {
   @Post('trigger-overdue')
   async triggerOverdueReminder() {
     return this.subscriptionService.triggerOverdueReminder();
+  }
+
+  @Post('trigger-mark-overdue')
+  async triggerMarkOverdue() {
+    return this.billService.triggerMarkOverdue();
   }
 
   @Post('trigger-contract-expiry')

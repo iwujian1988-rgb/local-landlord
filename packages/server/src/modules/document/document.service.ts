@@ -7,7 +7,7 @@ import { Property } from '../property/property.entity';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 
 const DOC_TYPE_MAP: Record<number, string> = {
-  0: 'contract', 1: 'receipt', 2: 'utility', 3: 'repair', 4: 'deposit', 5: 'other',
+  0: 'contract', 1: 'receipt', 2: 'utility', 3: 'maintenance', 4: 'deposit', 5: 'other',
 };
 
 @Injectable()

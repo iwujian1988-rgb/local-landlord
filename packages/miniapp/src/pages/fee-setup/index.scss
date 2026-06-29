@@ -24,6 +24,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 32px;
   background: var(--cream, #FFFDF9);
   border-radius: var(--radius-md, 40px);
@@ -245,4 +246,37 @@
   color: #51453f;
   line-height: 1;
   flex-shrink: 0;
+}
+
+/* Cycle-mode chip row — appears under each fixed-type fee item */
+.fee-cycle-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.cycle-chip {
+  flex: 1;
+  padding: 12px 20px;
+  border-radius: 24px;
+  background: #F2EBDF;
+  border: 2px solid transparent;
+  text-align: center;
+  transition: all 0.2s ease;
+
+  &.active {
+    background: #FFF6DD;
+    border-color: var(--accent-dk, #E8C76A);
+  }
+}
+
+.cycle-chip-text {
+  font-size: var(--font-sm, 26px);
+  color: var(--text-secondary, #7A6F64);
+
+  .cycle-chip.active & {
+    color: var(--text-primary, #4A4038);
+    font-weight: 600;
+  }
 }

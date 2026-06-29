@@ -29,6 +29,12 @@ export interface CreateTenantDTO {
   note?: string;
 }
 
+/** Admin-only variant: admin backend takes roomId from the body, while the
+ *  landlord API takes it from the URL path. */
+export interface CreateAdminTenantDTO extends CreateTenantDTO {
+  roomId: number;
+}
+
 export interface UpdateTenantDTO {
   name?: string;
   phone?: string;

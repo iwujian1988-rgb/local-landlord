@@ -11,8 +11,14 @@ import { Admin } from '../../modules/system/admin.entity';
 
 /**
  * Hybrid auth guard:
- * 1. If X-WX-OPENID header present (CallContainer), authenticate via openid
- * 2. Otherwise fall back to JWT Bearer token (admin panel / existing sessions)
+ * 1. If ALLOW_OPENID_HEADER=true AND X-WX-OPENID header is present,
+ *    authenticate via openid (only safe when server is deployed inside WeChat
+ *    cloud hosting and NOT directly exposed to the public internet — the cloud
+ *    hosting gateway strips client-forged openid headers).
+ * 2. Otherwise fall back to JWT Bearer token (the only safe path when server
+ *    is reachable from the public internet).
+ *
+ * Default is OFF. Set ALLOW_OPENID_HEADER=true only in trusted deployments.
  */
 @Injectable()
 export class JwtAuthGuard {
@@ -27,9 +33,10 @@ export class JwtAuthGuard {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 
-    // Priority 1: CallContainer injects X-WX-OPENID
+    // Priority 1: CallContainer-injected openid (only if explicitly enabled)
+    const allowOpenIdHeader = process.env.ALLOW_OPENID_HEADER === 'true';
     const wxOpenId = request.headers['x-wx-openid'];
-    if (wxOpenId) {
+    if (allowOpenIdHeader && wxOpenId) {
       return this.authenticateByOpenId(request, wxOpenId);
     }
 

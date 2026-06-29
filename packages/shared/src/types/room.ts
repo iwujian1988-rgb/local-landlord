@@ -36,6 +36,7 @@ import type { FeeItem } from './fee';
 import type { Bill } from './bill';
 
 export interface CreateRoomDTO {
+  propertyId: number;
   name: string;
   rent: number;
   deposit?: number;

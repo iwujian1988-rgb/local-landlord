@@ -1,13 +1,13 @@
 import request from './request';
 import type {
   Property,
-  CreatePropertyDTO,
+  CreateAdminPropertyDTO,
   UpdatePropertyDTO,
   Room,
   CreateRoomDTO,
   UpdateRoomDTO,
   Tenant,
-  CreateTenantDTO,
+  CreateAdminTenantDTO,
   UpdateTenantDTO,
   Bill,
   ConfirmPaymentDTO,
@@ -17,7 +17,7 @@ import type {
   CreateAdminDTO,
   ApiResponse,
   PaginatedData,
-  UploadDocumentDTO,
+  UploadAdminDocumentDTO,
   Document,
 } from '@local-landlord/shared';
 
@@ -48,7 +48,7 @@ export const propertyApi = {
     unwrapPaginated(request.get('/admin/properties', { params }).catch(handleApiError)),
   detail: (id: number): Promise<Property> =>
     unwrap(request.get(`/admin/properties/${id}`).catch(handleApiError)),
-  create: (data: CreatePropertyDTO): Promise<Property> =>
+  create: (data: CreateAdminPropertyDTO): Promise<Property> =>
     unwrap(request.post('/admin/properties', data).catch(handleApiError)),
   update: (id: number, data: UpdatePropertyDTO): Promise<Property> =>
     unwrap(request.put(`/admin/properties/${id}`, data).catch(handleApiError)),
@@ -76,7 +76,7 @@ export const tenantApi = {
     unwrapPaginated(request.get('/admin/tenants', { params }).catch(handleApiError)),
   detail: (id: number): Promise<Tenant> =>
     unwrap(request.get(`/admin/tenants/${id}`).catch(handleApiError)),
-  create: (data: CreateTenantDTO): Promise<Tenant> =>
+  create: (data: CreateAdminTenantDTO): Promise<Tenant> =>
     unwrap(request.post('/admin/tenants', data).catch(handleApiError)),
   update: (id: number, data: UpdateTenantDTO): Promise<Tenant> =>
     unwrap(request.put(`/admin/tenants/${id}`, data).catch(handleApiError)),
@@ -102,7 +102,7 @@ export const billApi = {
 export const contractApi = {
   list: (params?: Record<string, unknown>): Promise<PaginatedData<Document>> =>
     unwrapPaginated(request.get('/admin/contracts', { params }).catch(handleApiError)),
-  upload: (data: UploadDocumentDTO): Promise<Document> =>
+  upload: (data: UploadAdminDocumentDTO): Promise<Document> =>
     unwrap(request.post('/admin/contracts/upload', data).catch(handleApiError)),
   remove: (id: number): Promise<void> =>
     unwrap(request.delete(`/admin/contracts/${id}`).catch(handleApiError)),

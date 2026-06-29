@@ -6,6 +6,7 @@ import UploadModal, { UploadFile } from '../../components/UploadModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
+import { normalizeUploadUrlForStorage, resolveAsset } from '../../config';
 import './index.scss';
 
 export default function AddProperty() {
@@ -101,7 +102,7 @@ export default function AddProperty() {
       note: note.trim(),
     };
     if (coverImageURL) {
-      payload.coverImage = coverImageURL;
+      payload.coverImage = normalizeUploadUrlForStorage(coverImageURL);
     }
 
     try {
@@ -180,7 +181,7 @@ export default function AddProperty() {
         />
       ) : coverImageURL ? (
         <View className="cover-preview" onClick={() => setUploadVisible(true)}>
-          <Image className="cover-preview-img" src={coverImageURL} mode="aspectFill" />
+          <Image className="cover-preview-img" src={resolveAsset(coverImageURL)} mode="aspectFill" />
           <View className="cover-preview-tap">
             <Icon name="camera" size={48} color="currentColor" />
             <Text className="cover-preview-tap-text">重新拍摄</Text>

@@ -2,6 +2,7 @@ import { View, Text, Input } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import { useState } from 'react';
 import { uploadFile } from '../../services/upload';
+import { pickImages } from '../../utils/pick-image';
 import './index.scss';
 
 export interface UploadFile {
@@ -24,21 +25,14 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
 
   if (!visible) return null;
 
-  const handleChooseImage = (sourceType: ('album' | 'camera')[]) => {
-    Taro.chooseImage({
-      count: 1,
-      sourceType,
-      sizeType: ['compressed'],
-      success: (res) => {
-        const file = res.tempFiles[0];
-        if (file) {
-          setSelectedFile({ tempFilePath: file.path, size: file.size });
-        }
-      },
-      fail: () => {
-        Taro.showToast({ title: '图片没选上，再试一次吧', icon: 'none' });
-      },
-    });
+  const handleChooseImage = async (sourceType: ('album' | 'camera')[]) => {
+    const picked = await pickImages({ count: 1, sourceType });
+    if (picked.length === 0) {
+      Taro.showToast({ title: '图片没选上，再试一次吧', icon: 'none' });
+      return;
+    }
+    const file = picked[0];
+    setSelectedFile({ tempFilePath: file.path, size: file.size });
   };
 
   const handleConfirm = async () => {
@@ -70,6 +64,14 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
     setNote('');
   };
 
+  const getFileName = (path: string) => path.split(/[\\/]/).pop() || '图片';
+
+  const formatFileSize = (size: number) => {
+    if (!size) return '';
+    if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
+    return `${(size / 1024 / 1024).toFixed(1)}MB`;
+  };
+
   return (
     <View className="upload-overlay" onClick={handleCancel}>
       <View className="upload-card" onClick={(e) => e.stopPropagation()}>
@@ -96,8 +98,14 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
 
         {selectedFile && (
           <View className="upload-preview">
-            <Text className="upload-preview-label">已选择图片</Text>
-            <Text className="upload-preview-name">{selectedFile.tempFilePath.split('/').pop() || '图片'}</Text>
+            <View className="upload-preview-icon">✓</View>
+            <View className="upload-preview-info">
+              <Text className="upload-preview-label">已选择图片</Text>
+              <Text className="upload-preview-name">{getFileName(selectedFile.tempFilePath)}</Text>
+              {!!formatFileSize(selectedFile.size) && (
+                <Text className="upload-preview-size">{formatFileSize(selectedFile.size)}</Text>
+              )}
+            </View>
           </View>
         )}
 

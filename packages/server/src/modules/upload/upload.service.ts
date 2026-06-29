@@ -74,15 +74,26 @@ export class UploadService {
     cb(null, true);
   }
 
+  /**
+   * Returns the URL exposed to clients for an uploaded file.
+   *
+   * For local mode we return a **host-relative** path (/uploads/xxx.png)
+   * instead of an absolute URL — historically this returned
+   * `http://<BASE_URL-or-localhost>/uploads/...`, which baked the host IP
+   * into the database. Whenever the landlord's network IP changed (laptop
+   * moved to a different WiFi, server migrated) every previously uploaded
+   * image broke and showed blank in the miniapp. Host-relative paths let
+   * the frontend prepend whatever API host it's currently pointed at.
+   */
   getFileUrl(filename: string): string {
     if (this.uploadMode === 'cloudbase' && this.cosBucket && this.cosRegion) {
       return `https://${this.cosBucket}.cos.${this.cosRegion}.myqcloud.com/${filename}`;
     }
-    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-    return `${baseUrl}/uploads/${filename}`;
+    return `/uploads/${filename}`;
   }
 
   async uploadToCos(file: any): Promise<string> {
+    this.ensureCosConfigured();
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const COS = require('cos-nodejs-sdk-v5');
     const cos = new COS({
@@ -141,6 +152,7 @@ export class UploadService {
     }
 
     if (this.uploadMode === 'cloudbase') {
+      this.ensureCosConfigured();
       // Upload to COS
       const key = `uploads/${filename}`;
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -218,5 +230,11 @@ export class UploadService {
       size: file.size,
       url: this.getFileUrl(file.filename),
     };
+  }
+
+  private ensureCosConfigured() {
+    if (!this.cosBucket || !this.cosRegion || !process.env.COS_SECRET_ID || !process.env.COS_SECRET_KEY) {
+      throw new BadRequestException('云存储未配置完整，请在云托管环境变量中配置 COS_SECRET_ID、COS_SECRET_KEY、COS_BUCKET、COS_REGION');
+    }
   }
 }

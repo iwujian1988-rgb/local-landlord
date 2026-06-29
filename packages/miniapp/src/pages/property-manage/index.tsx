@@ -20,6 +20,8 @@ interface Property {
   vacantCount?: number;
 }
 
+type ListResponse<T> = T[] | { list?: T[] };
+
 export default function PropertyManage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(false);
@@ -31,7 +33,7 @@ export default function PropertyManage() {
     setLoading(true);
     setError(false);
     try {
-      const res = await get<Property[]>('/properties');
+      const res = await get<ListResponse<Property>>('/properties');
       if (res.code === 0) {
         const list = Array.isArray(res.data) ? res.data : (res.data?.list || []);
         setProperties(list);

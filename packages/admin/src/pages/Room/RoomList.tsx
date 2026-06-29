@@ -54,8 +54,17 @@ export default function RoomList() {
 
   const handleSave = async () => {
     try {
+      if (!editData.propertyId) {
+        alert('请选择所属房源');
+        return;
+      }
+      if (!editData.name?.trim()) {
+        alert('请填写房间名称');
+        return;
+      }
       const payload: CreateRoomDTO = {
-        name: editData.name || '',
+        propertyId: editData.propertyId,
+        name: editData.name.trim(),
         rent: editData.rent ?? 0,
         area: editData.area,
         floor: editData.floor,

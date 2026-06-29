@@ -2,6 +2,7 @@ import { View, Text, Image } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 import type { Property } from '@local-landlord/shared';
 import Icon from '../Icon';
+import { resolveAsset } from '../../config';
 import './index.scss';
 
 interface PropertyCardProps {
@@ -31,7 +32,7 @@ export default function PropertyCard({ property, onClick, onDelete }: PropertyCa
     <View className="property-card" onClick={onClick}>
       <View className="property-header">
         {coverImage ? (
-          <Image className="property-thumb" src={coverImage} mode="aspectFill" />
+          <Image className="property-thumb" src={resolveAsset(coverImage)} mode="aspectFill" />
         ) : (
           <View className="property-thumb property-thumb-placeholder">
             <Icon name="building" size={40} color="var(--text-hint)" />

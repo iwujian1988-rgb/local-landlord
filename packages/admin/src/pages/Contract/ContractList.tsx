@@ -53,8 +53,12 @@ export default function ContractList() {
   const handleUpload = async () => {
     if (!uploadData.roomId || !uploadData.name || !uploadData.imageUrl) return;
     try {
+      // B12 fix: previously posted `{ type: 0, name, imageUrl }` — but the
+      // admin upload DTO requires `roomId` and doesn't whitelist `type`,
+      // so every upload from this dialog 400'd. The backend stamps type=1
+      // (contract) on its side; frontend no longer sends it.
       await contractApi.upload({
-        type: 0,
+        roomId: Number(uploadData.roomId),
         name: uploadData.name,
         imageUrl: uploadData.imageUrl,
         note: uploadData.note || undefined,

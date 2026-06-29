@@ -24,6 +24,13 @@ export class AuthController {
   @Post('cloud-login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async cloudLogin(@Headers('x-wx-openid') openId: string) {
+    // Only honor the openid header when explicitly enabled. Default off —
+    // client-forged X-WX-OPENID would otherwise let anyone create/login as
+    // any landlord. Enable only in WeChat cloud hosting deployments where the
+    // gateway strips forged headers.
+    if (process.env.ALLOW_OPENID_HEADER !== 'true') {
+      throw new BadRequestException('该登录方式未启用，请使用微信授权登录');
+    }
     if (!openId) {
       throw new BadRequestException('缺少微信身份信息，请通过小程序访问');
     }

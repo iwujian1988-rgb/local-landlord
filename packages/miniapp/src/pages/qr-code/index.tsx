@@ -1,11 +1,12 @@
 import { View, Text, Input, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
-import EmptyState from '../../components/EmptyState';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
 import { get, post, put, del } from '../../services/request';
 import { uploadFile } from '../../services/upload';
+import { API_BASE_URL, normalizeUploadUrlForStorage, resolveAsset } from '../../config';
+import { pickImages } from '../../utils/pick-image';
 import { useState, useCallback } from 'react';
 import './index.scss';
 
@@ -66,28 +67,20 @@ export default function QrCode() {
     loadData();
   });
 
-  const handleUpload = useCallback((type: string) => {
-    Taro.chooseImage({
-      count: 1,
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
-      success: (res) => {
-        const filePath = res.tempFilePaths[0];
-        uploadFile(filePath)
-          .then((result) => {
-            setCodes((prev) =>
-              prev.map((c) => (c.type === type ? { ...c, imageUrl: result.url } : c))
-            );
-            Taro.showToast({ title: '收款码已上传', icon: 'none', duration: 2000 });
-          })
-          .catch(() => {
-            Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
-          });
-      },
-      fail: () => {
-        Taro.showToast({ title: '没选上图片，再试一次', icon: 'none' });
-      },
-    });
+  const handleUpload = useCallback(async (type: string) => {
+    const picked = await pickImages({ count: 1, sourceType: ['album', 'camera'] });
+    if (picked.length === 0) return;
+    const filePath = picked[0].path;
+    uploadFile(filePath)
+      .then((result) => {
+        setCodes((prev) =>
+          prev.map((c) => (c.type === type ? { ...c, imageUrl: result.url } : c))
+        );
+        Taro.showToast({ title: '收款码已上传', icon: 'none', duration: 2000 });
+      })
+      .catch(() => {
+        Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
+      });
   }, []);
 
   const handleDelete = useCallback(async (type: string, id?: string) => {
@@ -132,7 +125,7 @@ export default function QrCode() {
         const payload = {
           type: code.type,
           label: code.label,
-          imageUrl: code.imageUrl,
+          imageUrl: normalizeUploadUrlForStorage(code.imageUrl),
           isDefault: code.isDefault,
         };
         const res = code.id
@@ -149,9 +142,13 @@ export default function QrCode() {
       }, 800);
     } catch (err: any) {
       console.error('[QrCode] 保存失败:', err);
+      const rawMessage = err?.errMsg || err?.message || '';
+      const isRequestFail = rawMessage.includes('request:fail') || rawMessage.includes('network');
       Taro.showModal({
         title: '保存失败',
-        content: err?.message || '网络可能有点问题，请检查后重试',
+        content: isRequestFail
+          ? `连接后端失败，请确认本地后端已启动，并且小程序接口地址可访问：${API_BASE_URL}`
+          : rawMessage || '网络可能有点问题，请检查后重试',
         showCancel: false,
         confirmText: '知道了',
       });
@@ -163,8 +160,6 @@ export default function QrCode() {
   const handlePreview = useCallback(() => {
     Taro.navigateTo({ url: '/pages/payment/index' });
   }, []);
-
-  const hasCodes = codes.some(c => c.imageUrl);
 
   return (
     <View className="page-qr-code">
@@ -179,11 +174,13 @@ export default function QrCode() {
           </Text>
         </View>
 
-        {!hasCodes ? (
-          <EmptyState title="还没有收款码" description="上传微信或支付宝收款码，方便租客付款给您" actionText="去添加收款码" onAction={() => handleUpload('wechat')} />
-        ) : (
-          <View className="qr-list">
-            {codes.map((code) => (
+        <View className="qr-section-head">
+          <Text className="qr-section-title">收款码图片</Text>
+          <Text className="qr-section-desc">选择一种常用收款方式上传即可</Text>
+        </View>
+
+        <View className="qr-list">
+          {codes.map((code) => (
               <View key={code.type} className="qr-card">
                 <View className="qr-card-row">
                   <View className={`qr-card-icon-wrap ${code.type}`}>
@@ -209,10 +206,11 @@ export default function QrCode() {
                 </View>
                 {code.imageUrl ? (
                   <View className="qr-preview-area">
-                    <Image src={code.imageUrl} style={{ width: '100%', height: '200px', borderRadius: '16px', objectFit: 'cover' }} />
+                    <Image className="qr-preview-image" src={resolveAsset(code.imageUrl)} mode="aspectFit" />
                   </View>
                 ) : (
                   <View className="qr-upload-btn" onClick={() => handleUpload(code.type)}>
+                    <Text className="qr-upload-plus">＋</Text>
                     <Text className="qr-upload-btn-text">上传{code.label}</Text>
                   </View>
                 )}
@@ -229,9 +227,8 @@ export default function QrCode() {
                   </View>
                 )}
               </View>
-            ))}
-          </View>
-        )}
+          ))}
+        </View>
 
         <View className="qr-form">
           <View className="qr-form-group">

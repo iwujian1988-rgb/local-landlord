@@ -10,6 +10,7 @@ import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { SystemConfig } from '../system/system-config.entity';
 
 @Injectable()
 export class SubscriptionService {
@@ -32,7 +33,17 @@ export class SubscriptionService {
     private readonly landlordRepository: Repository<Landlord>,
     @InjectRepository(FeeItem)
     private readonly feeItemRepository: Repository<FeeItem>,
+    @InjectRepository(SystemConfig)
+    private readonly configRepository: Repository<SystemConfig>,
   ) {}
+
+  /** Returns true if auto reminders are enabled (admin can disable globally via system params). */
+  private async isAutoRemindEnabled(): Promise<boolean> {
+    const config = await this.configRepository.findOne({ where: { key: 'system_params' } });
+    const value = config?.value as any;
+    // Default to true when missing so fresh installs behave as before.
+    return value?.enableAutoRemind !== false;
+  }
 
   /** Get WeChat access_token with caching */
   private async getAccessToken(): Promise<string> {
@@ -123,7 +134,7 @@ export class SubscriptionService {
    * 自动生成月度账单 + 出账通知 — 每天 8:00
    */
   @Cron('0 8 * * *')
-  async autoGenerateBills(): Promise<void> {
+  async autoGenerateBills(): Promise<number> {
     const now = dayjs();
     const today = now.date();
     const isLastDay = now.endOf('month').date() === today;
@@ -172,9 +183,12 @@ export class SubscriptionService {
           if (!fee.enabled) continue;
           const baseAmt = Number(fee.amount) || 0;
           // Fixed items (房租, fixed网费 etc.) get multiplied by payMonths to
-          // collect for the whole cycle upfront. Manual items (水电, 维修)
+          // collect for the whole cycle upfront — UNLESS the fee is marked
+          // cycleMode='monthly' (e.g. 停车管理费 charged per-month regardless of
+          // how many months the rent cycle covers). Manual items (水电, 维修)
           // start at 0 — landlord fills in actual values before sending.
-          const amt = fee.type === 0 ? baseAmt * payMonths : 0;
+          const multiply = fee.type === 0 && fee.cycleMode !== 'monthly';
+          const amt = fee.type === 0 ? (multiply ? baseAmt * payMonths : baseAmt) : 0;
           items.push({ feeName: fee.name, amount: amt });
           totalAmount += amt;
         }
@@ -227,6 +241,7 @@ export class SubscriptionService {
     }
 
     await this.sendAutoBillNotifications(landlordBillMap);
+    return generated;
   }
 
   /** 出账通知：账单生成后推送给房东 */
@@ -258,6 +273,10 @@ export class SubscriptionService {
    */
   @Cron('5 9 * * *')
   async sendRentReminders(): Promise<void> {
+    if (!(await this.isAutoRemindEnabled())) {
+      this.logger.log('enableAutoRemind=false, skip rent reminders');
+      return;
+    }
     const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
     if (!templateId) {
       this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip');
@@ -324,6 +343,10 @@ export class SubscriptionService {
    */
   @Cron('30 9 * * *')
   async sendMoveOutReminders(): Promise<void> {
+    if (!(await this.isAutoRemindEnabled())) {
+      this.logger.log('enableAutoRemind=false, skip move-out reminders');
+      return;
+    }
     const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
     if (!templateId) {
       this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip move-out');
@@ -383,6 +406,10 @@ export class SubscriptionService {
    */
   @Cron('5 10 * * *')
   async sendOverdueReminders(): Promise<void> {
+    if (!(await this.isAutoRemindEnabled())) {
+      this.logger.log('enableAutoRemind=false, skip overdue reminders');
+      return;
+    }
     const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_OVERDUE;
     if (!templateId) {
       this.logger.warn('WX_SUBSCRIBE_TEMPLATE_OVERDUE not configured, skip');
@@ -429,8 +456,14 @@ export class SubscriptionService {
 
       if (overdueDays <= 0) continue;
 
-      const notifyDays = [1, 3, 7, 14, 30];
-      if (!notifyDays.includes(overdueDays)) continue;
+      // Notify on days 1, 3, 7, 14, 30 (the original cadence), then every 30
+      // days thereafter (60, 90, 120, …) so a long-overdue bill isn't silently
+      // forgotten once it crosses the 30-day mark.
+      const earlyNotifyDays = [1, 3, 7, 14, 30];
+      const shouldNotify =
+        earlyNotifyDays.includes(overdueDays) ||
+        (overdueDays > 30 && overdueDays % 30 === 0);
+      if (!shouldNotify) continue;
 
       const landlord = await this.findLandlordByRoom(bill.room.id);
       if (!landlord || !landlord.openId) continue;
@@ -462,6 +495,10 @@ export class SubscriptionService {
    */
   @Cron('0 11 * * *')
   async sendContractExpiryReminders(): Promise<void> {
+    if (!(await this.isAutoRemindEnabled())) {
+      this.logger.log('enableAutoRemind=false, skip contract expiry reminders');
+      return;
+    }
     const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
     if (!templateId) {
       this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip contract expiry');
@@ -523,6 +560,10 @@ export class SubscriptionService {
    */
   @Cron('30 11 * * *')
   async sendVacancyReminders(): Promise<void> {
+    if (!(await this.isAutoRemindEnabled())) {
+      this.logger.log('enableAutoRemind=false, skip vacancy reminders');
+      return;
+    }
     const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
     if (!templateId) {
       this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip vacancy');
@@ -591,6 +632,10 @@ export class SubscriptionService {
    */
   @Cron('0 20 * * *')
   async sendMonthlySummary(): Promise<void> {
+    if (!(await this.isAutoRemindEnabled())) {
+      this.logger.log('enableAutoRemind=false, skip monthly summary');
+      return;
+    }
     const now = dayjs();
     const isLastDay = now.endOf('month').date() === now.date();
     if (!isLastDay) return;
@@ -656,8 +701,8 @@ export class SubscriptionService {
 
   /** API: manually trigger auto bill generation */
   async triggerAutoBills(): Promise<{ generated: number }> {
-    await this.autoGenerateBills();
-    return { generated: -1 };
+    const generated = await this.autoGenerateBills();
+    return { generated };
   }
 
   /** API: manually trigger rent reminder */

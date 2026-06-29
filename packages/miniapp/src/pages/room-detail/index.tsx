@@ -3,6 +3,7 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '../../components/Icon';
 import ConfirmModal from '../../components/ConfirmModal';
 import DepositModal from '../../components/DepositModal';
+import { resolveAsset } from '../../config';
 import NoteEditModal from '../../components/NoteEditModal';
 import ContractRenewModal from '../../components/ContractRenewModal';
 import Loading from '../../components/Loading';
@@ -265,7 +266,7 @@ export default function RoomDetail() {
         <View className="room-image">
           <Image
             className="room-image-img"
-            src={data.room?.images?.[0] || placeholderImage}
+            src={data.room?.images?.[0] ? resolveAsset(data.room.images[0]) : placeholderImage}
             mode="aspectFill"
           />
         </View>
@@ -277,7 +278,7 @@ export default function RoomDetail() {
               <View className={`status-tag ${getStatusClass()}`}>
                 <Text className="status-tag-text">{getStatusLabel()}</Text>
               </View>
-              <Text className="edit-link" onClick={() => Taro.navigateTo({ url: `/pages/add-room-info/index?roomId=${roomId}&propertyId=${urlPropertyId}` })}>编辑</Text>
+              <Text className="edit-link" onClick={() => Taro.navigateTo({ url: `/pages/add-room-info/index?roomId=${roomId}&propertyId=${data.room?.propertyId || urlPropertyId}` })}>编辑</Text>
             </View>
           </View>
           <Text className="detail-room-rent">
