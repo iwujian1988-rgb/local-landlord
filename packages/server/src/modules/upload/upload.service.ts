@@ -86,10 +86,11 @@ export class UploadService {
    * the frontend prepend whatever API host it's currently pointed at.
    */
   getFileUrl(filename: string): string {
+    const key = filename.startsWith('uploads/') ? filename : `uploads/${filename}`;
     if (this.uploadMode === 'cloudbase' && this.cosBucket && this.cosRegion) {
-      return `https://${this.cosBucket}.cos.${this.cosRegion}.myqcloud.com/${filename}`;
+      return `https://${this.cosBucket}.cos.${this.cosRegion}.myqcloud.com/${key}`;
     }
-    return `/uploads/${filename}`;
+    return `/${key}`;
   }
 
   async uploadToCos(file: any): Promise<string> {
