@@ -4,11 +4,11 @@
   "private": true,
   "scripts": {
     "dev:miniapp": "pnpm --filter @local-landlord/miniapp dev:weapp",
-    "dev:admin": "pnpm --filter @local-landlord/admin dev",
+    "dev:admin": "pnpm --filter local-landlord-admin dev",
     "dev:server": "pnpm --filter @local-landlord/server start:dev",
     "dev:h5": "pnpm --filter @local-landlord/h5 dev",
     "build:miniapp": "pnpm --filter @local-landlord/miniapp build:weapp",
-    "build:admin": "pnpm --filter @local-landlord/admin build",
+    "build:admin": "pnpm --filter local-landlord-admin build",
     "build:server": "pnpm --filter @local-landlord/server build",
     "build:h5": "pnpm --filter @local-landlord/h5 build",
     "lint": "pnpm -r lint",
