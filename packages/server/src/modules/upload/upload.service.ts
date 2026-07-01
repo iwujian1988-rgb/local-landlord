@@ -88,7 +88,7 @@ export class UploadService {
   getFileUrl(filename: string): string {
     const key = filename.startsWith('uploads/') ? filename : `uploads/${filename}`;
     if (this.uploadMode === 'cloudbase' && this.cosBucket && this.cosRegion) {
-      return `https://${this.cosBucket}.cos.${this.cosRegion}.myqcloud.com/${key}`;
+      return `https://${this.cosBucket}.tcb.qcloud.la/${key}`;
     }
     return `/${key}`;
   }

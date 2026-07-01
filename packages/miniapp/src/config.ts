@@ -24,6 +24,10 @@ function isPrivateLocalHost(hostname: string): boolean {
 // Keep only the stable path so the current API host can be used at render time.
 export function normalizeUploadUrlForStorage(url: string | undefined | null): string {
   if (!url) return '';
+  const cloudbaseCosMatch = url.match(/^https?:\/\/([^.\/]+)\.cos\.[^.\/]+\.myqcloud\.com\/(uploads\/[^?#]*)(\?[^#]*)?/i);
+  if (cloudbaseCosMatch) {
+    return `https://${cloudbaseCosMatch[1]}.tcb.qcloud.la/${cloudbaseCosMatch[2]}${cloudbaseCosMatch[3] || ''}`;
+  }
   const match = url.match(/^https?:\/\/([^/:?#]+)(?::\d+)?(\/uploads\/[^?#]*)(\?[^#]*)?/i);
   if (match && isPrivateLocalHost(match[1])) {
     return `${match[2]}${match[3] || ''}`;
