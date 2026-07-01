@@ -21,6 +21,7 @@ import { UploadModule } from './modules/upload/upload.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { ShareModule } from './modules/share/share.module';
 import { HealthController } from './modules/health/health.controller';
+import { SchemaCompatService } from './common/schema-compat.service';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { HealthController } from './modules/health/health.controller';
   ],
   controllers: [HealthController],
   providers: [
+    SchemaCompatService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
