@@ -43,7 +43,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (USE_CLOUD) {
         // Cloud hosting: callContainer auto-injects X-WX-OPENID
         const res = await post<any>('/auth/cloud-login', {});
-        data = res.data || res;
+        data = unwrapLoginData(res);
       } else {
         // wx.login → code → server verifies via code2Session
         const { code } = await Taro.login();
@@ -54,7 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (resp.code !== 0) {
           throw new Error(resp.message || '微信登录失败，请稍后重试');
         }
-        data = resp.data || resp;
+        data = unwrapLoginData(resp);
       }
 
       if (!data.token) throw new Error('服务端未返回 token');
@@ -92,3 +92,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     });
   },
 }));
+
+function unwrapLoginData(res: any) {
+  if (res?.token) return res;
+  if (res?.data?.token) return res.data;
+  if (res?.data?.data?.token) return res.data.data;
+  return res?.data || res;
+}

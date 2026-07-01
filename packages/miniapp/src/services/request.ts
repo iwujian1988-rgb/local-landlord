@@ -44,7 +44,7 @@ const request = async <T = unknown>(
     let data: ApiResponse<T>;
 
     if (USE_CLOUD) {
-      data = await callContainer<T>(options, mergedHeader);
+      data = await callContainerCompat<T>(options, mergedHeader);
     } else {
       const res = await Taro.request({
         timeout: 10000,
@@ -79,6 +79,60 @@ const request = async <T = unknown>(
     throw err;
   }
 };
+
+function callContainerCompat<T>(
+  options: Taro.request.Option,
+  header: Record<string, string>,
+): Promise<ApiResponse<T>> {
+  const path = `/api${options.url || ''}`.replace(/\/{2,}/g, '/');
+  const containerHeader = {
+    ...header,
+    'X-WX-SERVICE': CLOUD_SVC,
+  };
+
+  return new Promise((resolve, reject) => {
+    (wx as any).cloud.callContainer({
+      config: { env: CLOUD_ENV_ID },
+      svc: CLOUD_SVC,
+      path,
+      method: options.method || 'GET',
+      data: options.data,
+      header: containerHeader,
+      success: (res: any) => {
+        const raw = typeof res.data === 'string' ? safeJsonParse(res.data) : res.data;
+        resolve(raw as ApiResponse<T>);
+      },
+      fail: (err: any) => {
+        const msg = err.errMsg || 'callContainer 请求失败';
+        if (msg.includes('INVALID_PATH') || msg.includes('Invalid path')) {
+          Taro.request({
+            timeout: 15000,
+            ...options,
+            url: `${API_BASE_URL}${options.url}`,
+            header,
+            success: (res) => {
+              const raw = typeof res.data === 'string' ? safeJsonParse(res.data) : res.data;
+              resolve(raw as ApiResponse<T>);
+            },
+            fail: (fallbackErr) => {
+              reject(new Error(fallbackErr.errMsg || msg));
+            },
+          });
+          return;
+        }
+        reject(new Error(msg));
+      },
+    });
+  });
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
 
 function callContainer<T>(
   options: Taro.request.Option,
