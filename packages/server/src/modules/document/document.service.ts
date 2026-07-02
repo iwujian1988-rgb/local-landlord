@@ -53,7 +53,7 @@ export class DocumentService {
   /** 文档列表 (API contract shape with type as string) */
   async findByRoom(roomId: number, type?: number) {
     const where: any = { roomId };
-    if (type !== undefined) {
+    if (typeof type === 'number' && Number.isFinite(type)) {
       where.type = type;
     }
     const docs = await this.documentRepository.find({
@@ -96,10 +96,10 @@ export class DocumentService {
     const qb = this.documentRepository.createQueryBuilder('doc')
       .leftJoinAndSelect('doc.room', 'room');
 
-    if (type !== undefined && type !== null) {
+    if (typeof type === 'number' && Number.isFinite(type)) {
       qb.andWhere('doc.type = :type', { type });
     }
-    if (roomId) {
+    if (typeof roomId === 'number' && Number.isFinite(roomId)) {
       qb.andWhere('doc.roomId = :roomId', { roomId });
     }
 

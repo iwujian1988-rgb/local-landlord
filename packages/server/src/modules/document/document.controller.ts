@@ -11,6 +11,14 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class DocumentController {
   constructor(private readonly documentService: DocumentService) {}
 
+  private parseOptionalInt(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
   @Post('rooms/:roomId/documents')
   async upload(
     @CurrentUser() user: any,
@@ -25,10 +33,10 @@ export class DocumentController {
   async findByRoom(
     @CurrentUser() user: any,
     @Param('roomId', ParseIntPipe) roomId: number,
-    @Query('type') type?: number,
+    @Query('type') type?: string,
   ) {
     await this.documentService.verifyRoomOwnership(roomId, user.id);
-    return this.documentService.findByRoom(roomId, type);
+    return this.documentService.findByRoom(roomId, this.parseOptionalInt(type));
   }
 
   @Delete('documents/:id')
@@ -47,16 +55,18 @@ export class DocumentController {
   @UseGuards(RolesGuard)
   @Roles(0)
   async findAdminDocuments(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('type') type?: number,
-    @Query('roomId') roomId?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('type') type?: string,
+    @Query('roomId') roomId?: string,
   ) {
+    const parsedPage = this.parseOptionalInt(page) || 1;
+    const parsedPageSize = this.parseOptionalInt(pageSize) || 20;
     return this.documentService.findAdminDocuments(
-      page || 1,
-      pageSize || 20,
-      type !== undefined ? Number(type) : undefined,
-      roomId ? Number(roomId) : undefined,
+      parsedPage,
+      parsedPageSize,
+      this.parseOptionalInt(type),
+      this.parseOptionalInt(roomId),
     );
   }
 

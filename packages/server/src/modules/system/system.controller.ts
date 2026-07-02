@@ -400,15 +400,28 @@ class PaidAtDto {
 export class SystemController {
   constructor(private readonly systemService: SystemService) {}
 
+  private parseOptionalInt(value: unknown): number | undefined {
+    if (value === undefined || value === null || value === '') {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  private parsePage(value: unknown, fallback = 1): number {
+    const parsed = this.parseOptionalInt(value);
+    return parsed && parsed > 0 ? parsed : fallback;
+  }
+
   // ========== Property management ==========
 
   @Get('properties')
   async findProperties(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    return this.systemService.findProperties(page || 1, pageSize || 20, keyword);
+    return this.systemService.findProperties(this.parsePage(page), this.parsePage(pageSize, 20), keyword);
   }
 
   @Post('properties')
@@ -431,13 +444,17 @@ export class SystemController {
 
   @Get('rooms')
   async findRooms(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
-    @Query('status') status?: number,
+    @Query('status') status?: string,
   ) {
-    const statusNum = Number(status);
-    return this.systemService.findRooms(page || 1, pageSize || 20, keyword, !isNaN(statusNum) ? statusNum : undefined);
+    return this.systemService.findRooms(
+      this.parsePage(page),
+      this.parsePage(pageSize, 20),
+      keyword,
+      this.parseOptionalInt(status),
+    );
   }
 
   @Post('rooms')
@@ -468,11 +485,11 @@ export class SystemController {
 
   @Get('tenants')
   async findTenants(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    return this.systemService.findTenants(page || 1, pageSize || 20, keyword);
+    return this.systemService.findTenants(this.parsePage(page), this.parsePage(pageSize, 20), keyword);
   }
 
   @Post('tenants')
@@ -503,10 +520,10 @@ export class SystemController {
 
   @Get('admins')
   async findAdmins(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return this.systemService.findAdmins(page || 1, pageSize || 20);
+    return this.systemService.findAdmins(this.parsePage(page), this.parsePage(pageSize, 20));
   }
 
   @Post('admins')
@@ -541,17 +558,17 @@ export class SystemController {
 
   @Get('bills')
   async getAdminBills(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('status') status?: number,
-    @Query('propertyId') propertyId?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+    @Query('propertyId') propertyId?: string,
     @Query('period') period?: string,
   ) {
     return this.systemService.getAdminBills(
-      page || 1,
-      pageSize || 20,
-      status !== undefined ? Number(status) : undefined,
-      propertyId ? Number(propertyId) : undefined,
+      this.parsePage(page),
+      this.parsePage(pageSize, 20),
+      this.parseOptionalInt(status),
+      this.parseOptionalInt(propertyId),
       period,
     );
   }
@@ -600,11 +617,11 @@ export class SystemController {
 
   @Get('landlords')
   async getLandlords(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    return this.systemService.getLandlords(page || 1, pageSize || 20, keyword);
+    return this.systemService.getLandlords(this.parsePage(page), this.parsePage(pageSize, 20), keyword);
   }
 
   @Get('landlords/:id')
@@ -656,18 +673,16 @@ export class SystemController {
 
   @Get('contracts')
   async findContracts(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
-    @Query('type') type?: number,
-    @Query('roomId') roomId?: number,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('type') type?: string,
+    @Query('roomId') roomId?: string,
   ) {
-    const contractType = type !== undefined && type !== null ? Number(type) : NaN;
-    const contractRoomId = roomId !== undefined && roomId !== null ? Number(roomId) : NaN;
     return this.systemService.findContracts(
-      page || 1,
-      pageSize || 20,
-      !isNaN(contractType) ? contractType : undefined,
-      !isNaN(contractRoomId) ? contractRoomId : undefined,
+      this.parsePage(page),
+      this.parsePage(pageSize, 20),
+      this.parseOptionalInt(type),
+      this.parseOptionalInt(roomId),
     );
   }
 
