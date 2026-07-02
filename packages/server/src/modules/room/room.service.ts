@@ -7,6 +7,10 @@ import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { FeeItem } from '../fee/fee-item.entity';
 import { Bill } from '../bill/bill.entity';
+import { BillItem } from '../bill/bill-item.entity';
+import { Document } from '../document/document.entity';
+import { RentRecord } from '../rent/rent-record.entity';
+import { SingleCharge } from '../rent/single-charge.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
@@ -23,6 +27,14 @@ export class RoomService {
     private readonly feeItemRepository: Repository<FeeItem>,
     @InjectRepository(Bill)
     private readonly billRepository: Repository<Bill>,
+    @InjectRepository(BillItem)
+    private readonly billItemRepository: Repository<BillItem>,
+    @InjectRepository(Document)
+    private readonly documentRepository: Repository<Document>,
+    @InjectRepository(RentRecord)
+    private readonly rentRecordRepository: Repository<RentRecord>,
+    @InjectRepository(SingleCharge)
+    private readonly singleChargeRepository: Repository<SingleCharge>,
   ) {}
 
   /** Verify that a property belongs to the given landlord */
@@ -538,6 +550,24 @@ export class RoomService {
       throw new BadRequestException('房间有在租租客，无法删除');
     }
 
-    await this.roomRepository.remove(room);
+    await this.roomRepository.manager.transaction(async (manager) => {
+      const bills = await manager.find(Bill, {
+        where: { roomId: id },
+        select: ['id'],
+      });
+      const billIds = bills.map(b => b.id);
+
+      if (billIds.length > 0) {
+        await manager.delete(BillItem, { billId: In(billIds) });
+      }
+
+      await manager.delete(RentRecord, { roomId: id });
+      await manager.delete(SingleCharge, { roomId: id });
+      await manager.delete(Bill, { roomId: id });
+      await manager.delete(Document, { roomId: id });
+      await manager.delete(FeeItem, { roomId: id });
+      await manager.delete(Tenant, { roomId: id });
+      await manager.delete(Room, { id });
+    });
   }
 }

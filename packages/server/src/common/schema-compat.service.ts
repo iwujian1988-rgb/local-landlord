@@ -57,6 +57,10 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
 
   // single_charge
   { table: 'single_charge', column: 'paid_at', definition: '`paid_at` datetime NULL' },
+
+  // document
+  { table: 'document', column: 'note', definition: '`note` text NULL' },
+  { table: 'document', column: 'uploaded_at', definition: '`uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP' },
 ];
 
 @Injectable()
