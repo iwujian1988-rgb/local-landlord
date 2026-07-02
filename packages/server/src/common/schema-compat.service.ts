@@ -59,6 +59,10 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'single_charge', column: 'paid_at', definition: '`paid_at` datetime NULL' },
 
   // document
+  { table: 'document', column: 'room_id', definition: '`room_id` int NOT NULL DEFAULT 0' },
+  { table: 'document', column: 'type', definition: '`type` tinyint unsigned NOT NULL DEFAULT 5' },
+  { table: 'document', column: 'name', definition: '`name` varchar(64) NOT NULL DEFAULT \'\'' },
+  { table: 'document', column: 'image_url', definition: '`image_url` varchar(512) NOT NULL DEFAULT \'\'' },
   { table: 'document', column: 'note', definition: '`note` text NULL' },
   { table: 'document', column: 'uploaded_at', definition: '`uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP' },
 ];
