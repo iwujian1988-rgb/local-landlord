@@ -66,8 +66,16 @@ export class DocumentService {
       name: d.name,
       imageUrl: d.imageUrl,
       note: d.note || '',
-      date: d.uploadedAt ? d.uploadedAt.toISOString().slice(0, 10) : '',
+      date: this.formatUploadedDate(d.uploadedAt),
     }));
+  }
+
+  private formatUploadedDate(value: Date | string | null | undefined): string {
+    if (!value) return '';
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return String(value).slice(0, 10);
+    return parsed.toISOString().slice(0, 10);
   }
 
   /** 删除文档 */
