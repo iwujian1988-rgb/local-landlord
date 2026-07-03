@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger, BadRequestException } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { join } from 'path';
@@ -33,6 +33,22 @@ async function bootstrap() {
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
+      // Without exceptionFactory, class-validator failures combined with
+      // transform:true can surface as 500 instead of 400 — masking the real
+      // "which field violated which rule" detail from clients. Return a
+      // structured 400 with per-field constraints so the miniapp can show
+      // the user exactly what went wrong.
+      exceptionFactory: (errors) => {
+        const details = errors
+          .map((e) => {
+            const constraints = e.constraints ? Object.values(e.constraints) : ['invalid'];
+            return `${e.property}: ${constraints.join('; ')}`;
+          })
+          .join(' | ');
+        return new BadRequestException(
+          `参数校验失败 - ${details || 'unknown field error'}`,
+        );
+      },
     }),
   );
 
