@@ -33,4 +33,18 @@ export class UploadController {
     }
     return this.uploadService.uploadBase64(body.data, body.size);
   }
+
+  /**
+   * 客户端用 wx.cloud.uploadFile 直接传到云存储后，把 cloudPath 传过来，
+   * 服务端只负责拼出永久 CDN URL（不处理文件内容）。
+   * 这是官方推荐的 callContainer 大文件传输方式 —— 见
+   * https://developers.weixin.qq.com/minigame/dev/wxcloudrun/src/development/call/faq.html
+   */
+  @Post('cloud-path')
+  async uploadByCloudPath(@Body() body: { cloudPath?: string }) {
+    if (!body.cloudPath) {
+      throw new BadRequestException('缺少 cloudPath');
+    }
+    return this.uploadService.formatCloudPathResponse(body.cloudPath);
+  }
 }

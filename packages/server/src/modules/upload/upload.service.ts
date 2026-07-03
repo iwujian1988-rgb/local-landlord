@@ -208,6 +208,30 @@ export class UploadService {
     };
   }
 
+  /**
+   * 客户端用 wx.cloud.uploadFile 把文件直接传到了云存储 COS（同一个 env 下的
+   * 云开发存储 bucket），服务端不再处理文件内容，只根据 cloudPath 拼永久 URL。
+   * cloudPath 通常是 "uploads/uuid.png" 形式。
+   */
+  formatCloudPathResponse(cloudPath: string) {
+    if (!cloudPath) {
+      throw new BadRequestException('缺少 cloudPath');
+    }
+
+    let filename: string;
+    if (cloudPath.startsWith('uploads/')) {
+      filename = cloudPath.slice('uploads/'.length);
+    } else {
+      filename = cloudPath;
+    }
+
+    return {
+      filename,
+      originalname: filename,
+      url: this.getFileUrl(filename),
+    };
+  }
+
   async formatUploadResponse(file: any) {
     if (!file) {
       throw new BadRequestException('请选择要上传的文件');

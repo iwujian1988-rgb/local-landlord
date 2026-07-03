@@ -11,6 +11,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger('Bootstrap');
 
+  // Default express.json limit is 100kb, but image base64 uploads easily exceed
+  // that (a 256KB photo becomes ~340KB base64, ~450KB after JSON wrapping).
+  // Match MAX_UPLOAD_BYTES (10MB) so /upload/base64 doesn't 500 on real photos.
+  app.useBodyParser('json', { limit: '10mb' });
+
   app.enableShutdownHooks();
 
   app.setGlobalPrefix('api');
