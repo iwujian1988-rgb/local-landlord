@@ -11,11 +11,12 @@ interface UploadResult {
 /**
  * Unified file upload:
  * - Dev mode: Taro.uploadFile() to local server
- * - Cloud mode: base64 via callContainer → /upload/base64
+ * - Cloud mode: wx.cloud.uploadFile → 直传云存储 COS, 再用 cloudPath 调后端拼永久 URL
+ *   (官方推荐做法 — callContainer 请求体不适合传大文件)
  */
 export async function uploadFile(filePath: string): Promise<UploadResult> {
   if (USE_CLOUD) {
-    return uploadViaBase64(filePath);
+    return uploadViaCloudStorage(filePath);
   }
   return uploadViaHttp(filePath);
 }
@@ -48,29 +49,50 @@ function uploadViaHttp(filePath: string): Promise<UploadResult> {
   });
 }
 
-async function uploadViaBase64(filePath: string): Promise<UploadResult> {
-  const fileInfo = await Taro.getFileInfo({ filePath });
-  const fs = Taro.getFileSystemManager();
-  const base64 = fs.readFileSync(filePath, 'base64') as string;
+function randomFilename(ext: string): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${ts}-${rand}.${ext}`;
+}
 
-  const ext = filePath.split('.').pop() || 'jpg';
-  const mimeType = ext === 'png' ? 'image/png'
-    : ext === 'gif' ? 'image/gif'
-    : ext === 'webp' ? 'image/webp'
-    : 'image/jpeg';
+/**
+ * 通过 wx.cloud.uploadFile 直接上传到云存储 COS，
+ * 之后用 cloudPath 调后端 /upload/cloud-path 拿永久 CDN URL。
+ *
+ * 优点（相对 base64 via callContainer）：
+ * - 无 callContainer body 限制（默认 ~100KB），支持大文件（最大 50MB）
+ * - 不阻塞 JS 线程做 base64 转换
+ * - 走微信内网，速度更快
+ */
+async function uploadViaCloudStorage(filePath: string): Promise<UploadResult> {
+  console.log('[upload] uploadViaCloudStorage start, filePath:', filePath);
 
-  const res = await post<any>('/upload/base64', {
-    data: `data:${mimeType};base64,${base64}`,
-    size: 'size' in fileInfo ? fileInfo.size : 0,
+  const ext = (filePath.split('.').pop() || 'jpg').toLowerCase();
+  const filename = randomFilename(ext);
+  const cloudPath = `uploads/${filename}`;
+  console.log('[upload] cloudPath:', cloudPath);
+
+  const uploadRes = await Taro.cloud.uploadFile({
+    cloudPath,
+    filePath,
   });
+  console.log('[upload] cloud.uploadFile result:', uploadRes);
+
+  if (!uploadRes.fileID) {
+    throw new Error(uploadRes.errMsg || '云存储上传失败');
+  }
+
+  // 用 cloudPath 调后端拿永久 URL —— 不传文件内容，body 只有几十字节
+  const res = await post<any>('/upload/cloud-path', { cloudPath });
+  console.log('[upload] cloud-path response:', JSON.stringify(res));
 
   if (res.code !== 0) {
-    throw new Error(res.message || '上传失败');
+    throw new Error(`[code=${res.code}] ${res.message || '获取永久 URL 失败'}`);
   }
 
   return {
     url: res.data?.url || '',
-    fileID: res.data?.url || '',
+    fileID: uploadRes.fileID,
   };
 }
 

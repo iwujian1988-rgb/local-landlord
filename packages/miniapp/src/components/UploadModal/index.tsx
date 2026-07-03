@@ -44,11 +44,19 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
 
     setUploading(true);
     try {
+      console.log('[UploadModal] start upload, tempFilePath:', selectedFile.tempFilePath, 'size:', selectedFile.size);
       const result = await uploadFile(selectedFile.tempFilePath);
+      console.log('[UploadModal] upload success:', result);
       onUpload({ ...selectedFile, serverUrl: result.url }, note);
       reset();
-    } catch {
-      Taro.showToast({ title: '上传失败，请重试', icon: 'none' });
+    } catch (err: any) {
+      console.error('[UploadModal] upload failed:', err);
+      const errMsg = err?.message || err?.errMsg || (typeof err === 'string' ? err : JSON.stringify(err));
+      Taro.showModal({
+        title: '上传失败（诊断）',
+        content: String(errMsg).slice(0, 500),
+        showCancel: false,
+      });
     } finally {
       setUploading(false);
     }
