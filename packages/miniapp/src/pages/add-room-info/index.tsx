@@ -141,7 +141,7 @@ export default function AddRoomInfo() {
       name: name.trim(),
       rent: Number(rent),
       status: status === 'rented' ? 1 : 0,
-      availableDate: availableType === 'date' ? availableDate : '随时可入住',
+      availableDate: availableType === 'date' ? availableDate : undefined,
       area: area.trim() || undefined,
       floor: floor.trim() || undefined,
       orientation: orientation.trim() || undefined,
