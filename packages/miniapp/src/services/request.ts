@@ -28,6 +28,23 @@ async function tryReLogin(): Promise<boolean> {
   return refreshPromise;
 }
 
+export const directRequest = async <T = unknown>(
+  options: Taro.request.Option,
+  header: Record<string, string> = {},
+): Promise<ApiResponse<T>> => {
+  const res = await Taro.request({
+    timeout: 15000,
+    ...options,
+    url: `${API_BASE_URL}${options.url}`,
+    header: {
+      'Content-Type': 'application/json',
+      ...header,
+      ...((options.header as Record<string, string>) || {}),
+    },
+  });
+  return res.data as ApiResponse<T>;
+};
+
 const request = async <T = unknown>(
   options: Taro.request.Option,
   allowRelogin = true,
@@ -46,13 +63,7 @@ const request = async <T = unknown>(
     if (USE_CLOUD) {
       data = await callContainerCompat<T>(options, mergedHeader);
     } else {
-      const res = await Taro.request({
-        timeout: 10000,
-        ...options,
-        url: `${API_BASE_URL}${options.url}`,
-        header: mergedHeader,
-      });
-      data = res.data as ApiResponse<T>;
+      data = await directRequest<T>(options, mergedHeader);
     }
 
     if (data.code === 401) {
@@ -104,20 +115,12 @@ function callContainerCompat<T>(
       },
       fail: (err: any) => {
         const msg = err.errMsg || 'callContainer 请求失败';
-        if (msg.includes('INVALID_PATH') || msg.includes('Invalid path')) {
-          Taro.request({
-            timeout: 15000,
-            ...options,
-            url: `${API_BASE_URL}${options.url}`,
-            header,
-            success: (res) => {
-              const raw = typeof res.data === 'string' ? safeJsonParse(res.data) : res.data;
-              resolve(raw as ApiResponse<T>);
-            },
-            fail: (fallbackErr) => {
-              reject(new Error(fallbackErr.errMsg || msg));
-            },
-          });
+        if (shouldFallbackToHttps(msg)) {
+          directRequest<T>(options, header)
+            .then(resolve)
+            .catch((fallbackErr) => {
+              reject(new Error(fallbackErr.errMsg || fallbackErr.message || msg));
+            });
           return;
         }
         reject(new Error(msg));
@@ -133,6 +136,23 @@ function safeJsonParse(value: string): unknown {
     return value;
   }
 }
+
+function shouldFallbackToHttps(msg: string): boolean {
+  return (
+    msg.includes('INVALID_PATH') ||
+    msg.includes('Invalid path') ||
+    msg.includes('INVALID_HOST') ||
+    msg.includes('Invalid host') ||
+    msg.includes('102002') ||
+    msg.includes('请求超时')
+  );
+}
+
+export const directPost = <T = unknown>(
+  url: string,
+  data?: Record<string, unknown>,
+  header?: Record<string, string>,
+): Promise<ApiResponse<T>> => directRequest<T>({ url, method: 'POST', data }, header);
 
 function callContainer<T>(
   options: Taro.request.Option,

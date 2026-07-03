@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import Taro from '@tarojs/taro';
 import { USE_CLOUD } from '../config';
-import { post } from '../services/request';
+import { directPost, post } from '../services/request';
 
 interface AuthState {
   token: string;
@@ -42,8 +42,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if (USE_CLOUD) {
         // Cloud hosting: callContainer auto-injects X-WX-OPENID
-        const res = await post<any>('/auth/cloud-login', {});
-        data = unwrapLoginData(res);
+        try {
+          const res = await post<any>('/auth/cloud-login', {});
+          data = unwrapLoginData(res);
+        } catch (cloudErr: any) {
+          if (!shouldFallbackToWechatLogin(cloudErr?.message || cloudErr?.errMsg || '')) {
+            throw cloudErr;
+          }
+          const { code } = await Taro.login();
+          if (!code) {
+            throw new Error('微信登录失败，请检查微信后重试');
+          }
+          const resp = await directPost<any>('/auth/wechat/login', { code });
+          if (resp.code !== 0) {
+            throw new Error(resp.message || '微信登录失败，请稍后重试');
+          }
+          data = unwrapLoginData(resp);
+        }
       } else {
         // wx.login → code → server verifies via code2Session
         const { code } = await Taro.login();
@@ -98,4 +113,15 @@ function unwrapLoginData(res: any) {
   if (res?.data?.token) return res.data;
   if (res?.data?.data?.token) return res.data.data;
   return res?.data || res;
+}
+
+function shouldFallbackToWechatLogin(msg: string) {
+  return (
+    msg.includes('INVALID_HOST') ||
+    msg.includes('Invalid host') ||
+    msg.includes('INVALID_PATH') ||
+    msg.includes('Invalid path') ||
+    msg.includes('102002') ||
+    msg.includes('请求超时')
+  );
 }
