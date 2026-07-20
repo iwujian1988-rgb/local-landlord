@@ -424,8 +424,13 @@ export class RoomService {
 
   /** Create room */
   async create(propertyId: number, dto: CreateRoomDto): Promise<Room> {
+    const cleanDto = { ...dto };
+    // available_date column is DATE; legacy clients sent '随时可入住' as a sentinel string.
+    if (cleanDto.availableDate && !/^\d{4}-\d{2}-\d{2}$/.test(cleanDto.availableDate)) {
+      delete cleanDto.availableDate;
+    }
     const room = this.roomRepository.create({
-      ...dto,
+      ...cleanDto,
       propertyId,
       status: dto.status ?? 0,
     });
@@ -490,6 +495,11 @@ export class RoomService {
     }
 
     const { action, ...rest } = dto as any;
+
+    // available_date column is DATE; legacy clients sent '随时可入住' as a sentinel string.
+    if (rest.availableDate && !/^\d{4}-\d{2}-\d{2}$/.test(rest.availableDate)) {
+      delete rest.availableDate;
+    }
 
     // Prevent setting status=1 (rented) without an active tenant
     if (rest.status === 1 && room.status !== 1) {

@@ -99,9 +99,10 @@ export class TenantService {
 
     // Auto-create first bill covering [moveInMonth .. moveInMonth + payMonths - 1].
     // Skip if a bill already exists for that period (idempotent on retries).
-    await this.createFirstBill(saved, room, payMonths).catch(err => {
-      this.logger.error(`createFirstBill failed for tenant ${saved.id}: ${err?.message}`, err?.stack);
-    });
+    // No .catch — if this fails, the API must return 500 so the landlord knows.
+    // (Previously the silent swallow left tenants without a bill and stats then
+    // reported them as 已逾期 the moment today > rentDay.)
+    await this.createFirstBill(saved, room, payMonths);
 
     return saved;
   }
@@ -153,7 +154,14 @@ export class TenantService {
       totalAmount = rent * payMonths;
     }
 
-    const isPaid = !!tenant.initialPaymentMethod;
+    // Paid if either method OR amount > 0 is recorded. Frontend sends both
+    // together, but defending against other API clients (admin tools, scripts)
+    // that might only set one. Previously: a tenant with amount=8000 but no
+    // method got a status=0 bill and showed as 已逾期 the next day.
+    const isPaid = !!(
+      tenant.initialPaymentMethod ||
+      (tenant.initialPaymentAmount != null && tenant.initialPaymentAmount > 0)
+    );
     const billData = {
       roomId: room.id,
       tenantId: tenant.id,

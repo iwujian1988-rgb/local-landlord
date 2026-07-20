@@ -1,0 +1,21 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts", "tsx"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": "\\.unit-spec\\.tsx?$",
+  "transform": {
+    "^.+\\.(t|j)sx?$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@tarojs/taro$": "<rootDir>/test/__mocks__/taro.ts",
+    "^@tarojs/components$": "<rootDir>/test/__mocks__/components.tsx",
+    "^@tarojs/taro/react$": "<rootDir>/test/__mocks__/empty.ts",
+    "\\.scss$": "<rootDir>/test/__mocks__/empty.ts",
+    "\\.png$": "<rootDir>/test/__mocks__/empty.ts",
+    "\\.jpg$": "<rootDir>/test/__mocks__/empty.ts",
+    "^@local-landlord/shared$": "<rootDir>/../shared/src",
+    "^@local-landlord/shared/(.*)$": "<rootDir>/../shared/src/$1",
+    "^@/(.*)$": "<rootDir>/src/$1"
+  },
+  "setupFiles": ["<rootDir>/test/setup.ts"]
+}

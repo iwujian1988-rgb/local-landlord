@@ -8,8 +8,11 @@
     "start:prod": "node dist/main",
     "build": "nest build",
     "lint": "eslint src/",
-    "test": "jest",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test": "jest --config ./test/jest-unit.json",
+    "test:e2e": "jest --config ./test/jest-e2e.json --no-coverage",
+    "test:unit": "jest --config ./test/jest-unit.json --no-coverage",
+    "test:e2e:mysql": "jest --config ./test/jest-e2e-mysql.json --no-coverage",
+    "test:all": "jest --config ./test/jest-e2e.json --no-coverage && jest --config ./test/jest-unit.json --no-coverage"
   },
   "dependencies": {
     "@local-landlord/shared": "file:../shared",

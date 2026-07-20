@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "jest --config ./jest.config.json",
+    "test:unit": "jest --config ./jest.config.json --no-coverage"
   },
   "dependencies": {
     "@emotion/react": "^11.13.0",

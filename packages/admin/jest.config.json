@@ -1,0 +1,16 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts", "tsx"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": "\\.unit-spec\\.tsx?$",
+  "transform": {
+    "^.+\\.(t|j)sx?$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^@local-landlord/shared$": "<rootDir>/../shared/src",
+    "^@local-landlord/shared/(.*)$": "<rootDir>/../shared/src/$1",
+    "\\.(css|scss)$": "<rootDir>/test/__mocks__/empty.ts",
+    "\\.(png|jpg|svg)$": "<rootDir>/test/__mocks__/empty.ts"
+  },
+  "setupFiles": ["<rootDir>/test/setup.ts"]
+}

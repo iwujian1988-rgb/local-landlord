@@ -1,0 +1,30 @@
+# Docker Compose for running the e2e suite against real MySQL.
+#
+# Usage:
+#   docker compose -f docker-compose.e2e-mysql.yml up -d
+#   pnpm --filter @local-landlord/server test:e2e:mysql
+#   docker compose -f docker-compose.e2e-mysql.yml down
+#
+# Why: SQLite (sqljs) is the default test DB, but production runs MySQL.
+# SQLite doesn't enforce FK constraints, doesn't enforce VARCHAR length,
+# and treats JSON as TEXT. This compose file lets us catch the differences.
+
+version: '3.8'
+
+services:
+  mysql-e2e:
+    image: mysql:8.0
+    container_name: local-landlord-mysql-e2e
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: e2e-root-pwd
+      MYSQL_DATABASE: local_landlord_e2e
+      MYSQL_USER: e2e
+      MYSQL_PASSWORD: e2e-pwd
+    ports:
+      - "13306:3306"
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    tmpfs:
+      # Run MySQL in tmpfs so tests get a clean DB on every container restart
+      # without wearing the disk. (Container restart = DROP DATABASE equivalent.)
+      - /var/lib/mysql

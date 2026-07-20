@@ -2,7 +2,7 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
   "testEnvironment": "node",
-  "testRegex": ".e2e-spec.ts$",
+  "testRegex": "\\.e2e-spec\\.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
@@ -10,5 +10,5 @@
     "^@local-landlord/shared$": "<rootDir>/../shared/src",
     "^@local-landlord/shared/(.*)$": "<rootDir>/../shared/src/$1"
   },
-  "setupFiles": ["<rootDir>/helpers/setup-env.ts"]
+  "setupFiles": ["<rootDir>/helpers/setup-env-mysql.ts"]
 }

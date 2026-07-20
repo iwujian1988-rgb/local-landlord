@@ -96,7 +96,14 @@ import { SchemaCompatService } from './common/schema-compat.service';
     SchemaCompatService,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      // E2E tests log in as a fresh landlord per test for isolation. The auth
+      // endpoint's @Throttle(5/min) blows past that, so tests set
+      // DISABLE_THROTTLE=1 and we substitute a no-op guard. (Cannot be done
+      // via overrideGuard in createTestApp because APP_GUARD providers aren't
+      // visible to that API.)
+      useClass: process.env.DISABLE_THROTTLE === '1'
+        ? (class NoopGuard { canActivate() { return true; } } as any)
+        : ThrottlerGuard,
     },
   ],
 })
