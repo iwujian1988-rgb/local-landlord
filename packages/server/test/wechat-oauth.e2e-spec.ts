@@ -107,7 +107,7 @@ describe('WeChat OAuth 全链路 (mocked)', () => {
     it('TC-WX-ERR-001: 缺 openid → 401', async () => {
       const restore = mockWx({ errcode: 40029, errmsg: 'invalid code' });
       await expect(authService.wechatLogin({ code: 'bad' }))
-        .rejects.toThrow(/微信登录失败|微信登录服务/);
+        .rejects.toThrow(/invalid code|错误码 40029/);
       restore();
     });
 

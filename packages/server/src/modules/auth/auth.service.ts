@@ -83,15 +83,21 @@ export class AuthService {
     try {
       const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
       const raw = await this.httpGetJson(wxUrl);
-      const { openid } = raw;
-      wxData = { openid };
+      const { openid, errcode, errmsg } = raw;
+      wxData = { openid, errcode, errmsg };
     } catch (error) {
       this.logger.error('WeChat code2Session request failed', error);
       throw new UnauthorizedException('微信登录服务暂时不可用，请稍后重试');
     }
 
     if (!wxData.openid) {
-      throw new UnauthorizedException(wxData.errmsg || '微信登录失败');
+      // code2Session returns HTTP 200 even for an invalid code, AppID, or
+      // AppSecret. Keep the WeChat error code in logs and surface it to the
+      // caller so a configuration issue is not indistinguishable from a
+      // generic login failure.
+      this.logger.warn(`WeChat code2Session rejected login: ${wxData.errcode ?? 'unknown'} ${wxData.errmsg ?? ''}`.trim());
+      const details = wxData.errcode ? `（错误码 ${wxData.errcode}）` : '';
+      throw new UnauthorizedException(`${wxData.errmsg || '微信授权失败'}${details}`);
     }
 
     // 2. Find or create landlord by openid
