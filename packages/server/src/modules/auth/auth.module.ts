@@ -17,6 +17,7 @@ import { SingleCharge } from '../rent/single-charge.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
 import { Document } from '../document/document.entity';
+import { FeeItem } from '../fee/fee-item.entity';
 
 @Global()
 @Module({
@@ -42,6 +43,7 @@ import { Document } from '../document/document.entity';
       Bill, BillItem,
       SingleCharge, RentRecord,
       PaymentQr, Document,
+      FeeItem,
     ]),
   ],
   controllers: [AuthController],

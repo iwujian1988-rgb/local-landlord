@@ -10,21 +10,24 @@ import iconPrivacy from '../../assets/my/icon-privacy.png';
 import iconAgreement from '../../assets/my/icon-agreement.png';
 import iconFaq from '../../assets/my/icon-faq.png';
 import { APP_NAME, APP_VERSION, SUPPORT_EMAIL } from '../../constants/app';
+import { del } from '../../services/request';
 import './index.scss';
 
 interface MenuItem {
   icon: string;
   label: string;
   url?: string;
-  action?: 'feedback' | 'about';
+  action?: 'feedback' | 'about' | 'clearTestData';
 }
 
 const menuItems: MenuItem[] = [
   { icon: iconPayment, label: '默认收款码', url: '/pages/qr-code/index' },
   { icon: iconFee, label: '每月收费项目', url: '/pages/fee-setup/index' },
+  { icon: iconFee, label: '房源管理', url: '/pages/property-manage/index' },
   { icon: iconPrivacy, label: '隐私政策', url: '/pages/privacy/index' },
   { icon: iconAgreement, label: '用户协议', url: '/pages/terms/index' },
   { icon: iconAgreement, label: '账户管理', url: '/pages/account/index' },
+  { icon: iconPrivacy, label: '清空测试数据', action: 'clearTestData' },
 ];
 
 const faqItems = [
@@ -85,6 +88,41 @@ export default function My() {
               success: () => Taro.showToast({ title: '邮箱已复制', icon: 'none' }),
             });
           }
+        },
+      });
+      return;
+    }
+    if (item.action === 'clearTestData') {
+      Taro.showModal({
+        title: '清空测试数据？',
+        content: '将删除当前账号的房源、房间、租客、账单、收款记录、附件记录和收款码；账号会保留。',
+        confirmText: '继续',
+        confirmColor: '#d9534f',
+        cancelText: '取消',
+        success: (first) => {
+          if (!first.confirm) return;
+          Taro.showModal({
+            title: '最后确认',
+            content: '数据删除后无法恢复，确认清空吗？',
+            confirmText: '确认清空',
+            confirmColor: '#d9534f',
+            cancelText: '再想想',
+            success: async (second) => {
+              if (!second.confirm) return;
+              try {
+                Taro.showLoading({ title: '清空中...' });
+                await del('/auth/test-data');
+                ['draft_property', 'draft_room_info', 'draft_tenant', 'tempRoomPhotos'].forEach((key) => Taro.removeStorageSync(key));
+                Taro.hideLoading();
+                Taro.showToast({ title: '测试数据已清空', icon: 'success' });
+                setTimeout(() => Taro.reLaunch({ url: '/pages/home/index' }), 1000);
+              } catch (err: any) {
+                Taro.hideLoading();
+                console.error('[My] 清空测试数据失败:', err);
+                Taro.showToast({ title: err?.message || '清空失败，请重试', icon: 'none' });
+              }
+            },
+          });
         },
       });
       return;

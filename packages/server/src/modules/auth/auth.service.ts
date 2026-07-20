@@ -14,6 +14,7 @@ import { SingleCharge } from '../rent/single-charge.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
 import { Document } from '../document/document.entity';
+import { FeeItem } from '../fee/fee-item.entity';
 import { WechatLoginDto } from './dto/wechat-login.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -309,6 +310,19 @@ export class AuthService {
     };
   }
 
+  /** Deletes business data only; the landlord can continue using the account. */
+  async clearTestData(userId: number): Promise<{ clearedAt: string }> {
+    const landlord = await this.landlordRepository.findOne({ where: { id: userId } });
+    if (!landlord) throw new BadRequestException('用户不存在');
+
+    await this.dataSource.transaction(async (manager) => {
+      await this.deleteLandlordBusinessData(manager, userId);
+    });
+
+    this.logger.log(`Landlord ${userId} cleared all test data`);
+    return { clearedAt: new Date().toISOString() };
+  }
+
   /**
    * Daily hard-purge of accounts soft-deleted more than ACCOUNT_RETENTION_DAYS ago.
    * Runs at 02:17 local time — off the top of the hour to avoid colliding with the
@@ -341,36 +355,42 @@ export class AuthService {
    */
   private async hardDeleteLandlord(landlordId: number): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      const propertyIds = (await manager.getRepository(Property)
-        .find({ where: { landlordId }, select: ['id'] }))
-        .map((p) => p.id);
-
-      if (propertyIds.length > 0) {
-        const roomIds = (await manager.getRepository(Room)
-          .find({ where: { propertyId: In(propertyIds) }, select: ['id'] }))
-          .map((r) => r.id);
-
-        if (roomIds.length > 0) {
-          const billIds = (await manager.getRepository(Bill)
-            .find({ where: { roomId: In(roomIds) }, select: ['id'] }))
-            .map((b) => b.id);
-
-          if (billIds.length > 0) {
-            await manager.getRepository(BillItem).delete({ billId: In(billIds) });
-          }
-          await manager.getRepository(Bill).delete({ roomId: In(roomIds) });
-          await manager.getRepository(SingleCharge).delete({ roomId: In(roomIds) });
-          await manager.getRepository(RentRecord).delete({ roomId: In(roomIds) });
-          await manager.getRepository(Tenant).delete({ roomId: In(roomIds) });
-          await manager.getRepository(Document).delete({ roomId: In(roomIds) });
-          await manager.getRepository(Room).delete({ id: In(roomIds) });
-        }
-        await manager.getRepository(Property).delete({ id: In(propertyIds) });
-      }
-
-      await manager.getRepository(PaymentQr).delete({ landlordId });
+      await this.deleteLandlordBusinessData(manager, landlordId);
       await manager.getRepository(Landlord).delete({ id: landlordId });
     });
+  }
+
+  /** Leaf rows first so this works with restrictive foreign keys. */
+  private async deleteLandlordBusinessData(manager: any, landlordId: number): Promise<void> {
+    const propertyIds = (await manager.getRepository(Property)
+      .find({ where: { landlordId }, select: ['id'] }))
+      .map((p: Property) => p.id);
+
+    if (propertyIds.length > 0) {
+      const roomIds = (await manager.getRepository(Room)
+        .find({ where: { propertyId: In(propertyIds) }, select: ['id'] }))
+        .map((r: Room) => r.id);
+
+      if (roomIds.length > 0) {
+        const billIds = (await manager.getRepository(Bill)
+          .find({ where: { roomId: In(roomIds) }, select: ['id'] }))
+          .map((b: Bill) => b.id);
+
+        if (billIds.length > 0) {
+          await manager.getRepository(BillItem).delete({ billId: In(billIds) });
+        }
+        await manager.getRepository(Bill).delete({ roomId: In(roomIds) });
+        await manager.getRepository(SingleCharge).delete({ roomId: In(roomIds) });
+        await manager.getRepository(RentRecord).delete({ roomId: In(roomIds) });
+        await manager.getRepository(Document).delete({ roomId: In(roomIds) });
+        await manager.getRepository(FeeItem).delete({ roomId: In(roomIds) });
+        await manager.getRepository(Tenant).delete({ roomId: In(roomIds) });
+        await manager.getRepository(Room).delete({ id: In(roomIds) });
+      }
+      await manager.getRepository(Property).delete({ id: In(propertyIds) });
+    }
+
+    await manager.getRepository(PaymentQr).delete({ landlordId });
   }
 
   private generateRandomPassword(length = 16): string {

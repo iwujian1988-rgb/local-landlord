@@ -61,6 +61,16 @@ export class AuthController {
     return this.authService.deleteAccount(user.id);
   }
 
+  /** Clears the current landlord's business data while preserving their account. */
+  @Delete('test-data')
+  @UseGuards(JwtAuthGuard)
+  async clearTestData(@CurrentUser() user: any) {
+    if (user.isAdmin) {
+      throw new BadRequestException('管理员账号不能通过此入口清空数据');
+    }
+    return this.authService.clearTestData(user.id);
+  }
+
   @Post('admin/login')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async adminLogin(@Body() dto: AdminLoginDto) {
