@@ -302,10 +302,6 @@ importers:
       typescript:
         specifier: ^5.3.0
         version: 5.9.3
-    devDependencies:
-      vitest:
-        specifier: ^1.6.0
-        version: 1.6.1
 
 packages:
 
