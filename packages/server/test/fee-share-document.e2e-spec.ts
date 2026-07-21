@@ -143,6 +143,8 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
         billId,
       });
       expect(res.body?.code).toBe(0);
+      expect(res.body?.data?.shareUrl).toMatch(/^https?:\/\//);
+      expect(res.body?.data?.shareUrl).toContain('/h5/?token=');
       shareToken = res.body?.data?.token || res.body?.data?.shareToken || '';
       // Token might be in different field — capture whatever's there
       if (!shareToken && res.body?.data) {

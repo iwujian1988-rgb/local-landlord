@@ -5,7 +5,7 @@ import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
 import { useState, useCallback, useMemo } from 'react';
 import { get } from '../../services/request';
-import { generateAndCopyShareLink, forwardSingleChargeShare } from '../../services/share';
+import { forwardBillShare, forwardSingleChargeShare } from '../../services/share';
 import { resolveAsset } from '../../config';
 import './index.scss';
 
@@ -170,16 +170,9 @@ export default function Payment() {
       return;
     }
     setShareLoading(true);
-    const result = await generateAndCopyShareLink(billId);
+    const result = await forwardBillShare(billId);
     setShareLoading(false);
-    if (result) {
-      Taro.showModal({
-        title: '账单链接已复制',
-        content: '粘贴发给租客，租客在微信中打开后可看到账单明细和二维码，长按二维码即可付款',
-        confirmText: '我知道了',
-        showCancel: false,
-      });
-    }
+    if (!result) return;
   }, [shareLoading, billId, singleChargeId]);
 
   const headerLabel = feeType
@@ -255,7 +248,7 @@ export default function Payment() {
               onClick={handleShareH5}
             >
               <Icon name="send" size={28} color="currentColor" />
-              <Text className="payment-btn-text">{shareLoading ? '生成中...' : '发给租客付款'}</Text>
+              <Text className="payment-btn-text">{shareLoading ? '生成中...' : '复制付款链接'}</Text>
             </View>
           </View>
         )}

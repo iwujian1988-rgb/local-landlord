@@ -21,9 +21,10 @@ describe('config — build-time constants', () => {
     expect(ASSET_BASE_URL).toBe('https://example.test');
   });
 
-  it('TC-CFG-003: H5_BASE_URL 默认走 prod 域名', () => {
-    // NODE_ENV=test 不是 development，应走 prod 分支
-    expect(H5_BASE_URL).toContain('tcloudbaseapp.com/h5');
+  it('TC-CFG-003: H5_BASE_URL 默认跟 API 域名保持一致', () => {
+    // NODE_ENV=test 不是 development，应使用去掉 /api 后的同一服务域名，
+    // 避免配置一个证书或部署状态不同的第二个 H5 域名。
+    expect(H5_BASE_URL).toBe('https://example.test/h5');
   });
 });
 

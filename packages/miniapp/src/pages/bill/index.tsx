@@ -342,10 +342,10 @@ export default function Bill() {
 
             <View className="elder-card">
               <Text className="elder-card-title">第三步：发给租客</Text>
-              <Text className="elder-card-desc">发完以后，收到钱再点&ldquo;已收到&rdquo;。</Text>
+              <Text className="elder-card-desc">先复制付款链接，再到租客的微信聊天里粘贴发送。发送前可以预览。</Text>
 
               <View className="bill-action-btn primary" onClick={handleSendBill}>
-                <Text className="bill-action-text">发微信给租客</Text>
+                <Text className="bill-action-text">复制付款链接</Text>
               </View>
 
               <View className="bill-action-btn secondary" onClick={handleCopyText}>

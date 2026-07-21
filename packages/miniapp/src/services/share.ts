@@ -1,10 +1,31 @@
 import Taro from '@tarojs/taro';
 import { post } from './request';
+import { H5_BASE_URL } from '../config';
 
 export interface ShareLinkResult {
   token: string;
   shareUrl: string;
   expiresAt: string;
+}
+
+function isPrivateLocalUrl(value: string): boolean {
+  try {
+    const { hostname } = new URL(value);
+    return hostname === 'localhost'
+      || hostname === '127.0.0.1'
+      || hostname.startsWith('192.168.')
+      || hostname.startsWith('10.')
+      || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+  } catch {
+    return true;
+  }
+}
+
+export function ensureAbsoluteShareUrl(shareUrl: string | undefined, token: string): string {
+  const candidate = shareUrl?.trim() || '';
+  const h5IsLocal = isPrivateLocalUrl(H5_BASE_URL);
+  if (/^https?:\/\//i.test(candidate) && (h5IsLocal || !isPrivateLocalUrl(candidate))) return candidate;
+  return `${H5_BASE_URL.replace(/\/$/, '')}/?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -26,7 +47,7 @@ export async function generateAndCopyShareLink(
       Taro.showToast({ title: res.message || '生成链接失败', icon: 'none' });
       return null;
     }
-    const { shareUrl } = res.data;
+    const shareUrl = ensureAbsoluteShareUrl(res.data.shareUrl, res.data.token);
     await new Promise<void>((resolve, reject) => {
       Taro.setClipboardData({
         data: shareUrl,
@@ -34,7 +55,7 @@ export async function generateAndCopyShareLink(
         fail: () => reject(),
       });
     });
-    return res.data;
+    return { ...res.data, shareUrl };
   } catch (err: any) {
     console.error('[share] generate failed:', err);
     Taro.showToast({ title: err?.message || '生成链接失败，请稍后重试', icon: 'none' });
@@ -64,10 +85,10 @@ export async function forwardBillShare(billId: number): Promise<ShareLinkResult 
 
   return new Promise<ShareLinkResult | null>((resolve) => {
     Taro.showModal({
-      title: '账单链接已准备好',
-      content: '已复制到剪贴板，粘贴发给租客；租客在微信打开后可看到账单和二维码，长按即可付款。',
-      confirmText: '我也预览一下',
-      cancelText: '知道了',
+      title: '付款链接已复制',
+      content: '下一步：打开租客的微信聊天，长按输入框粘贴并发送。租客不用登录，打开链接就能看账单和收款码。',
+      confirmText: '发送前预览',
+      cancelText: '去微信发送',
       success: (res) => {
         if (res.confirm) {
           openShareWebview(result.token);
@@ -89,10 +110,10 @@ export async function forwardSingleChargeShare(singleChargeId: number): Promise<
 
   return new Promise<ShareLinkResult | null>((resolve) => {
     Taro.showModal({
-      title: '收款链接已准备好',
-      content: '已复制到剪贴板，粘贴发给租客；租客在微信打开后可看到金额和二维码，长按即可付款。',
-      confirmText: '我也预览一下',
-      cancelText: '知道了',
+      title: '付款链接已复制',
+      content: '下一步：打开租客的微信聊天，长按输入框粘贴并发送。租客不用登录，打开链接就能看到金额和收款码。',
+      confirmText: '发送前预览',
+      cancelText: '去微信发送',
       success: (res) => {
         if (res.confirm) {
           openShareWebview(result.token);

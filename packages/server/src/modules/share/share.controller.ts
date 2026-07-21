@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, Param, UseGuards, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, BadRequestException, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { ShareService } from './share.service';
 import { GenerateShareDto } from './share.dto';
@@ -17,18 +18,49 @@ export class ShareController {
     private readonly rentService: RentService,
   ) {}
 
+  private buildShareUrl(req: Request, token: string): string {
+    const configuredBaseUrl = process.env.PUBLIC_BASE_URL || process.env.BASE_URL;
+    if (configuredBaseUrl) {
+      const baseUrl = configuredBaseUrl.trim().replace(/\/+$/, '');
+      try {
+        const parsed = new URL(baseUrl);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          throw new Error('unsupported protocol');
+        }
+        return `${baseUrl}/h5/?token=${encodeURIComponent(token)}`;
+      } catch {
+        throw new BadRequestException('PUBLIC_BASE_URL 配置无效');
+      }
+    }
+
+    // Local development and legacy deployments may not have PUBLIC_BASE_URL.
+    // Build an absolute URL from the reverse-proxy headers instead of returning
+    // a host-relative path that cannot be pasted into a tenant's WeChat chat.
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const protocol = (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)?.split(',')[0]?.trim()
+      || req.protocol
+      || 'https';
+    const host = (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost)?.split(',')[0]?.trim()
+      || req.get('host');
+
+    if (!host) {
+      throw new BadRequestException('无法生成租客付款链接，请配置 PUBLIC_BASE_URL');
+    }
+    return `${protocol}://${host}/h5/?token=${encodeURIComponent(token)}`;
+  }
+
   /** Authed: landlord generates a share link for a bill or single_charge */
   @Post('generate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(1)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  async generate(@CurrentUser() user: any, @Body() dto: GenerateShareDto) {
+  async generate(@CurrentUser() user: any, @Body() dto: GenerateShareDto, @Req() req: Request) {
     if (dto.billId) {
       // Verify the bill belongs to this landlord (throws on mismatch)
       await this.billService.verifyBillOwnership(dto.billId, user.id);
       const { token, expiresAt } = await this.shareService.generateForBill(dto.billId);
-      const baseUrl = process.env.BASE_URL || '';
-      const shareUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/h5/?token=${token}` : `/h5/?token=${token}`;
+      const shareUrl = this.buildShareUrl(req, token);
       return { token, shareUrl, expiresAt };
     }
 
@@ -36,8 +68,7 @@ export class ShareController {
       // Verify the single_charge's room belongs to this landlord
       await this.rentService.verifySingleChargeOwnership(dto.singleChargeId, user.id);
       const { token, expiresAt } = await this.shareService.generateForSingleCharge(dto.singleChargeId);
-      const baseUrl = process.env.BASE_URL || '';
-      const shareUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/h5/?token=${token}` : `/h5/?token=${token}`;
+      const shareUrl = this.buildShareUrl(req, token);
       return { token, shareUrl, expiresAt };
     }
 

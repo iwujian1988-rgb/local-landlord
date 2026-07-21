@@ -53,5 +53,5 @@ export const H5_BASE_URL = (() => {
   if (APP_H5_BASE) return APP_H5_BASE;
   const env = process.env.NODE_ENV || 'production';
   if (env === 'development') return 'http://localhost:3000/h5';
-  return 'https://prod-d6gpmvmbod40b5928.sh.run.tcloudbaseapp.com/h5';
+  return `${ASSET_BASE_URL}/h5`;
 })();

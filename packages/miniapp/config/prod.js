@@ -7,7 +7,7 @@ module.exports = {
     // callContainer expects the CloudRun service name, not the generated
     // public-domain prefix (local-landlord-265509).
     APP_CLOUD_SVC: '"local-landlord"',
-    APP_H5_BASE: '"https://prod-d6gpmvmbod40b5928.sh.run.tcloudbaseapp.com/h5"',
+    APP_H5_BASE: '"https://local-landlord-265509-4-1439465517.sh.run.tcloudbase.com/h5"',
   },
   mini: {},
   h5: {},

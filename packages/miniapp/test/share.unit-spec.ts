@@ -7,7 +7,7 @@
  * and the success → modal → preview link.
  */
 import Taro from '@tarojs/taro';
-import { generateAndCopyShareLink, openShareWebview, forwardBillShare } from '../src/services/share';
+import { ensureAbsoluteShareUrl, generateAndCopyShareLink, openShareWebview, forwardBillShare } from '../src/services/share';
 
 const mockRequest = () => (Taro.request as jest.Mock);
 
@@ -76,6 +76,37 @@ describe('generateAndCopyShareLink', () => {
     await generateAndCopyShareLink(undefined, 42);
     const reqBody = mockRequest().mock.calls[0][0].data;
     expect(reqBody).toEqual({ billId: undefined, singleChargeId: 42 });
+  });
+
+  it('TC-SHARE-007: 服务端意外返回相对链接时，复制可打开的完整 H5 地址', async () => {
+    mockRequest().mockResolvedValueOnce({
+      statusCode: 200,
+      data: { code: 0, data: { token: 'tk', shareUrl: '/h5/?token=tk', expiresAt: '2099' } },
+    });
+    (Taro.setClipboardData as jest.Mock).mockImplementation((opts: any) => opts.success());
+
+    const out = await generateAndCopyShareLink(7);
+    expect(out?.shareUrl).toMatch(/^https?:\/\//);
+    expect(Taro.setClipboardData).toHaveBeenCalledWith(expect.objectContaining({ data: expect.stringMatching(/^https?:\/\//) }));
+  });
+});
+
+describe('ensureAbsoluteShareUrl', () => {
+  it('TC-SHARE-URL-001: 保留服务端返回的完整 HTTPS 地址', () => {
+    expect(ensureAbsoluteShareUrl('https://example.com/h5/?token=tk', 'tk'))
+      .toBe('https://example.com/h5/?token=tk');
+  });
+
+  it('TC-SHARE-URL-002: 相对地址改为当前 H5 域名的完整地址', () => {
+    const result = ensureAbsoluteShareUrl('/h5/?token=tk', 'tk');
+    expect(result).toMatch(/^https?:\/\//);
+    expect(result).toContain('/h5/?token=tk');
+  });
+
+  it('TC-SHARE-URL-003: 生产环境不把 localhost 链接复制给租客', () => {
+    const result = ensureAbsoluteShareUrl('http://127.0.0.1:3100/h5/?token=tk', 'tk');
+    expect(result).toMatch(/^https?:\/\//);
+    expect(result).not.toContain('127.0.0.1');
   });
 });
 
