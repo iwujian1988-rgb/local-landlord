@@ -44,13 +44,12 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
 
   // ============ Fee ============
   describe('fee 模块', () => {
-    it('TC-FEE-001: 创建 fee item', async () => {
+    it('TC-FEE-001: 在租房间批量保存完整租约收费规则', async () => {
       const res = await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
-        name: '网费',
-        type: 0,
-        amount: 50,
-        cycleMode: 'monthly',
-        enabled: 1,
+        fees: [
+          { name: '房租', type: 'fixed', amount: 2000, cycleMode: 'rent', enabled: true, isRent: true },
+          { name: '网费', type: 'fixed', amount: 50, cycleMode: 'monthly', enabled: true, isRent: false },
+        ],
       });
       expect(res.body?.code).toBe(0);
     });
@@ -58,32 +57,55 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
     it('TC-FEE-002: 获取 room 的 fee-items', async () => {
       const res = await apiCall(app, 'get', `/api/rooms/${roomId}/fee-items`, auth);
       expect(res.body?.code).toBe(0);
+      expect(res.body.data).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: '房租', isRent: true }),
+        expect.objectContaining({ name: '网费', cycleMode: 'monthly' }),
+      ]));
     });
 
     it('TC-FEE-003: cycleMode=rent 应让账单按 payMonths 倍数计', async () => {
       const res = await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
-        name: '卫生费',
-        type: 0,
-        amount: 30,
-        cycleMode: 'rent',
-        enabled: 1,
+        fees: [
+          { name: '房租', type: 'fixed', amount: 2000, cycleMode: 'rent', enabled: true, isRent: true },
+          { name: '卫生费', type: 'fixed', amount: 30, cycleMode: 'rent', enabled: true, isRent: false },
+        ],
       });
       expect(res.body?.code).toBe(0);
+      const bill = expectOk(await apiCall(app, 'get', `/api/rooms/${roomId}/bills`, auth));
+      expect(bill.billItems).toEqual([expect.objectContaining({ name: '房租', amount: 2000 })]);
+    });
+
+    it('TC-FEE-003B: 批量接口拒绝未知类型和超过两位小数的金额', async () => {
+      const invalidType = await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
+        fees: [
+          { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true },
+          { name: '错误项目', type: 'guess', amount: 10, enabled: true, isRent: false },
+        ],
+      });
+      expect(invalidType.body?.code).not.toBe(0);
+
+      const invalidPrecision = await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
+        fees: [
+          { name: '房租', type: 'fixed', amount: 2000.001, enabled: true, isRent: true },
+        ],
+      });
+      expect(invalidPrecision.body?.code).not.toBe(0);
     });
 
     it('TC-FEE-004: 排序 fee-items', async () => {
-      // Create 2 items then sort
-      const r1 = await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
+      // Legacy single-item CRUD remains available only for a vacant-room template.
+      const vacantRoomId = await createRoom(app, auth, propertyId, { rent: 1800, name: 'vacant-fee-template' });
+      const r1 = await apiCall(app, 'post', `/api/rooms/${vacantRoomId}/fee-items`, auth, {
         name: 'A项', type: 0, amount: 10, enabled: 1,
       });
-      const r2 = await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
+      const r2 = await apiCall(app, 'post', `/api/rooms/${vacantRoomId}/fee-items`, auth, {
         name: 'B项', type: 0, amount: 20, enabled: 1,
       });
       const id1 = r1.body.data.id;
       const id2 = r2.body.data.id;
 
       // Sort endpoint takes { ids: number[] } — order in array determines sortOrder.
-      const sortRes = await apiCall(app, 'put', `/api/rooms/${roomId}/fee-items/sort`, auth, {
+      const sortRes = await apiCall(app, 'put', `/api/rooms/${vacantRoomId}/fee-items/sort`, auth, {
         ids: [id2, id1],
       });
       expect(sortRes.body?.code).toBe(0);

@@ -10,6 +10,7 @@ import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
 import { SystemConfig } from '../system/system-config.entity';
 
 @Injectable()
@@ -163,17 +164,18 @@ export class SubscriptionService {
       }
 
       const existing = await this.billRepository.findOne({
-        where: { roomId: tenant.roomId, period: monthStr },
+        where: { roomId: tenant.roomId, tenantId: tenant.id, period: monthStr },
       });
       if (existing) continue;
 
       const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
       if (!room) continue;
 
-      const feeItems = await this.feeItemRepository.find({
+      const legacyFeeItems = await this.feeItemRepository.find({
         where: { roomId: room.id },
         order: { sortOrder: 'ASC' },
       });
+      const feeItems = resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0);
 
       const items: { feeName: string; amount: number }[] = [];
       let totalAmount = 0;
@@ -181,14 +183,12 @@ export class SubscriptionService {
       if (feeItems.length > 0) {
         for (const fee of feeItems) {
           if (!fee.enabled) continue;
-          const baseAmt = Number(fee.amount) || 0;
           // Fixed items (房租, fixed网费 etc.) get multiplied by payMonths to
           // collect for the whole cycle upfront — UNLESS the fee is marked
           // cycleMode='monthly' (e.g. 停车管理费 charged per-month regardless of
           // how many months the rent cycle covers). Manual items (水电, 维修)
           // start at 0 — landlord fills in actual values before sending.
-          const multiply = fee.type === 0 && fee.cycleMode !== 'monthly';
-          const amt = fee.type === 0 ? (multiply ? baseAmt * payMonths : baseAmt) : 0;
+          const amt = feeRuleCycleAmount(fee, payMonths);
           items.push({ feeName: fee.name, amount: amt });
           totalAmount += amt;
         }
@@ -307,7 +307,7 @@ export class SubscriptionService {
       }
 
       const bill = await this.billRepository.findOne({
-        where: { roomId: tenant.roomId, period: monthStr },
+        where: { roomId: tenant.roomId, tenantId: tenant.id, period: monthStr },
       });
       if (!bill || bill.status !== 0) continue;
 
@@ -669,6 +669,7 @@ export class SubscriptionService {
         .createQueryBuilder('bill')
         .where('bill.roomId IN (:...roomIds)', { roomIds })
         .andWhere('bill.period = :period', { period: monthStr })
+        .andWhere('bill.status != :cancelled', { cancelled: 4 })
         .getMany();
 
       if (bills.length === 0) continue;
@@ -677,7 +678,7 @@ export class SubscriptionService {
       // status: 0=未收, 1=已收, 2=逾期, 3=部分付款
       // For collected amount: full bills contribute totalAmount, partial bills contribute paidAmount only
       const totalCollected = bills.reduce((sum, b) => {
-        if (b.status === 1 || b.status === 2) return sum + Number(b.totalAmount);
+        if (b.status === 1) return sum + Number(b.totalAmount);
         if (b.status === 3) return sum + (Number(b.paidAmount) || 0);
         return sum;
       }, 0);

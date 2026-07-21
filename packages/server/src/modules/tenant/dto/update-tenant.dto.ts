@@ -1,5 +1,6 @@
-import { IsString, IsNumber, IsOptional, Min, Max, IsDateString, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, Min, Max, IsDateString, MaxLength, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { TenantFeeRuleDto } from './tenant-fee-rule.dto';
 
 export class UpdateTenantDto {
   @IsOptional()
@@ -43,4 +44,10 @@ export class UpdateTenantDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TenantFeeRuleDto)
+  feeItems?: TenantFeeRuleDto[];
 }

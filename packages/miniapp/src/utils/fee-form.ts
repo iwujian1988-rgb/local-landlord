@@ -30,3 +30,12 @@ export function getRoomNameFromResponse(data: unknown): string {
   const room = (data as any)?.room || data;
   return typeof (room as any)?.name === 'string' ? (room as any).name : '';
 }
+
+export function calculateFeeCycleTotal(fees: FeeFormItem[], payMonths: number): number {
+  const total = fees.reduce((sum, fee) => {
+    if (!fee.enabled || fee.type === 'manual') return sum;
+    const amount = Number(fee.amount) || 0;
+    return sum + Math.round(amount * (fee.cycleMode === 'monthly' ? 1 : Math.max(1, payMonths)) * 100) / 100;
+  }, 0);
+  return Math.round(total * 100) / 100;
+}

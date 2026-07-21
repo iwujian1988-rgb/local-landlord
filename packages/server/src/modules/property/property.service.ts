@@ -8,6 +8,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
 import { Document } from '../document/document.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
@@ -194,14 +195,13 @@ export class PropertyService {
       const tenant = await this.tenantRepository.findOne({ where: { roomId: room.id, status: 1 } });
       if (!tenant) continue;
       const payMonths = tenant.payMonths ?? 1;
-      const feeItems = await this.feeItemRepository.find({ where: { roomId: room.id, enabled: 1 } });
+      const legacyFeeItems = await this.feeItemRepository.find({ where: { roomId: room.id, enabled: 1 } });
+      const feeItems = resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0);
       let roomExpected = 0;
       for (const item of feeItems) {
-        if (item.type === 0) {
-          roomExpected += (Number(item.amount) || 0) * (item.cycleMode === 'monthly' ? 1 : payMonths);
-        }
+        roomExpected += feeRuleCycleAmount(item, payMonths);
       }
-      monthlyExpectedIncome += roomExpected > 0 ? roomExpected : (Number(room.rent) || 0) * payMonths;
+      monthlyExpectedIncome += roomExpected;
     }
 
     return { roomCount, rentedCount, vacantCount, overdueCount, monthlyExpectedIncome };

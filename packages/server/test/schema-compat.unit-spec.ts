@@ -1,7 +1,7 @@
 /**
  * SchemaCompatService unit tests.
  *
- * The service runs on application bootstrap and reconciles 38 missing MySQL
+ * The service runs on application bootstrap and reconciles missing MySQL
  * columns. It must:
  *   - Run only against MySQL (skip on sqljs/sqlite)
  *   - Query INFORMATION_SCHEMA once per expected column
@@ -30,6 +30,7 @@ class FakeDataSource {
   public alters: string[] = [];
   // Per-(table,column) presence map — tests populate this.
   public existingColumns = new Set<string>();
+  public duplicateAlterOnce = false;
 
   constructor(type: any) {
     this.options = { type, database: 'test_db' };
@@ -47,6 +48,13 @@ class FakeDataSource {
     // ALTER TABLE `xxx` ADD COLUMN ...
     if (/^ALTER\s+TABLE/i.test(sql)) {
       this.alters.push(sql);
+      if (this.duplicateAlterOnce) {
+        this.duplicateAlterOnce = false;
+        const error: any = new Error('Duplicate column');
+        error.code = 'ER_DUP_FIELDNAME';
+        error.errno = 1060;
+        throw error;
+      }
       return [];
     }
     return [];
@@ -171,6 +179,14 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     // fee_item/bill/payment_qr/single_charge/document. If this drops, someone
     // likely removed a column without removing the entity field that needs it.
     expect(COLUMN_COUNT).toBeGreaterThanOrEqual(38);
+  });
+
+  it('TC-SCHEMA-011: CloudRun 并发启动时重复列不应导致实例启动失败', async () => {
+    const ds = new FakeDataSource('mysql');
+    ds.duplicateAlterOnce = true;
+    const svc = makeService(ds);
+    await expect(svc.onApplicationBootstrap()).resolves.toBeUndefined();
+    expect(ds.alters.length).toBe(COLUMN_COUNT);
   });
 });
 

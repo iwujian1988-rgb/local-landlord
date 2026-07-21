@@ -9,7 +9,11 @@ import {
   createTenant,
   createBill,
   currentMonthStr,
+  expectOk,
 } from './helpers/app';
+import { DataSource } from 'typeorm';
+import { Bill } from '../src/modules/bill/bill.entity';
+import { BillItem } from '../src/modules/bill/bill-item.entity';
 
 /**
  * Cron / scheduled-task behavior tests.
@@ -27,12 +31,14 @@ describe('Cron behavior (e2e)', () => {
   let auth: () => { Authorization: string };
   let adminAuth: () => { Authorization: string };
   let propertyId: number;
+  let dataSource: DataSource;
 
   beforeAll(async () => {
     app = await createTestApp();
     auth = await loginAsLandlord(app, `dev_cron_${Date.now()}`);
     adminAuth = await loginAsAdmin(app);
     propertyId = await createProperty(app, auth);
+    dataSource = app.get(DataSource);
   });
 
   afterAll(async () => {
@@ -139,6 +145,35 @@ describe('Cron behavior (e2e)', () => {
         {},
       );
       expect(res.body?.code).toBe(0);
+    });
+
+    it('TC-CRON-AUTO-002: 后续自动账单读取租约收费规则', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: '规则自动账单房' });
+      await expectOk(await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {
+        name: '规则自动账单租客', phone: '13911110003', moveInDate: `${currentMonthStr()}-01`,
+        rentDay: new Date().getDate(), payMonths: 1,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true, cycleMode: 'rent' },
+          { name: '物业费', type: 'fixed', amount: 150, enabled: true, isRent: false, cycleMode: 'monthly' },
+          { name: '水费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'rent' },
+        ],
+      }));
+
+      // Remove the auto-created first bill to simulate the next due-cycle job.
+      const billRepo = dataSource.getRepository(Bill);
+      const firstBill = await billRepo.findOne({ where: { roomId: rId } });
+      expect(firstBill).toBeTruthy();
+      await dataSource.getRepository(BillItem).delete({ billId: firstBill!.id });
+      await billRepo.delete({ id: firstBill!.id });
+
+      expectOk(await apiCall(app, 'post', '/api/subscription/trigger-auto-bills', adminAuth, {}));
+      const generated = await billRepo.findOne({ where: { roomId: rId }, relations: ['items'] });
+      expect(Number(generated?.totalAmount)).toBe(2150);
+      expect(generated?.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ feeName: '房租', amount: 2000 }),
+        expect.objectContaining({ feeName: '物业费', amount: 150 }),
+        expect.objectContaining({ feeName: '水费', amount: 0 }),
+      ]));
     });
   });
 

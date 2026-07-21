@@ -6,6 +6,8 @@ import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { CreateFeeItemDto } from './dto/create-fee-item.dto';
 import { UpdateFeeItemDto } from './dto/update-fee-item.dto';
+import { Tenant } from '../tenant/tenant.entity';
+import { feeEntitiesToRules, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from './fee-rules';
 
 @Injectable()
 export class FeeService {
@@ -16,6 +18,8 @@ export class FeeService {
     private readonly roomRepository: Repository<Room>,
     @InjectRepository(Property)
     private readonly propertyRepository: Repository<Property>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepository: Repository<Tenant>,
   ) {}
 
   /** Verify room belongs to landlord */
@@ -37,71 +41,55 @@ export class FeeService {
 
   /** Get fee items for a room (with type as string) */
   async findByRoom(roomId: number) {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+    const tenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
     const items = await this.feeItemRepository.find({
       where: { roomId },
       order: { sortOrder: 'ASC' },
     });
-    return items.map(f => ({
-      id: f.id,
-      name: f.name,
-      type: f.type === 0 ? 'fixed' : 'manual',
-      amount: Number(f.amount) || 0,
-      enabled: !!f.enabled,
-      isRent: !!f.isRent,
-      cycleMode: (f.cycleMode === 'monthly' ? 'monthly' : 'rent'),
-    }));
+    return feeRulesToResponse(resolveFeeRules(tenant?.feeRules, items, Number(room.rent) || 0));
   }
 
   /** Batch save fee items for a room */
   async batchSave(roomId: number, fees: any[]) {
-    for (const fee of fees) {
-      if (!fee.name || !fee.name.trim()) {
-        throw new BadRequestException('费用项名称不能为空');
-      }
-      if (fee.amount !== undefined && fee.amount < 0) {
-        throw new BadRequestException('费用金额不能为负数');
-      }
+    const rules = normalizeFeeRules(fees);
+    const tenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
+    if (tenant) {
+      tenant.feeRules = rules;
+      await this.tenantRepository.save(tenant);
+      return feeRulesToResponse(rules);
     }
 
-    // Delete existing fee items for this room
+    // Vacant-room settings act as a reusable template for the next tenancy.
     await this.feeItemRepository.delete({ roomId });
 
-    // Create new fee items
-    const entities = fees.map((fee, index) => this.feeItemRepository.create({
+    const entities = rules.map((fee, index) => this.feeItemRepository.create({
       roomId,
       name: fee.name,
       // Accept both the documented 'fixed'/'manual' strings and the legacy
       // 0/1 numbers. Anything else is rejected so silent coercion can't turn
       // a typo'd type into the wrong billing mode (which would zero out the
       // amount on the auto-generated bill).
-      type: this.normalizeFeeType(fee.type),
+      type: fee.type,
       // Coerce to number — frontend input may arrive as string, and relying on
       // SQLite's implicit string→decimal coercion can silently lose precision.
       amount: Number(fee.amount) || 0,
-      enabled: fee.enabled !== false ? 1 : 0,
-      isRent: fee.isRent ? 1 : 0,
+      enabled: fee.enabled,
+      isRent: fee.isRent,
       // cycleMode only matters for fixed-type fees (controls ×payMonths or not).
       // Default to 'rent' (matches historical behavior) when missing.
-      cycleMode: fee.type === 'manual' || fee.type === 1
-        ? 'rent'
-        : this.normalizeCycleMode(fee.cycleMode),
+      cycleMode: fee.cycleMode,
       sortOrder: index,
     }));
 
     const saved = await this.feeItemRepository.save(entities);
-    return saved.map(f => ({
-      id: f.id,
-      name: f.name,
-      type: f.type === 0 ? 'fixed' : 'manual',
-      amount: Number(f.amount) || 0,
-      enabled: !!f.enabled,
-      isRent: !!f.isRent,
-      cycleMode: (f.cycleMode === 'monthly' ? 'monthly' : 'rent'),
-    }));
+    return feeRulesToResponse(feeEntitiesToRules(saved));
   }
 
   /** Add fee item */
   async create(roomId: number, dto: CreateFeeItemDto): Promise<FeeItem> {
+    await this.assertVacantTemplateRoom(roomId);
     const maxOrder = await this.feeItemRepository
       .createQueryBuilder('fi')
       .where('fi.roomId = :roomId', { roomId })
@@ -124,6 +112,7 @@ export class FeeService {
   async update(id: number, dto: UpdateFeeItemDto): Promise<FeeItem> {
     const feeItem = await this.feeItemRepository.findOne({ where: { id } });
     if (!feeItem) throw new NotFoundException('费用项不存在');
+    await this.assertVacantTemplateRoom(feeItem.roomId);
     if (dto.name !== undefined && !dto.name.trim()) {
       throw new BadRequestException('费用项名称不能为空');
     }
@@ -138,11 +127,13 @@ export class FeeService {
   async remove(id: number): Promise<void> {
     const feeItem = await this.feeItemRepository.findOne({ where: { id } });
     if (!feeItem) throw new NotFoundException('费用项不存在');
+    await this.assertVacantTemplateRoom(feeItem.roomId);
     await this.feeItemRepository.remove(feeItem);
   }
 
   /** Sort: reorder fee items by given id array */
   async sortByRoom(roomId: number, ids: number[]): Promise<void> {
+    await this.assertVacantTemplateRoom(roomId);
     for (let i = 0; i < ids.length; i++) {
       await this.feeItemRepository.update({ id: ids[i], roomId }, { sortOrder: i });
     }
@@ -166,5 +157,12 @@ export class FeeService {
   private normalizeCycleMode(m: unknown): string {
     if (m === 'monthly') return 'monthly';
     return 'rent';
+  }
+
+  private async assertVacantTemplateRoom(roomId: number): Promise<void> {
+    const activeTenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
+    if (activeTenant) {
+      throw new BadRequestException('在租房间请一次性保存完整收费规则');
+    }
   }
 }

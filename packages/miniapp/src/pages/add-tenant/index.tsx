@@ -5,6 +5,8 @@ import { get, post, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
 import { withInitialPayment, withOptionalTenantDates } from '../../utils/tenant-form';
 import { firstFormError, validateTenantForm } from '../../utils/form-validation';
+import { calculateFeeCycleTotal, FeeFormItem, normalizeFeeItems } from '../../utils/fee-form';
+import { validateFeeForm } from '../../utils/form-validation';
 import './index.scss';
 
 const rentDayLabels = Array.from({ length: 28 }, (_, i) => `${i + 1}号`);
@@ -83,6 +85,11 @@ export default function AddTenant() {
   const inferredRef = useRef(false);
   const saveInFlightRef = useRef(false);
   const saveCompletedRef = useRef(false);
+  const feeDraftRestoredRef = useRef(false);
+  const initialAmountEditedRef = useRef(false);
+  const [feeItems, setFeeItems] = useState<FeeFormItem[]>([]);
+  const [feesLoading, setFeesLoading] = useState(false);
+  const [feesLoadError, setFeesLoadError] = useState(false);
 
   // P0-A: 入住实收
   const [initialReceived, setInitialReceived] = useState<boolean>(false);
@@ -91,6 +98,21 @@ export default function AddTenant() {
   const [initialDate, setInitialDate] = useState<string>(todayISO());
   // P0-C: 入住水电读数
   const [moveInReading, setMoveInReading] = useState<string>('');
+
+  const loadFeeItems = useCallback(async () => {
+    if (urlRoomId <= 0) return;
+    setFeesLoading(true);
+    setFeesLoadError(false);
+    try {
+      const res = await get<unknown>(`/rooms/${urlRoomId}/fee-items`);
+      if (!feeDraftRestoredRef.current) setFeeItems(normalizeFeeItems(res.data));
+    } catch (error) {
+      console.error('[AddTenant] 加载收费项目失败:', error);
+      setFeesLoadError(true);
+    } finally {
+      setFeesLoading(false);
+    }
+  }, [urlRoomId]);
 
   // Load room info
   useEffect(() => {
@@ -101,8 +123,9 @@ export default function AddTenant() {
           setCurrentRoomRent(Number(res.data.rent) || 0);
         }
       }).catch(() => {});
+      loadFeeItems();
     }
-  }, [urlRoomId]);
+  }, [urlRoomId, loadFeeItems]);
 
   // Pre-fill for edit mode
   useEffect(() => {
@@ -135,6 +158,7 @@ export default function AddTenant() {
           if (found.moveInReading) {
             setMoveInReading(found.moveInReading);
           }
+          if (Array.isArray(found.feeItems)) setFeeItems(normalizeFeeItems(found.feeItems));
         }
       }).catch(() => {});
     }
@@ -153,7 +177,7 @@ export default function AddTenant() {
     if (tenantId <= 0) {
       Taro.setNavigationBarTitle({ title: '登记租客' });
       const draft: any = Taro.getStorageSync('draft_tenant');
-      if (draft) {
+      if (draft && Number(draft.roomId) === urlRoomId) {
         setName(draft.name || '');
         setPhone(draft.phone || '');
         setMoveInDate(draft.moveInDate || '');
@@ -167,7 +191,13 @@ export default function AddTenant() {
         if (draft.initialMethodIdx !== undefined) setInitialMethodIdx(draft.initialMethodIdx);
         if (draft.initialDate) setInitialDate(draft.initialDate);
         if (draft.moveInReading) setMoveInReading(draft.moveInReading);
+        if (Array.isArray(draft.feeItems)) {
+          feeDraftRestoredRef.current = true;
+          setFeeItems(normalizeFeeItems(draft.feeItems));
+        }
         Taro.showToast({ title: '已恢复未完成的草稿', icon: 'none', duration: 2000 });
+      } else if (draft) {
+        Taro.removeStorageSync('draft_tenant');
       }
     }
   }, []);
@@ -175,9 +205,11 @@ export default function AddTenant() {
   useDidHide(() => {
     if (tenantId <= 0 && !saveCompletedRef.current) {
       const formData = {
+        roomId: urlRoomId,
         name, phone, moveInDate, contractEndDate,
         rentDay, deposit, note, paymentIdx,
         initialReceived, initialAmount, initialMethodIdx, initialDate, moveInReading,
+        feeItems,
       };
       if (name || phone) {
         Taro.setStorageSync('draft_tenant', formData);
@@ -191,11 +223,11 @@ export default function AddTenant() {
       const { depositMonths, payMonths: pm } = PAYMENT_PRESETS[idx];
       setDeposit(String(currentRoomRent * depositMonths));
       // 同步更新实收金额默认值（押X付Y 的首期房租 = 月租 × payMonths）
-      if (initialReceived) {
-        setInitialAmount(String(currentRoomRent * pm));
+      if (initialReceived && !initialAmountEditedRef.current) {
+        setInitialAmount(String(calculateFeeCycleTotal(feeItems, pm)));
       }
     }
-  }, [currentRoomRent, initialReceived]);
+  }, [currentRoomRent, initialReceived, feeItems]);
 
   const handleToggleInitialReceived = useCallback((on: boolean) => {
     setInitialReceived(on);
@@ -204,17 +236,46 @@ export default function AddTenant() {
       const pm = paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX
         ? PAYMENT_PRESETS[paymentIdx].payMonths
         : loadedPayMonths;
-      setInitialAmount(String(currentRoomRent * pm));
+      initialAmountEditedRef.current = false;
+      setInitialAmount(String(calculateFeeCycleTotal(feeItems, pm)));
     }
-  }, [initialAmount, currentRoomRent, paymentIdx, loadedPayMonths]);
+  }, [initialAmount, currentRoomRent, paymentIdx, loadedPayMonths, feeItems]);
+
+  const updateFee = useCallback((index: number, patch: Partial<FeeFormItem>) => {
+    setFeeItems(prev => prev.map((fee, i) => i === index ? { ...fee, ...patch } : fee));
+  }, []);
+
+  const addFee = useCallback((type: 'fixed' | 'manual') => {
+    setFeeItems(prev => [...prev, {
+      name: '', type, amount: type === 'manual' ? '0' : '', enabled: true,
+      isRent: false, cycleMode: 'rent',
+    }]);
+  }, []);
+
+  const removeFee = useCallback((index: number) => {
+    setFeeItems(prev => prev.filter((fee, i) => i !== index || fee.isRent));
+  }, []);
+
+  useEffect(() => {
+    if (!initialReceived || initialAmountEditedRef.current || feeItems.length === 0) return;
+    const payMonths = paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX
+      ? PAYMENT_PRESETS[paymentIdx].payMonths
+      : loadedPayMonths;
+    setInitialAmount(String(calculateFeeCycleTotal(feeItems, payMonths)));
+  }, [feeItems, initialReceived, paymentIdx, loadedPayMonths]);
 
   const handleSave = useCallback(async () => {
     if (saveInFlightRef.current) return;
+    if (feesLoading || feesLoadError) {
+      Taro.showToast({ title: feesLoadError ? '请先重新加载收费项目' : '收费项目正在加载', icon: 'none' });
+      return;
+    }
     setErrors({});
     const validationErrors = validateTenantForm({
       name, phone, roomId: urlRoomId, moveInDate, contractEndDate, deposit,
       initialReceived, initialAmount, initialDate, moveInReading,
     });
+    Object.assign(validationErrors, validateFeeForm(feeItems));
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       Taro.showToast({ title: firstFormError(validationErrors), icon: 'none' });
@@ -237,6 +298,11 @@ export default function AddTenant() {
       deposit: deposit ? Number(deposit) : undefined,
       note: note.trim() || undefined,
       status: 1,
+      feeItems: feeItems.map(fee => ({
+        ...fee,
+        name: fee.name.trim(),
+        amount: fee.type === 'manual' ? 0 : Number(fee.amount),
+      })),
     }, { moveInDate, contractEndDate });
 
     // P0-A: 入住实收（仅新建租客时附带；编辑模式不重新触发账单生成）
@@ -295,7 +361,7 @@ export default function AddTenant() {
     }
   }, [isEdit, tenantId, name, phone, urlRoomId, rentDay, moveInDate, contractEndDate,
     deposit, note, paymentIdx, loadedPayMonths, initialReceived, initialAmount,
-    initialMethodIdx, initialDate, moveInReading]);
+    initialMethodIdx, initialDate, moveInReading, feeItems, feesLoading, feesLoadError]);
 
   return (
     <View className="page-add-tenant">
@@ -426,15 +492,90 @@ export default function AddTenant() {
         )}
       </View>
 
+      <View className="form-group">
+        <Text className="form-label">本次租约收费项目 *</Text>
+        <Text className="fee-section-hint">确认这位租客每个收费周期需要支付哪些项目。固定费用自动计算，水电等可设为出账时手填。</Text>
+        {feesLoading && <Text className="fee-section-status">正在加载收费项目…</Text>}
+        {feesLoadError && (
+          <View className="fee-load-error" onClick={loadFeeItems}>
+            <Text>收费项目加载失败，点此重试</Text>
+          </View>
+        )}
+        <View className="tenant-fee-list">
+          {feeItems.map((fee, index) => (
+            <View className="tenant-fee-card" key={`${fee.name}-${index}`}>
+              <View className="tenant-fee-head">
+                {fee.isRent ? (
+                  <Text className="tenant-fee-name readonly">房租</Text>
+                ) : (
+                  <Input
+                    className="tenant-fee-name"
+                    type="text"
+                    value={fee.name}
+                    placeholder="收费项目名称"
+                    maxlength={32}
+                    onInput={e => updateFee(index, { name: e.detail.value })}
+                  />
+                )}
+                {!fee.isRent && (
+                  <Text className="tenant-fee-remove" onClick={() => removeFee(index)}>删除</Text>
+                )}
+              </View>
+
+              {!fee.isRent && (
+                <View className="tenant-fee-types">
+                  <View className={`tenant-fee-chip${fee.type === 'fixed' ? ' active' : ''}`} onClick={() => updateFee(index, { type: 'fixed' })}>
+                    <Text>固定金额</Text>
+                  </View>
+                  <View className={`tenant-fee-chip${fee.type === 'manual' ? ' active' : ''}`} onClick={() => updateFee(index, { type: 'manual', amount: '0' })}>
+                    <Text>出账时手填</Text>
+                  </View>
+                </View>
+              )}
+
+              {fee.type === 'fixed' && (
+                <View className="tenant-fee-amount-row">
+                  <Input
+                    className="tenant-fee-amount-input"
+                    type="digit"
+                    value={fee.amount}
+                    placeholder="0"
+                    onInput={e => updateFee(index, { amount: e.detail.value })}
+                  />
+                  <Text className="tenant-fee-unit">元</Text>
+                </View>
+              )}
+
+              {!fee.isRent && fee.type === 'fixed' && (
+                <View className="tenant-fee-cycle">
+                  <Text className="tenant-fee-cycle-label">收取方式</Text>
+                  <View className={`tenant-fee-chip${fee.cycleMode === 'rent' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'rent' })}>
+                    <Text>跟房租周期</Text>
+                  </View>
+                  <View className={`tenant-fee-chip${fee.cycleMode === 'monthly' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'monthly' })}>
+                    <Text>每次只收1份</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
+        {errors.fee && <Text className="form-error-text">{errors.fee}</Text>}
+        <View className="tenant-fee-add-row">
+          <View className="tenant-fee-add" onClick={() => addFee('fixed')}><Text>+ 固定费用</Text></View>
+          <View className="tenant-fee-add" onClick={() => addFee('manual')}><Text>+ 手填费用</Text></View>
+        </View>
+      </View>
+
       {!isEdit && (
         <View className="form-group">
-          <Text className="form-label">本次实收（首期房租）</Text>
+          <Text className="form-label">本次实收（首期账单）</Text>
           <View
             className={`form-toggle-row${initialReceived ? ' on' : ''}`}
             onClick={() => handleToggleInitialReceived(!initialReceived)}
           >
             <Text className="form-toggle-text">
-              {initialReceived ? '✓ 已收' : '○ 本次入住已收房租'}
+              {initialReceived ? '✓ 已收' : '○ 本次入住已收首期费用'}
             </Text>
             <Text className="form-toggle-hint">
               {initialReceived ? '系统将自动建第一笔账单并标记为已收' : '勾选后自动建账单，未勾选则只建未收账单'}
@@ -449,8 +590,8 @@ export default function AddTenant() {
                     className="form-input suffix-input"
                     type="digit"
                     value={initialAmount}
-                    onInput={(e) => setInitialAmount(e.detail.value)}
-                    placeholder={currentRoomRent > 0 ? `默认 ${currentRoomRent * (paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX ? PAYMENT_PRESETS[paymentIdx].payMonths : loadedPayMonths)}` : '0'}
+                    onInput={(e) => { initialAmountEditedRef.current = true; setInitialAmount(e.detail.value); }}
+                    placeholder={`默认 ${calculateFeeCycleTotal(feeItems, paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX ? PAYMENT_PRESETS[paymentIdx].payMonths : loadedPayMonths)}`}
                     placeholderStyle="color: #B5A99A"
                   />
                   <Text className="input-suffix">元</Text>

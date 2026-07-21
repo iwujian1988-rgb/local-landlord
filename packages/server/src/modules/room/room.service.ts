@@ -6,6 +6,7 @@ import { Room } from './room.entity';
 import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { feeRulesToResponse, resolveFeeRules } from '../fee/fee-rules';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
 import { Document } from '../document/document.entity';
@@ -96,14 +97,11 @@ export class RoomService {
     for (const room of rooms) {
       const tenant = tenantMap.get(room.id);
       const prop = propertyMap.get(room.propertyId);
-      const fees = (feeMap.get(room.id) || []).map(f => ({
-        id: f.id,
-        name: f.name,
-        type: f.type === 0 ? 'fixed' : 'manual',
-        amount: Number(f.amount) || 0,
-        enabled: !!f.enabled,
-        isRent: !!f.isRent,
-      }));
+      const fees = feeRulesToResponse(resolveFeeRules(
+        tenant?.feeRules,
+        feeMap.get(room.id) || [],
+        Number(room.rent) || 0,
+      ));
 
       const rentDay = tenant?.rentDay ?? 10;
       const now = new Date();
@@ -112,7 +110,7 @@ export class RoomService {
       const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       // Covering bill (multi-month aware), exclude cancelled
-      const currentBill = await this.billRepository
+      const currentBillQuery = this.billRepository
         .createQueryBuilder('bill')
         .where('bill.room_id = :rid', { rid: room.id })
         .andWhere('bill.status != :cancelled', { cancelled: 4 })
@@ -120,7 +118,11 @@ export class RoomService {
           '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
           'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
           { monthStr },
-        )
+        );
+      if (tenant) {
+        currentBillQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: tenant.id });
+      }
+      const currentBill = await currentBillQuery
         .orderBy('bill.created_at', 'DESC')
         .getOne();
 
@@ -192,7 +194,8 @@ export class RoomService {
     const currentBills: Bill[] = [];
     if (roomIds.length > 0) {
       for (const rid of roomIds) {
-        const bill = await this.billRepository
+        const tenant = tenantMap.get(rid);
+        const billQuery = this.billRepository
           .createQueryBuilder('bill')
           .where('bill.room_id = :rid', { rid })
           .andWhere('bill.status != :cancelled', { cancelled: 4 })
@@ -200,7 +203,11 @@ export class RoomService {
             '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
             'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
             { monthStr },
-          )
+          );
+        if (tenant) {
+          billQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: tenant.id });
+        }
+        const bill = await billQuery
           .orderBy('bill.created_at', 'DESC')
           .getOne();
         if (bill) currentBills.push(bill);
@@ -272,10 +279,11 @@ export class RoomService {
     });
     const activeTenant = tenants.find(t => t.status === 1) || null;
 
-    const feeItems = await this.feeItemRepository.find({
+    const legacyFeeItems = await this.feeItemRepository.find({
       where: { roomId: id },
       order: { sortOrder: 'ASC' },
     });
+    const feeItems = resolveFeeRules(activeTenant?.feeRules, legacyFeeItems, Number(room.rent) || 0);
 
     const latestBill = await this.billRepository.findOne({
       where: { roomId: id },
@@ -326,7 +334,7 @@ export class RoomService {
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     // Covering bill (multi-month aware), exclude cancelled
-    const currentBill = await this.billRepository
+    const currentBillQuery = this.billRepository
       .createQueryBuilder('bill')
       .where('bill.room_id = :rid', { rid: id })
       .andWhere('bill.status != :cancelled', { cancelled: 4 })
@@ -334,7 +342,11 @@ export class RoomService {
         '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
         'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
         { monthStr },
-      )
+      );
+    if (activeTenant) {
+      currentBillQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: activeTenant.id });
+    }
+    const currentBill = await currentBillQuery
       .orderBy('bill.created_at', 'DESC')
       .getOne();
     const rentDay = activeTenant?.rentDay ?? 10;
@@ -395,14 +407,7 @@ export class RoomService {
       } : null,
       // Partial-payment warning for checkout confirm modal
       activePartialPayment,
-      feeItems: feeItems.map(f => ({
-        id: f.id,
-        name: f.name,
-        type: f.type === 0 ? 'fixed' : 'manual',
-        amount: Number(f.amount) || 0,
-        enabled: !!f.enabled,
-        isRent: !!f.isRent,
-      })),
+      feeItems: feeRulesToResponse(feeItems),
       historyTenants: tenants
         .filter(t => t.status !== 1)
         .map(t => ({

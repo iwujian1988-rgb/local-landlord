@@ -213,7 +213,7 @@ export default function FeeSetup() {
       {!loading && !error && (
         <>
           <View className="fee-hint">
-            <Text className="fee-hint-text">设置本房间每个月要收的项目和规则</Text>
+            <Text className="fee-hint-text">设置当前租客后续账单的收费规则；已经生成的账单不会追溯修改</Text>
           </View>
 
           <View className="fee-list">

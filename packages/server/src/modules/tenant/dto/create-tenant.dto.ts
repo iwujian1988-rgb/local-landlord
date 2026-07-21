@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max, IsDateString, MaxLength, IsIn } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, Min, Max, IsDateString, MaxLength, IsIn, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { TenantFeeRuleDto } from './tenant-fee-rule.dto';
 
 const PAYMENT_METHODS = ['cash', 'wechat', 'alipay', 'bank'] as const;
 
@@ -75,4 +76,10 @@ export class CreateTenantDto {
   @IsString()
   @MaxLength(256)
   moveInReading?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TenantFeeRuleDto)
+  feeItems?: TenantFeeRuleDto[];
 }

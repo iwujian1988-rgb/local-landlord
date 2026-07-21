@@ -31,7 +31,10 @@ describe('Test data reset (e2e)', () => {
     const roomId = await createRoom(app, auth, propertyId);
     await createTenant(app, auth, roomId);
     expectOk(await apiCall(app, 'post', `/api/rooms/${roomId}/fee-items`, auth, {
-      name: '测试收费项', type: 0, amount: 20, enabled: 1,
+      fees: [
+        { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true, cycleMode: 'rent' },
+        { name: '测试收费项', type: 'fixed', amount: 20, enabled: true, isRent: false, cycleMode: 'monthly' },
+      ],
     }));
     expectOk(await apiCall(app, 'post', `/api/rooms/${roomId}/documents`, auth, {
       type: 0, name: '测试合同.pdf', imageUrl: '/uploads/test-reset.pdf',

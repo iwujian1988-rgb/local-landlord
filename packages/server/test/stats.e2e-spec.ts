@@ -181,4 +181,52 @@ describe('Stats module — overdue logic (e2e)', () => {
     const res = await apiCall(app, 'get', '/api/stats/rent?period=year', freshAuth);
     expect(res.body?.code).toBe(0);
   });
+
+  it('TC-STATS-012: 租约收费规则在账单、收租统计和房源预计收入中口径一致', async () => {
+    const freshAuth = await loginAsLandlord(app, `dev_stats_rules_${Date.now()}`);
+    const propId = await createProperty(app, freshAuth);
+    const roomId = await createRoom(app, freshAuth, propId, { rent: 2000, name: '规则统计房' });
+    expectOk(await apiCall(app, 'post', `/api/rooms/${roomId}/tenant`, freshAuth, {
+      name: '规则统计租客', phone: '13900000012', moveInDate: `${currentMonthStr()}-01`,
+      rentDay: 1, payMonths: 3,
+      initialPaymentMethod: 'wechat', initialPaymentDate: `${currentMonthStr()}-01`, initialPaymentAmount: 6600,
+      feeItems: [
+        { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true, cycleMode: 'rent' },
+        { name: '网费', type: 'fixed', amount: 100, enabled: true, isRent: false, cycleMode: 'rent' },
+        { name: '停车费', type: 'fixed', amount: 300, enabled: true, isRent: false, cycleMode: 'monthly' },
+        { name: '水费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'rent' },
+      ],
+    }));
+
+    const rentStats = expectOk(await apiCall(app, 'get', '/api/stats/rent?period=month', freshAuth));
+    expect(rentStats.totalExpected).toBe(6600);
+    expect(rentStats.totalCollected).toBe(6600);
+    expect(rentStats.totalPending).toBe(0);
+
+    const properties = expectOk(await apiCall(app, 'get', '/api/properties', freshAuth));
+    const property = properties.find((item: any) => item.id === propId);
+    expect(Number(property.monthlyExpectedIncome)).toBe(6600);
+  });
+  it('TC-STATS-013: 同房间同月换租客只用当前租客账单计算应收状态', async () => {
+    const freshAuth = await loginAsLandlord(app, `dev_stats_relet_${Date.now()}`);
+    const propId = await createProperty(app, freshAuth);
+    const roomId = await createRoom(app, freshAuth, propId, { rent: 2000, name: '同月换租房' });
+    const firstTenantId = await createTenant(app, freshAuth, roomId, {
+      name: '已退前租客', phone: '13900000013', moveInDate: `${currentMonthStr()}-01`,
+      initialPaymentMethod: 'cash', initialPaymentDate: `${currentMonthStr()}-01`, initialPaymentAmount: 2000,
+    });
+    expectOk(await apiCall(app, 'delete', `/api/tenants/${firstTenantId}`, freshAuth, {
+      moveOutDate: `${currentMonthStr()}-10`, depositStatus: 0,
+    }));
+    await createTenant(app, freshAuth, roomId, {
+      name: '当前未付租客', phone: '13900000014', moveInDate: `${currentMonthStr()}-15`,
+    });
+
+    const stats = expectOk(await apiCall(app, 'get', '/api/stats/rent?period=month', freshAuth));
+    // 周期统计保留同月真实发生的历史账单，并扣除前租客退租时自动计算的 1400 元预付退款；
+    // 当前状态页面则只能使用当前租客账单。
+    expect(stats.totalExpected).toBe(4000);
+    expect(stats.totalCollected).toBe(600);
+    expect(stats.totalPending).toBe(2000);
+  });
 });

@@ -134,7 +134,7 @@ describe('Tenant module (e2e)', () => {
       expect(records).toEqual(expect.arrayContaining([
         expect.objectContaining({
           type: 'bill_paid',
-          title: '入住首期房租已收',
+          title: '入住首期账单已收',
           amount: 6000,
         }),
       ]));
@@ -163,7 +163,7 @@ describe('Tenant module (e2e)', () => {
       expect(records).toEqual(expect.arrayContaining([
         expect.objectContaining({
           type: 'bill_paid',
-          title: '入住首期房租部分付款',
+          title: '入住首期账单部分付款',
           amount: 800,
         }),
       ]));
@@ -191,6 +191,77 @@ describe('Tenant module (e2e)', () => {
       const bill = await getCurrentBill(rId);
       expect(bill.billStatus).toBe(1); // ← would be 0 before fix
       expect(Number(bill.paidAmount)).toBe(6000);
+    });
+
+    it('TC-TENANT-004B: 登记时收费规则生成正确首期账单并回填租约', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'room-fee-rules' });
+      const createRes = await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {
+        name: '收费规则租客', phone: '13800004445', moveInDate: `${currentMonthStr()}-01`,
+        rentDay: 1, payMonths: 3,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true, cycleMode: 'rent' },
+          { name: '网费', type: 'fixed', amount: 100, enabled: true, isRent: false, cycleMode: 'rent' },
+          { name: '停车费', type: 'fixed', amount: 300, enabled: true, isRent: false, cycleMode: 'monthly' },
+          { name: '水费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'rent' },
+        ],
+      });
+      const tenant = expectOk(createRes);
+
+      const bill = await getCurrentBill(rId);
+      expect(bill.billItems).toEqual([
+        expect.objectContaining({ name: '房租', amount: 6000 }),
+        expect.objectContaining({ name: '网费', amount: 300 }),
+        expect.objectContaining({ name: '停车费', amount: 300 }),
+        expect.objectContaining({ name: '水费', amount: 0 }),
+      ]);
+      expect(bill.billItems.reduce((sum: number, item: any) => sum + Number(item.amount), 0)).toBe(6600);
+
+      const detail = expectOk(await apiCall(app, 'get', `/api/tenants/${tenant.id}`, auth));
+      expect(detail.feeItems).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: '停车费', cycleMode: 'monthly' }),
+        expect.objectContaining({ name: '水费', type: 'manual' }),
+      ]));
+    });
+
+    it('TC-TENANT-004C: 非法收费规则不产生半套租客/房间数据', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'room-fee-rollback' });
+      const failed = await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {
+        name: '不应保存', phone: '13800004446', moveInDate: `${currentMonthStr()}-01`,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true },
+          { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: false },
+        ],
+      });
+      expect(failed.body?.code).not.toBe(0);
+      const room = expectOk(await apiCall(app, 'get', `/api/rooms/${rId}`, auth));
+      expect(room.status).toBe(0);
+      expect(room.tenant).toBeNull();
+
+      const validTenantId = await createTenant(app, auth, rId, {
+        name: '随后可正常登记', phone: '13800004447', moveInDate: `${currentMonthStr()}-01`,
+      });
+      expect(validTenantId).toBeGreaterThan(0);
+    });
+
+    it('TC-TENANT-004D: 同房间同月换租客仍为新租客生成首期账单', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'room-same-month-relet' });
+      const firstId = await createTenant(app, auth, rId, {
+        name: '前租客', phone: '13800004448', moveInDate: `${currentMonthStr()}-01`,
+        initialPaymentMethod: 'cash',
+        initialPaymentDate: `${currentMonthStr()}-01`,
+        initialPaymentAmount: 2000,
+      });
+      expectOk(await apiCall(app, 'delete', `/api/tenants/${firstId}`, auth, {
+        moveOutDate: `${currentMonthStr()}-10`, depositStatus: 0,
+      }));
+      await createTenant(app, auth, rId, {
+        name: '新租客', phone: '13800004449', moveInDate: `${currentMonthStr()}-15`,
+      });
+      const bill = await getCurrentBill(rId);
+      expect(bill.billId).not.toBeNull();
+      expect(bill.tenantName).toBe('新租客');
+      expect(bill.billStatus).toBe(0);
+      expect(bill.paidAmount).toBe(0);
     });
 
     it('TC-TENANT-005: 房间已被占用 → 400', async () => {

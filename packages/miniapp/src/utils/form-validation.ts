@@ -95,17 +95,25 @@ interface FeeFormValue {
   type: 'fixed' | 'manual';
   amount: string;
   enabled: boolean;
+  isRent?: boolean;
 }
 
 export function validateFeeForm(fees: FeeFormValue[]): FormErrors {
+  if (fees.length === 0) return { fee: '请至少添加一个收费项目' };
+  if (fees.length > 50) return { fee: '收费项目不能超过50个' };
+  if (!fees.some(fee => fee.enabled)) return { fee: '请至少启用一个收费项目' };
+  if (!fees.some(fee => fee.isRent)) return { fee: '收费项目必须包含房租' };
+  const names = new Set<string>();
   for (let index = 0; index < fees.length; index += 1) {
     const fee = fees[index];
     const label = `第${index + 1}个收费项`;
     if (!fee.name.trim()) return { fee: `${label}请输入名称` };
     if (fee.name.trim().length > 32) return { fee: `${label}名称不能超过32个字` };
+    if (names.has(fee.name.trim())) return { fee: `收费项目“${fee.name.trim()}”重复` };
+    names.add(fee.name.trim());
     if (fee.enabled && fee.type === 'fixed') {
       const amount = Number(fee.amount);
-      if (!fee.amount.trim() || !Number.isFinite(amount) || amount < 0) {
+      if (!/^\d+(\.\d{1,2})?$/.test(fee.amount.trim()) || !Number.isFinite(amount) || amount < 0 || amount > 99999999.99) {
         return { fee: `${label}请输入有效金额` };
       }
     }

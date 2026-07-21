@@ -10,6 +10,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 
@@ -263,7 +264,7 @@ export class BillService {
     // New multi-month bills: period <= current <= periodEnd.
     // Legacy single-month bills (periodEnd IS NULL): only period = current.
     // Exclude cancelled (status=4) — those are退租作废 bills.
-    const currentBill = await this.billRepository
+    const currentBillQuery = this.billRepository
       .createQueryBuilder('bill')
       .where('bill.room_id = :roomId', { roomId })
       .andWhere('bill.status != :cancelled', { cancelled: 4 })
@@ -271,7 +272,11 @@ export class BillService {
         '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
         'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
         { monthStr },
-      )
+      );
+    if (tenant) {
+      currentBillQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: tenant.id });
+    }
+    const currentBill = await currentBillQuery
       .orderBy('bill.created_at', 'DESC')
       .getOne();
 
@@ -283,40 +288,24 @@ export class BillService {
       });
     }
 
-    const feeItems = await this.feeItemRepository.find({ where: { roomId }, order: { sortOrder: 'ASC' } });
+    const legacyFeeItems = await this.feeItemRepository.find({ where: { roomId }, order: { sortOrder: 'ASC' } });
+    const feeItems = resolveFeeRules(tenant?.feeRules, legacyFeeItems, Number(room.rent) || 0);
 
-    const billItems = feeItems.length > 0 ? feeItems.map(fee => {
-      const matchedBillItem = currentBillWithItems?.items?.find(bi => bi.feeName === fee.name);
-      let amount: number;
-      if (matchedBillItem) {
-        amount = Number(matchedBillItem.amount);
-      } else if (fee.enabled) {
-        // No draft yet — pre-fill based on type, cycleMode, and tenant's payMonths.
-        // cycleMode='monthly' keeps fee at ×1 regardless of payMonths (e.g. 停车管理费).
-        const multiply = fee.type === 0 && fee.cycleMode !== 'monthly';
-        amount = fee.type === 0 ? (multiply ? (Number(fee.amount) || 0) * payMonths : (Number(fee.amount) || 0)) : 0;
-      } else {
-        amount = 0;
-      }
-      return {
-        name: fee.name,
-        amount,
-        type: fee.type === 0 ? 'fixed' : 'manual',
-        feeId: fee.id,
-      };
-    }) : (currentBillWithItems?.items?.length
+    // A generated bill owns an immutable bill_item snapshot. Editing the
+    // tenancy rules must never hide, add to, or recalculate that old bill.
+    const billItems = currentBillWithItems?.items?.length
       ? currentBillWithItems.items.map(item => ({
           name: item.feeName,
           amount: Number(item.amount) || 0,
           type: 'fixed',
           feeId: undefined,
         }))
-      : [{
-          name: '房租',
-          amount: (Number(room.rent) || 0) * payMonths,
-          type: 'fixed',
+      : feeItems.filter(fee => fee.enabled).map(fee => ({
+          name: fee.name,
+          amount: feeRuleCycleAmount(fee, payMonths),
+          type: fee.type === 0 ? 'fixed' : 'manual',
           feeId: undefined,
-        }]);
+        }));
 
     return {
       roomName: room.name,

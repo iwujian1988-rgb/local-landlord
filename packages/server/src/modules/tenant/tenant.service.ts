@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import dayjs from 'dayjs';
 import { Tenant } from './tenant.entity';
 import { Room } from '../room/room.entity';
@@ -12,6 +12,7 @@ import { RentRecord } from '../rent/rent-record.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { MoveOutDto } from './dto/move-out.dto';
+import { FeeRule, feeRuleCycleAmount, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from '../fee/fee-rules';
 
 @Injectable()
 export class TenantService {
@@ -32,6 +33,7 @@ export class TenantService {
     private readonly feeItemRepository: Repository<FeeItem>,
     @InjectRepository(RentRecord)
     private readonly rentRecordRepository: Repository<RentRecord>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** Verify that a room belongs to a property owned by the given landlord */
@@ -64,50 +66,54 @@ export class TenantService {
    * 如果 dto.initialPaymentMethod 有值（表示已实收），账单 status=1，paidAt=initialPaymentDate。
    */
   async create(roomId: number, dto: CreateTenantDto): Promise<Tenant> {
-    const room = await this.roomRepository.findOne({ where: { id: roomId } });
-    if (!room) throw new NotFoundException('房间不存在');
+    return this.dataSource.transaction(async manager => {
+      const roomQuery = manager.getRepository(Room)
+        .createQueryBuilder('room')
+        .where('room.id = :roomId', { roomId });
+      // Serialize registrations for the same room in production MySQL. SQL.js
+      // used by tests has no pessimistic-lock support.
+      if (this.dataSource.options.type === 'mysql') roomQuery.setLock('pessimistic_write');
+      const room = await roomQuery.getOne();
+      if (!room) throw new NotFoundException('房间不存在');
 
-    const existingTenant = await this.tenantRepository.findOne({
-      where: { roomId, status: 1 },
+      const tenantRepo = manager.getRepository(Tenant);
+      const existingTenant = await tenantRepo.findOne({ where: { roomId, status: 1 } });
+      if (existingTenant) throw new BadRequestException('ROOM_OCCUPIED: 房间已有在租租客');
+
+      const legacyFeeItems = await manager.getRepository(FeeItem).find({
+        where: { roomId },
+        order: { sortOrder: 'ASC' },
+      });
+      const feeRules = dto.feeItems !== undefined
+        ? normalizeFeeRules(dto.feeItems)
+        : resolveFeeRules(null, legacyFeeItems, Number(room.rent) || 0);
+      const today = new Date().toISOString().slice(0, 10);
+      const moveInDate = dto.moveInDate || today;
+      const payMonths = dto.payMonths ?? 1;
+      const tenant = tenantRepo.create({
+        roomId,
+        name: dto.name,
+        phone: dto.phone,
+        moveInDate,
+        contractEndDate: dto.contractEndDate || undefined,
+        rentDay: dto.rentDay ?? 10,
+        payMonths,
+        deposit: dto.deposit ?? undefined,
+        note: dto.note ?? undefined,
+        status: 1,
+        initialPaymentMethod: dto.initialPaymentMethod ?? null,
+        initialPaymentDate: dto.initialPaymentDate ?? null,
+        initialPaymentAmount: dto.initialPaymentAmount ?? null,
+        moveInReading: dto.moveInReading ?? null,
+        feeRules,
+      });
+      const saved = await tenantRepo.save(tenant);
+
+      room.status = 1;
+      await manager.getRepository(Room).save(room);
+      await this.createFirstBill(manager, saved, room, payMonths, feeRules);
+      return saved;
     });
-    if (existingTenant) {
-      throw new BadRequestException('ROOM_OCCUPIED: 房间已有在租租客');
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
-    const moveInDate = dto.moveInDate || today;
-    const payMonths = dto.payMonths ?? 1;
-
-    const tenantData: Partial<Tenant> = {
-      roomId,
-      name: dto.name,
-      phone: dto.phone,
-      moveInDate,
-      contractEndDate: dto.contractEndDate || undefined,
-      rentDay: dto.rentDay ?? 10,
-      payMonths,
-      deposit: dto.deposit ?? undefined,
-      note: dto.note ?? undefined,
-      status: 1,
-      initialPaymentMethod: dto.initialPaymentMethod ?? null,
-      initialPaymentDate: dto.initialPaymentDate ?? null,
-      initialPaymentAmount: dto.initialPaymentAmount ?? null,
-      moveInReading: dto.moveInReading ?? null,
-    };
-    const tenant = this.tenantRepository.create(tenantData);
-    const saved = await this.tenantRepository.save(tenant);
-
-    room.status = 1;
-    await this.roomRepository.save(room);
-
-    // Auto-create first bill covering [moveInMonth .. moveInMonth + payMonths - 1].
-    // Skip if a bill already exists for that period (idempotent on retries).
-    // No .catch — if this fails, the API must return 500 so the landlord knows.
-    // (Previously the silent swallow left tenants without a bill and stats then
-    // reported them as 已逾期 the moment today > rentDay.)
-    await this.createFirstBill(saved, room, payMonths);
-
-    return saved;
   }
 
   /**
@@ -116,37 +122,31 @@ export class TenantService {
    * If initialPaymentMethod is set → status=1, paidAt=initialPaymentDate, paidAmount=totalAmount.
    */
   private async createFirstBill(
+    manager: EntityManager,
     tenant: Tenant,
     room: Room,
     payMonths: number,
+    feeRules: FeeRule[],
   ): Promise<Bill | null> {
     const moveInDate = dayjs(tenant.moveInDate);
     const period = moveInDate.format('YYYY-MM');
     const periodEnd = moveInDate.add(payMonths - 1, 'month').format('YYYY-MM');
 
     // Idempotency: skip if a bill already covers this period
-    const existing = await this.billRepository.findOne({
-      where: { roomId: room.id, period },
+    const billRepo = manager.getRepository(Bill);
+    const existing = await billRepo.findOne({
+      where: { tenantId: tenant.id, period },
     });
     if (existing) {
       return null;
     }
 
-    const feeItems = await this.feeItemRepository.find({
-      where: { roomId: room.id },
-      order: { sortOrder: 'ASC' },
-    });
-
     const items: { feeName: string; amount: number }[] = [];
     let totalAmount = 0;
-    if (feeItems.length > 0) {
-      for (const fee of feeItems) {
+    if (feeRules.length > 0) {
+      for (const fee of feeRules) {
         if (!fee.enabled) continue;
-        const baseAmt = Number(fee.amount) || 0;
-        // Fixed items × payMonths — unless cycleMode='monthly' (e.g. 停车管理费
-        // charged per-month regardless of payMonths). Manual items start at 0.
-        const multiply = fee.type === 0 && fee.cycleMode !== 'monthly';
-        const amt = fee.type === 0 ? (multiply ? baseAmt * payMonths : baseAmt) : 0;
+        const amt = feeRuleCycleAmount(fee, payMonths);
         items.push({ feeName: fee.name, amount: amt });
         totalAmount += amt;
       }
@@ -182,17 +182,17 @@ export class TenantService {
         ? (tenant.initialPaymentDate ? new Date(tenant.initialPaymentDate) : new Date())
         : (undefined as any),
     };
-    const bill = this.billRepository.create(billData);
-    const savedBill = await this.billRepository.save(bill);
+    const bill = billRepo.create(billData);
+    const savedBill = await billRepo.save(bill);
 
     const billItems = items.map(item =>
-      this.billItemRepository.create({
+      manager.getRepository(BillItem).create({
         billId: savedBill.id,
         feeName: item.feeName,
         amount: item.amount,
       }),
     );
-    await this.billItemRepository.save(billItems);
+    await manager.getRepository(BillItem).save(billItems);
 
     if (hasPayment) {
       const methodLabels: Record<string, string> = {
@@ -201,15 +201,15 @@ export class TenantService {
       const methodLabel = tenant.initialPaymentMethod
         ? (methodLabels[tenant.initialPaymentMethod] || tenant.initialPaymentMethod)
         : '未填写方式';
-      const rentRecord = this.rentRecordRepository.create({
+      const rentRecord = manager.getRepository(RentRecord).create({
         roomId: room.id,
         billId: savedBill.id,
         type: 1,
-        title: paymentStatus === 1 ? '入住首期房租已收' : '入住首期房租部分付款',
+        title: paymentStatus === 1 ? '入住首期账单已收' : '入住首期账单部分付款',
         description: `${methodLabel} · ${tenant.initialPaymentDate || '入住时'}实收`,
         amount: recordedAmount,
       });
-      await this.rentRecordRepository.save(rentRecord);
+      await manager.getRepository(RentRecord).save(rentRecord);
     }
 
     return savedBill;
@@ -219,7 +219,9 @@ export class TenantService {
   async update(id: number, dto: UpdateTenantDto): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({ where: { id } });
     if (!tenant) throw new NotFoundException('租客不存在');
-    Object.assign(tenant, dto);
+    const { feeItems, ...tenantFields } = dto;
+    Object.assign(tenant, tenantFields);
+    if (feeItems !== undefined) tenant.feeRules = normalizeFeeRules(feeItems);
     return this.tenantRepository.save(tenant);
   }
 
@@ -341,12 +343,17 @@ export class TenantService {
   }
 
   /** Get tenant detail */
-  async findOne(id: number): Promise<Tenant> {
+  async findOne(id: number): Promise<any> {
     const tenant = await this.tenantRepository.findOne({
       where: { id },
       relations: ['room', 'room.property'],
     });
     if (!tenant) throw new NotFoundException('租客不存在');
-    return tenant;
+    const legacyFeeItems = await this.feeItemRepository.find({
+      where: { roomId: tenant.roomId },
+      order: { sortOrder: 'ASC' },
+    });
+    const rules = resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(tenant.room?.rent) || 0);
+    return { ...tenant, feeItems: feeRulesToResponse(rules) };
   }
 }

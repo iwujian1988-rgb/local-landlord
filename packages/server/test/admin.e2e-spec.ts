@@ -25,11 +25,14 @@ describe('Admin module (e2e)', () => {
   let app: INestApplication;
   let adminAuth: () => { Authorization: string };
   let landlordAuth: () => { Authorization: string };
+  let landlordId: number;
 
   beforeAll(async () => {
     app = await createTestApp();
     adminAuth = await loginAsAdmin(app);
     landlordAuth = await loginAsLandlord(app, `dev_admin_${Date.now()}`);
+    const me = await apiCall(app, 'get', '/api/auth/me', landlordAuth);
+    landlordId = me.body?.data?.id;
   });
 
   afterAll(async () => {
@@ -60,14 +63,11 @@ describe('Admin module (e2e)', () => {
       const res = await apiCall(app, 'post', '/api/admin/properties', adminAuth, {
         name: `admin房产-${Date.now()}`,
         address: 'admin地址',
-        landlordId: 1,
+        landlordId,
       });
-      // landlordId=1 may not exist; if so, code !== 0. Accept both for now
-      // — surface the actual behavior so we can see what's expected.
-      if (res.body?.code === 0) {
-        adminPropId = res.body.data?.id;
-      }
-      expect([0, 1000, 1001, 1002]).toContain(res.body?.code ?? -1);
+      expect(res.body?.code).toBe(0);
+      adminPropId = res.body.data?.id;
+      expect(adminPropId).toBeGreaterThan(0);
     });
 
     it('TC-ADMIN-PROP-002: 列表带分页', async () => {

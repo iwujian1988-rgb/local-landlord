@@ -7,6 +7,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { FeeRule, feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
 
@@ -105,9 +106,12 @@ export class StatsService {
 
       for (const room of rooms) {
         if (period === 'month') {
+          const tenant = await this.tenantRepository.findOne({
+            where: { roomId: room.id, status: 1 },
+          });
           // Find any bill covering current month — supports multi-month (押X付Y)
           // bills where period <= monthStr <= periodEnd.
-          const bill = await this.billRepository
+          const billQuery = this.billRepository
             .createQueryBuilder('bill')
             .where('bill.room_id = :roomId', { roomId: room.id })
             .andWhere('bill.status != :cancelled', { cancelled: 4 })
@@ -115,25 +119,23 @@ export class StatsService {
               '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
               'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
               { monthStr },
-            )
+            );
+          if (tenant) {
+            billQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: tenant.id });
+          }
+          const bill = await billQuery
             .orderBy('bill.created_at', 'DESC')
             .getOne();
-          const tenant = await this.tenantRepository.findOne({
-            where: { roomId: room.id, status: 1 },
-          });
           const rent = Number(room.rent) || 0;
           const payMonths = tenant?.payMonths ?? 1;
 
           // Build expected from fee items — × payMonths for押X付Y tenants
-          const fees = await this.feeItemRepository.find({ where: { roomId: room.id } });
+          const legacyFees = await this.feeItemRepository.find({ where: { roomId: room.id } });
+          const fees = resolveFeeRules(tenant?.feeRules, legacyFees, rent);
           let totalExpected = 0;
           for (const f of fees) {
-            if (f.enabled) {
-              // Fixed items get ×payMonths; manual items contribute 0 (estimated at bill time)
-              totalExpected += f.type === 0 ? (Number(f.amount) || 0) * payMonths : 0;
-            }
+            totalExpected += feeRuleCycleAmount(f, payMonths);
           }
-          if (totalExpected === 0) totalExpected = rent * payMonths;
 
           if (bill) {
             expected += Number(bill.totalAmount) || totalExpected;
@@ -235,6 +237,10 @@ export class StatsService {
       ? await this.roomRepository.find({ where: { propertyId: In(propertyIds) } })
       : [];
     const allRoomIds = allRooms.map(r => r.id);
+    const activeTenants = allRoomIds.length > 0
+      ? await this.tenantRepository.find({ where: { roomId: In(allRoomIds), status: 1 } })
+      : [];
+    const activeTenantByRoom = new Map(activeTenants.map(tenant => [tenant.roomId, tenant]));
 
     const confirmedSingleByRoom = new Map<number, number>();
     const pendingSingleByRoom = new Map<number, number>();
@@ -278,9 +284,7 @@ export class StatsService {
       let overdue = 0;
 
       for (const room of rooms) {
-        const tenant = await this.tenantRepository.findOne({
-          where: { roomId: room.id, status: 1 },
-        });
+        const tenant = activeTenantByRoom.get(room.id) || null;
         const bills = await this.billRepository
           .createQueryBuilder('bill')
           .where('bill.room_id = :roomId', { roomId: room.id })
@@ -324,10 +328,11 @@ export class StatsService {
         // Vacant rooms must not create receivables. Historical bills above are
         // still counted, so old/moved-out bills remain auditable.
         if (tenant) {
-          const fees = await this.feeItemRepository.find({ where: { roomId: room.id } });
           const rent = Number(room.rent) || 0;
+          const legacyFees = await this.feeItemRepository.find({ where: { roomId: room.id } });
+          const fees = resolveFeeRules(tenant.feeRules, legacyFees, rent);
           const payMonths = tenant.payMonths ?? 1;
-          const cycleExpected = this.getEstimatedCycleExpectedForStats(fees, rent, payMonths);
+          const cycleExpected = this.getEstimatedCycleExpectedForStats(fees, payMonths);
 
           for (const month of periodInfo.months) {
             if (billCoveredMonths.has(month)) continue;
@@ -444,15 +449,12 @@ export class StatsService {
     return new Date(date.getFullYear(), date.getMonth() + count, 1);
   }
 
-  private getEstimatedCycleExpectedForStats(fees: FeeItem[], rent: number, payMonths: number): number {
+  private getEstimatedCycleExpectedForStats(fees: FeeRule[], payMonths: number): number {
     let total = 0;
     for (const f of fees) {
-      if (!f.enabled) continue;
-      if (f.type === 0) {
-        total += (Number(f.amount) || 0) * payMonths;
-      }
+      total += feeRuleCycleAmount(f, payMonths);
     }
-    return total > 0 ? total : rent * payMonths;
+    return total;
   }
 
   private isTenantDueMonthForStats(tenant: Tenant, month: string, payMonths: number): boolean {
@@ -530,6 +532,10 @@ export class StatsService {
       ? await this.roomRepository.find({ where: { propertyId: In(propertyIds) } })
       : [];
     const allRoomIds = allRooms.map(r => r.id);
+    const activeTenants = allRoomIds.length > 0
+      ? await this.tenantRepository.find({ where: { roomId: In(allRoomIds), status: 1 } })
+      : [];
+    const activeTenantByRoom = new Map(activeTenants.map(tenant => [tenant.roomId, tenant]));
 
     // Compute pending info by iterating rented rooms
     const currentYear = now.getFullYear();
@@ -544,9 +550,8 @@ export class StatsService {
     for (const room of allRooms) {
       if (room.status !== 1 || allRoomIds.length === 0) continue; // skip vacant rooms
 
-      const tenant = await this.tenantRepository.findOne({
-        where: { roomId: room.id, status: 1 },
-      });
+      const tenant = activeTenantByRoom.get(room.id) || null;
+      if (!tenant) continue;
       const rentDay = tenant?.rentDay ?? 10;
       const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const payMonths = tenant?.payMonths ?? 1;
@@ -566,6 +571,7 @@ export class StatsService {
         ? await this.billRepository
             .createQueryBuilder('bill')
             .where('bill.roomId = :roomId', { roomId: room.id })
+            .andWhere('bill.tenantId = :tenantId', { tenantId: tenant.id })
             .andWhere('bill.status != :cancelled', { cancelled: 4 })
             .andWhere(
               '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
@@ -582,6 +588,7 @@ export class StatsService {
         ? (await this.billRepository
             .createQueryBuilder('bill')
             .where('bill.roomId = :roomId', { roomId: room.id })
+            .andWhere('bill.tenantId = :tenantId', { tenantId: tenant.id })
             .andWhere('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
             .andWhere('((bill.period_end IS NULL AND bill.period < :current) OR (bill.period_end IS NOT NULL AND bill.period_end < :current))', { current: monthStr })
             .getCount()) > 0
@@ -653,9 +660,6 @@ export class StatsService {
 
     // Expiring contracts (within 30 days) — also reused for tenant guide logic
     const expiringContracts: ExpiringContract[] = [];
-    const activeTenants = allRoomIds.length > 0
-      ? await this.tenantRepository.find({ where: { roomId: In(allRoomIds), status: 1 } })
-      : [];
     const tenantedRoomIds = new Set(activeTenants.map(t => t.roomId));
 
     let showTenantGuide = false;

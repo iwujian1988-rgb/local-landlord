@@ -9,7 +9,7 @@ import {
 } from '../src/utils/form-validation';
 import { buildCheckoutPayload } from '../src/utils/checkout-payload';
 import { buildPaymentQrPayload } from '../src/utils/payment-qr-form';
-import { getRoomNameFromResponse, normalizeFeeItems } from '../src/utils/fee-form';
+import { calculateFeeCycleTotal, getRoomNameFromResponse, normalizeFeeItems } from '../src/utils/fee-form';
 
 describe('property form regressions', () => {
   it('TC-PROP-FORM-001: 编辑房源读取后端 coverImage 字段', () => {
@@ -59,17 +59,37 @@ describe('frontend form validation regressions', () => {
 
   it('TC-VALIDATE-003: fee name and enabled fixed amount cannot be silently coerced', () => {
     expect(validateFeeForm([
-      { name: '', type: 'fixed', amount: '', enabled: true },
+      { name: '', type: 'fixed', amount: '', enabled: true, isRent: true },
     ])).toHaveProperty('fee');
     expect(validateFeeForm([
-      { name: '网费', type: 'fixed', amount: '', enabled: true },
+      { name: '房租', type: 'fixed', amount: '', enabled: true, isRent: true },
     ])).toHaveProperty('fee');
     expect(validateFeeForm([
+      { name: '房租', type: 'fixed', amount: '2000', enabled: true, isRent: true },
       { name: '水费', type: 'manual', amount: '', enabled: true },
     ])).toEqual({});
     expect(validateFeeForm([
-      { name: '免费项', type: 'fixed', amount: '0', enabled: true },
+      { name: '房租', type: 'fixed', amount: '0', enabled: true, isRent: true },
     ])).toEqual({});
+    expect(validateFeeForm([
+      { name: '房租', type: 'fixed', amount: '2000.001', enabled: true, isRent: true },
+    ])).toHaveProperty('fee');
+  });
+
+  it('TC-VALIDATE-003B: 首期金额与后端账期规则一致', () => {
+    expect(calculateFeeCycleTotal([
+      { name: '房租', type: 'fixed', amount: '2000', enabled: true, isRent: true, cycleMode: 'rent' },
+      { name: '网费', type: 'fixed', amount: '100', enabled: true, isRent: false, cycleMode: 'rent' },
+      { name: '停车费', type: 'fixed', amount: '300', enabled: true, isRent: false, cycleMode: 'monthly' },
+      { name: '水费', type: 'manual', amount: '0', enabled: true, isRent: false, cycleMode: 'rent' },
+    ], 3)).toBe(6600);
+  });
+
+  it('TC-VALIDATE-003C: 金额计算统一保留到分，避免浮点误差', () => {
+    expect(calculateFeeCycleTotal([
+      { name: '房租', type: 'fixed', amount: '0.1', enabled: true, isRent: true, cycleMode: 'rent' },
+      { name: '服务费', type: 'fixed', amount: '0.2', enabled: true, isRent: false, cycleMode: 'monthly' },
+    ], 1)).toBe(0.3);
   });
 
   it('TC-VALIDATE-004: date-only validation rejects impossible dates', () => {

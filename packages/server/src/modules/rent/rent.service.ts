@@ -10,6 +10,8 @@ import { Bill } from '../bill/bill.entity';
 import { Property } from '../property/property.entity';
 import { CreateSingleChargeDto } from './dto/create-single-charge.dto';
 import { RemindTenantDto } from './dto/remind-tenant.dto';
+import { FeeItem } from '../fee/fee-item.entity';
+import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
 
 const RECORD_TYPE_MAP: Record<number, string> = {
   0: 'bill_sent', 1: 'bill_paid', 2: 'single_charge', 3: 'single_paid', 4: 'reminder',
@@ -68,6 +70,8 @@ export class RentService {
     private readonly billRepository: Repository<Bill>,
     @InjectRepository(Property)
     private readonly propertyRepository: Repository<Property>,
+    @InjectRepository(FeeItem)
+    private readonly feeItemRepository: Repository<FeeItem>,
   ) {}
 
   /** Verify room belongs to landlord */
@@ -119,6 +123,14 @@ export class RentService {
     });
     const tenantMap = new Map<number, Tenant>();
     for (const t of allTenants) tenantMap.set(t.roomId, t);
+    const activeTenantIds = allTenants.map(t => t.id);
+    const legacyFeeItems = await this.feeItemRepository.find({ where: { roomId: In(roomIds) } });
+    const legacyFeeMap = new Map<number, FeeItem[]>();
+    for (const fee of legacyFeeItems) {
+      const list = legacyFeeMap.get(fee.roomId) || [];
+      list.push(fee);
+      legacyFeeMap.set(fee.roomId, list);
+    }
 
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -128,23 +140,32 @@ export class RentService {
     const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
     // Find any bill that covers the current month (handles multi-month cycles).
-    const coveringBills = await this.billRepository
-      .createQueryBuilder('bill')
-      .where('bill.room_id IN (:...roomIds)', { roomIds })
-      .andWhere('bill.status != :cancelled', { cancelled: 4 })
-      .andWhere(
-        '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
-        'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
-        { monthStr },
-      )
-      .getMany();
+    const coveringBills = activeTenantIds.length > 0
+      ? await this.billRepository
+          .createQueryBuilder('bill')
+          .where('bill.room_id IN (:...roomIds)', { roomIds })
+          .andWhere('bill.tenant_id IN (:...tenantIds)', { tenantIds: activeTenantIds })
+          .andWhere('bill.status != :cancelled', { cancelled: 4 })
+          .andWhere(
+            '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
+            'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
+            { monthStr },
+          )
+          .getMany()
+      : [];
     const currentBillMap = new Map<number, Bill>();
     for (const b of coveringBills) currentBillMap.set(b.roomId, b);
 
     // For prior-overdue detection: any unpaid bill whose coverage window ended before this month.
-    const unpaidBills = await this.billRepository.find({
-      where: { roomId: In(roomIds), status: In([0, 2, 3]) },
-    });
+    const unpaidBills = activeTenantIds.length > 0
+      ? await this.billRepository.find({
+          where: {
+            roomId: In(roomIds),
+            tenantId: In(activeTenantIds),
+            status: In([0, 2, 3]),
+          },
+        })
+      : [];
     const priorOverdueMap = new Map<number, boolean>();
     for (const b of unpaidBills) {
       const effectiveEnd = b.periodEnd || b.period;
@@ -165,6 +186,11 @@ export class RentService {
       const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const payMonths = tenant?.payMonths ?? 1;
       const hasPriorOverdue = priorOverdueMap.get(room.id) || false;
+      const estimatedTotal = resolveFeeRules(
+        tenant?.feeRules,
+        legacyFeeMap.get(room.id) || [],
+        Number(room.rent) || 0,
+      ).reduce((sum, rule) => sum + feeRuleCycleAmount(rule, payMonths), 0);
 
       // Cycle check: is current month a due-month?
       let isDueMonth = true;
@@ -206,7 +232,7 @@ export class RentService {
         billStatus: bill?.status ?? 0,
         billPeriod: bill?.period || null,
         billPeriodEnd: bill?.periodEnd || null,
-        totalAmount: Number(bill?.totalAmount) || (Number(room.rent) || 0) * payMonths,
+        totalAmount: Number(bill?.totalAmount) || estimatedTotal,
         paidAmount: Number(bill?.paidAmount) || 0,
         overdueDays,
         daysUntil,

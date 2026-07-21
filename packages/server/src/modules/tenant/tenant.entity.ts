@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Room } from '../room/room.entity';
+import type { FeeRule } from '../fee/fee-rules';
 
 @Entity('tenant')
 @Index(['roomId'])
@@ -81,6 +82,11 @@ export class Tenant {
   // 由 moveOut 流程自动计算（剩余天数 × 月租/30），存这里供前端展示与对账。
   @Column({ name: 'prepaid_refund_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
   prepaidRefundAmount: number | null;
+
+  // Snapshot of the charging rules agreed for this tenancy. Existing bills
+  // keep their own bill_item snapshot, so later edits only affect future bills.
+  @Column({ name: 'fee_rules', type: 'json', nullable: true })
+  feeRules: FeeRule[] | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

@@ -36,6 +36,7 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'tenant', column: 'move_in_reading', definition: '`move_in_reading` varchar(256) NULL' },
   { table: 'tenant', column: 'move_out_reading', definition: '`move_out_reading` varchar(256) NULL' },
   { table: 'tenant', column: 'prepaid_refund_amount', definition: '`prepaid_refund_amount` decimal(10,2) NULL' },
+  { table: 'tenant', column: 'fee_rules', definition: '`fee_rules` json NULL' },
 
   // fee_item
   { table: 'fee_item', column: 'enabled', definition: '`enabled` tinyint unsigned NOT NULL DEFAULT 1' },
@@ -101,7 +102,18 @@ export class SchemaCompatService implements OnApplicationBootstrap {
     this.logger.warn(`Adding ${pending.length} missing MySQL compatibility columns`);
     for (const spec of pending) {
       this.logger.warn(`ALTER TABLE ${spec.table} ADD COLUMN ${spec.column}`);
-      await this.dataSource.query(`ALTER TABLE \`${spec.table}\` ADD COLUMN ${spec.definition}`);
+      try {
+        await this.dataSource.query(`ALTER TABLE \`${spec.table}\` ADD COLUMN ${spec.definition}`);
+      } catch (error: any) {
+        // Two CloudRun instances can bootstrap against the same schema at the
+        // same time. If the other instance added the column first, startup is
+        // already in the desired state and must not crash the rollout.
+        if (error?.code === 'ER_DUP_FIELDNAME' || Number(error?.errno) === 1060) {
+          this.logger.warn(`Column ${spec.table}.${spec.column} was added concurrently`);
+          continue;
+        }
+        throw error;
+      }
     }
   }
 }
