@@ -96,6 +96,7 @@ export default function AddTenant() {
   const [feesLoading, setFeesLoading] = useState(false);
   const [feesLoadError, setFeesLoadError] = useState(false);
   const [showExtraFees, setShowExtraFees] = useState(false);
+  const [showAdvanceRentOptions, setShowAdvanceRentOptions] = useState(false);
   const [wizardIndex, setWizardIndex] = useState(0);
   const [feeEditorIndex, setFeeEditorIndex] = useState<number | null>(null);
   const [feeEditorStage, setFeeEditorStage] = useState(0);
@@ -248,6 +249,7 @@ export default function AddTenant() {
       return;
     }
     setPaymentIdx(idx);
+    setShowAdvanceRentOptions(false);
     if (idx !== CUSTOM_PAYMENT_IDX && currentRoomRent > 0) {
       const { depositMonths, payMonths: pm } = PAYMENT_PRESETS[idx];
       setDeposit(String(currentRoomRent * depositMonths));
@@ -488,6 +490,8 @@ export default function AddTenant() {
     ? calculateInitialFeeTotal([rentFee])
     : Math.round((currentRoomRent || 0) * previewPayMonths * 100) / 100;
   const rentInitialMonthOptions = getRentInitialMonthOptions(previewPayMonths);
+  const rentInitialMonths = rentFee?.initialMonths || previewPayMonths;
+  const hasAdvanceRent = rentInitialMonths > previewPayMonths;
   const activeFeeEditor = feeEditorIndex == null ? null : feeItems[feeEditorIndex];
   const wizardStepIds = getTenantWizardStepIds(isEdit);
   const safeWizardIndex = Math.min(wizardIndex, wizardStepIds.length - 1);
@@ -651,9 +655,9 @@ export default function AddTenant() {
       <View className="tenant-form-section wizard-card">
         <View className="tenant-section-heading">
           <View>
-            <Text className="tenant-section-kicker">{activeWizardStep === 2 ? '收租提醒' : activeWizardStep === 3 ? '押金和房租' : '首次应收房租'}</Text>
-            <Text className="tenant-section-title">{activeWizardStep === 2 ? '每月几号提醒你收租？' : activeWizardStep === 3 ? '平时怎么收房租？' : `按${paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '当前方式'}，首次应收多少？`}</Text>
-            <Text className="tenant-section-desc">{activeWizardStep === 2 ? '只需要选一个日期，到了这一天系统会提醒你。' : activeWizardStep === 3 ? '点一个常用方式，押金会自动算好。' : `“付${previewPayMonths}”就是入住应收 ${previewPayMonths} 个月，以后每 ${previewPayMonths} 个月收一次。`}</Text>
+            <Text className="tenant-section-kicker">{activeWizardStep === 2 ? '收租提醒' : activeWizardStep === 3 ? '押金和房租' : '第一次收房租'}</Text>
+            <Text className="tenant-section-title">{activeWizardStep === 2 ? '每月几号提醒你收租？' : activeWizardStep === 3 ? '平时怎么收房租？' : `按${paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '当前方式'}，这次收 ${rentInitialMonths} 个月`}</Text>
+            <Text className="tenant-section-desc">{activeWizardStep === 2 ? '只需要选一个日期，到了这一天系统会提醒你。' : activeWizardStep === 3 ? '点一个常用方式，押金会自动算好。' : hasAdvanceRent ? `本次多收了 ${rentInitialMonths - previewPayMonths} 个月，之后仍每 ${previewPayMonths} 个月收一次。` : `入住先收 ${previewPayMonths} 个月，以后每 ${previewPayMonths} 个月收一次。`}</Text>
           </View>
         </View>
 
@@ -717,28 +721,35 @@ export default function AddTenant() {
 
       {activeWizardStep === 4 && rentFee && (
         <View className="form-group">
-          <View className="elder-choice-stack">
-            {rentInitialMonthOptions.map(months => {
-              const monthlyRent = currentRoomRent || Number(rentFee.amount) || 0;
-              return (
-                <View key={`rent-initial-${months}`} className={`elder-choice-row rent-collection-choice${rentFee.initialMonths === months ? ' active' : ''}`} onClick={() => {
-                  const rentIndex = feeItems.findIndex(fee => fee.isRent);
-                  if (rentIndex >= 0) updateFee(rentIndex, { initialMonths: months });
-                }}>
-                  <View className="rent-collection-copy">
-                    <Text className="elder-choice-title">{months === previewPayMonths ? `标准：应收 ${months} 个月` : `特殊：实际提前收 ${months} 个月`}</Text>
-                    <Text className="elder-choice-desc">首期账单 {Math.round(monthlyRent * months * 100) / 100} 元</Text>
-                    <Text className="elder-choice-next">{getNextRentCollectionText(months, previewPayMonths, monthlyRent, moveInDate, rentDay)}</Text>
-                  </View>
-                  {rentFee.initialMonths === months && <Text className="elder-answer-check">✓</Text>}
-                </View>
-              );
-            })}
+          <View className="rent-first-summary">
+            <View>
+              <Text className="rent-first-label">本次房租</Text>
+              <Text className="rent-first-months">收 {rentInitialMonths} 个月</Text>
+            </View>
+            <Text className="rent-first-amount">{previewRentTotal} 元</Text>
+            <Text className="rent-first-next">下次：{getNextRentCollectionText(rentInitialMonths, previewPayMonths, currentRoomRent || Number(rentFee.amount) || 0, moveInDate, rentDay)}</Text>
           </View>
-          <View className="elder-tip-box"><Text>{rentFee.initialMonths === previewPayMonths
-            ? `已按${paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '当前方式'}设置：入住应收 ${previewPayMonths} 个月；${getNextRentCollectionText(previewPayMonths, previewPayMonths, currentRoomRent || Number(rentFee.amount) || 0, moveInDate, rentDay)}。`
-            : `这是额外提前收款，不会改变合同仍是每 ${previewPayMonths} 个月收一次；${getNextRentCollectionText(rentFee.initialMonths || previewPayMonths, previewPayMonths, currentRoomRent || Number(rentFee.amount) || 0, moveInDate, rentDay)}。`}</Text></View>
-          <View className="elder-partial-tip"><Text>如果首期没有收足，只在后面的“实际收到多少钱”填写实收金额，系统会把差额保留为待收，不要在这里减少月份。</Text></View>
+          {!showAdvanceRentOptions ? (
+            <View className="rent-first-adjust" onClick={() => setShowAdvanceRentOptions(true)}>
+              <Text>{hasAdvanceRent ? '修改本次多收的月份' : '这次多收了房租？点这里修改'}</Text>
+            </View>
+          ) : (
+            <View className="rent-advance-panel">
+              <Text className="rent-advance-title">这次实际先收几个月？</Text>
+              <View className="rent-advance-options">
+                {rentInitialMonthOptions.map(months => (
+                  <View key={`rent-initial-${months}`} className={`rent-advance-option${rentInitialMonths === months ? ' active' : ''}`} onClick={() => {
+                    const rentIndex = feeItems.findIndex(fee => fee.isRent);
+                    if (rentIndex >= 0) updateFee(rentIndex, { initialMonths: months });
+                    setShowAdvanceRentOptions(false);
+                  }}>
+                    <Text>{months} 个月</Text>
+                  </View>
+                ))}
+              </View>
+              <Text className="rent-advance-help">一般不用改；只有租客一次多付几期时才选更多月份。</Text>
+            </View>
+          )}
         </View>
       )}
       </View>

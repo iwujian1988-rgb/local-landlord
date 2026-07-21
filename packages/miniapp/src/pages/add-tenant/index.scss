@@ -631,6 +631,101 @@
   min-width: 0;
 }
 
+.rent-first-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 20px;
+  margin: 0 32px;
+  padding: 28px;
+  border: 3px solid #E77C46;
+  border-radius: 26px;
+  background: #FFF7EF;
+  box-sizing: border-box;
+}
+
+.rent-first-label,
+.rent-first-next,
+.rent-first-adjust,
+.rent-advance-help {
+  color: var(--text-secondary, #7A6F64);
+  font-size: 24px;
+  line-height: 1.45;
+}
+
+.rent-first-months {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-primary, #4A4038);
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.rent-first-amount {
+  align-self: center;
+  color: #C95F32;
+  font-size: 36px;
+  font-weight: 800;
+}
+
+.rent-first-next {
+  grid-column: 1 / -1;
+  padding-top: 16px;
+  border-top: 2px solid rgba(122, 111, 100, 0.14);
+}
+
+.rent-first-adjust {
+  margin: 18px 32px 0;
+  padding: 8px 0;
+  color: #B5522B;
+  text-decoration: underline;
+}
+
+.rent-advance-panel {
+  margin: 18px 32px 0;
+  padding: 22px;
+  border-radius: 22px;
+  background: var(--bg-soft, #F5EDE2);
+}
+
+.rent-advance-title {
+  display: block;
+  color: var(--text-primary, #4A4038);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.rent-advance-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.rent-advance-option {
+  min-width: 118px;
+  padding: 14px 18px;
+  border: 2px solid #E5DDD2;
+  border-radius: 18px;
+  box-sizing: border-box;
+  background: #FFFDF9;
+  color: var(--text-primary, #4A4038);
+  font-size: 26px;
+  font-weight: 700;
+  text-align: center;
+
+  &.active {
+    border-color: #E77C46;
+    background: #FFF3E8;
+    color: #B5522B;
+  }
+}
+
+.rent-advance-help {
+  display: block;
+  margin-top: 16px;
+  font-size: 22px;
+}
+
 .elder-choice-next {
   display: block;
   margin-top: 14px;
