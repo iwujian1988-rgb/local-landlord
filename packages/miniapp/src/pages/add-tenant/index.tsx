@@ -91,6 +91,7 @@ export default function AddTenant() {
   const [feesLoading, setFeesLoading] = useState(false);
   const [feesLoadError, setFeesLoadError] = useState(false);
   const [showExtraFees, setShowExtraFees] = useState(false);
+  const [wizardIndex, setWizardIndex] = useState(0);
 
   // P0-A: 入住实收
   const [initialReceived, setInitialReceived] = useState<boolean>(false);
@@ -192,6 +193,7 @@ export default function AddTenant() {
         if (draft.initialMethodIdx !== undefined) setInitialMethodIdx(draft.initialMethodIdx);
         if (draft.initialDate) setInitialDate(draft.initialDate);
         if (draft.moveInReading) setMoveInReading(draft.moveInReading);
+        if (Number.isInteger(draft.wizardIndex)) setWizardIndex(Math.min(6, Math.max(0, Number(draft.wizardIndex))));
         if (Array.isArray(draft.feeItems)) {
           feeDraftRestoredRef.current = true;
           setFeeItems(normalizeFeeItems(draft.feeItems));
@@ -210,7 +212,7 @@ export default function AddTenant() {
         name, phone, moveInDate, contractEndDate,
         rentDay, deposit, note, paymentIdx,
         initialReceived, initialAmount, initialMethodIdx, initialDate, moveInReading,
-        feeItems,
+        feeItems, wizardIndex,
       };
       if (name || phone) {
         Taro.setStorageSync('draft_tenant', formData);
@@ -404,21 +406,71 @@ export default function AddTenant() {
   const previewRentTotal = rentFee
     ? calculateFeeCycleTotal([rentFee], previewPayMonths)
     : Math.round((currentRoomRent || 0) * previewPayMonths * 100) / 100;
+  const wizardStepIds = isEdit ? [0, 1, 2, 3, 5, 6] : [0, 1, 2, 3, 4, 5, 6];
+  const safeWizardIndex = Math.min(wizardIndex, wizardStepIds.length - 1);
+  const activeWizardStep = wizardStepIds[safeWizardIndex];
+
+  const validateCurrentWizardStep = (): boolean => {
+    if (activeWizardStep === 3 && (feesLoading || feesLoadError)) {
+      Taro.showToast({ title: feesLoadError ? '请先重新加载收费项目' : '收费项目正在加载', icon: 'none' });
+      return false;
+    }
+    const allErrors = validateTenantForm({
+      name, phone, roomId: urlRoomId, moveInDate, contractEndDate, deposit,
+      initialReceived, initialAmount, initialDate, moveInReading,
+    });
+    if (activeWizardStep === 3) Object.assign(allErrors, validateFeeForm(feeItems));
+    const fieldsByStep: Record<number, string[]> = {
+      0: ['name', 'phone', 'room'],
+      1: ['moveInDate', 'contractEndDate'],
+      2: ['deposit'],
+      3: ['fee'],
+      4: ['initialAmount', 'initialDate'],
+      5: ['moveInReading'],
+    };
+    const currentErrors: Record<string, string> = {};
+    (fieldsByStep[activeWizardStep] || []).forEach((field) => {
+      if (allErrors[field]) currentErrors[field] = allErrors[field];
+    });
+    setErrors(currentErrors);
+    if (Object.keys(currentErrors).length > 0) {
+      Taro.showToast({ title: firstFormError(currentErrors), icon: 'none' });
+      return false;
+    }
+    return true;
+  };
+
+  const goNextWizardStep = () => {
+    if (!validateCurrentWizardStep()) return;
+    setWizardIndex(index => Math.min(index + 1, wizardStepIds.length - 1));
+    Taro.pageScrollTo({ scrollTop: 0, duration: 200 });
+  };
+
+  const goPreviousWizardStep = () => {
+    setErrors({});
+    setWizardIndex(index => Math.max(0, index - 1));
+    Taro.pageScrollTo({ scrollTop: 0, duration: 200 });
+  };
 
   return (
     <View className="page-add-tenant">
-      <View className="tenant-page-intro">
-        <Text className="tenant-page-title">{isEdit ? '修改租客信息' : '给房间登记租客'}</Text>
-        <Text className="tenant-page-room">{currentRoomName || (urlRoomId > 0 ? `房间 #${urlRoomId}` : '正在读取房间…')}</Text>
-        <Text className="tenant-page-tip">带“必填”的需要填写，其他内容可以以后再补。</Text>
+      <View className="wizard-progress-card">
+        <View className="wizard-progress-top">
+          <Text className="wizard-progress-label">第 {safeWizardIndex + 1} 步，共 {wizardStepIds.length} 步</Text>
+          <Text className="wizard-room-name">{currentRoomName || (urlRoomId > 0 ? `房间 #${urlRoomId}` : '正在读取房间…')}</Text>
+        </View>
+        <View className="wizard-progress-track">
+          <View className="wizard-progress-fill" style={{ width: `${((safeWizardIndex + 1) / wizardStepIds.length) * 100}%` }} />
+        </View>
       </View>
 
-      <View className="tenant-form-section">
+      {activeWizardStep === 0 && (
+      <View className="tenant-form-section wizard-card">
         <View className="tenant-section-heading">
-          <Text className="tenant-section-number">1</Text>
           <View>
-            <Text className="tenant-section-title">租客是谁</Text>
-            <Text className="tenant-section-desc">先填写姓名和联系电话</Text>
+            <Text className="tenant-section-kicker">先认识一下</Text>
+            <Text className="tenant-section-title">租客是谁？</Text>
+            <Text className="tenant-section-desc">填写姓名和联系电话，方便以后查找和联系。</Text>
           </View>
         </View>
 
@@ -449,7 +501,18 @@ export default function AddTenant() {
         />
         {errors.phone && <Text className="form-error-text">{errors.phone}</Text>}
       </View>
+      </View>
+      )}
 
+      {activeWizardStep === 1 && (
+      <View className="tenant-form-section wizard-card">
+        <View className="tenant-section-heading">
+          <View>
+            <Text className="tenant-section-kicker">租期</Text>
+            <Text className="tenant-section-title">准备住多久？</Text>
+            <Text className="tenant-section-desc">不知道具体日期也没关系，可以直接下一步。</Text>
+          </View>
+        </View>
       <View className="form-group">
         <Text className="form-label">哪天入住？（可不填）</Text>
         <Picker mode="date" value={moveInDate} onChange={e => setMoveInDate(e.detail.value)}>
@@ -476,13 +539,15 @@ export default function AddTenant() {
         {errors.contractEndDate && <Text className="form-error-text">{errors.contractEndDate}</Text>}
       </View>
       </View>
+      )}
 
-      <View className="tenant-form-section">
+      {activeWizardStep === 2 && (
+      <View className="tenant-form-section wizard-card">
         <View className="tenant-section-heading">
-          <Text className="tenant-section-number">2</Text>
           <View>
-            <Text className="tenant-section-title">怎么收房租</Text>
-            <Text className="tenant-section-desc">设置收租日期、收租周期和押金</Text>
+            <Text className="tenant-section-kicker">收租安排</Text>
+            <Text className="tenant-section-title">房租准备怎么收？</Text>
+            <Text className="tenant-section-desc">选择收租日和押付方式，系统会帮你计算和提醒。</Text>
           </View>
         </View>
 
@@ -546,13 +611,15 @@ export default function AddTenant() {
         )}
       </View>
       </View>
+      )}
 
-      <View className="tenant-form-section">
+      {activeWizardStep === 3 && (
+      <View className="tenant-form-section wizard-card">
         <View className="tenant-section-heading">
-          <Text className="tenant-section-number">3</Text>
           <View>
-            <Text className="tenant-section-title">还要收哪些费用</Text>
-            <Text className="tenant-section-desc">没有其他费用，可以直接跳过</Text>
+            <Text className="tenant-section-kicker">其他费用</Text>
+            <Text className="tenant-section-title">除了房租，还收别的钱吗？</Text>
+            <Text className="tenant-section-desc">没有就选“只收房租”，不用设置复杂规则。</Text>
           </View>
         </View>
       <View className="form-group fee-form-group">
@@ -563,7 +630,6 @@ export default function AddTenant() {
           </View>
           <Text className="rent-fee-price">{rentFee?.amount || currentRoomRent || 0} 元/月</Text>
         </View>
-        <Text className="extra-fee-question">除了房租，还收别的钱吗？</Text>
         <View className="extra-fee-answer-row">
           <View className={`extra-fee-answer${!showExtraFees ? ' active' : ''}`} onClick={handleNoExtraFees}>
             <Text className="answer-title">不收其他费用</Text>
@@ -663,14 +729,15 @@ export default function AddTenant() {
         {errors.fee && <Text className="form-error-text">{errors.fee}</Text>}
       </View>
       </View>
+      )}
 
-      {!isEdit && (
-        <View className="tenant-form-section">
+      {activeWizardStep === 4 && !isEdit && (
+        <View className="tenant-form-section wizard-card">
           <View className="tenant-section-heading">
-            <Text className="tenant-section-number">4</Text>
             <View>
-              <Text className="tenant-section-title">入住时收钱了吗</Text>
-              <Text className="tenant-section-desc">如实选择，系统会自动记账</Text>
+              <Text className="tenant-section-kicker">第一笔账</Text>
+              <Text className="tenant-section-title">第一笔房租收到了吗？</Text>
+              <Text className="tenant-section-desc">如实选择，系统会自动生成对应的收租记录。</Text>
             </View>
           </View>
         <View className="form-group">
@@ -732,12 +799,13 @@ export default function AddTenant() {
         </View>
       )}
 
-      <View className="tenant-form-section">
+      {activeWizardStep === 5 && (
+      <View className="tenant-form-section wizard-card">
         <View className="tenant-section-heading">
-          <Text className="tenant-section-number">{isEdit ? '4' : '5'}</Text>
           <View>
-            <Text className="tenant-section-title">其他信息</Text>
-            <Text className="tenant-section-desc">都可以不填，以后也能修改</Text>
+            <Text className="tenant-section-kicker">可选内容</Text>
+            <Text className="tenant-section-title">还有什么要记下来？</Text>
+            <Text className="tenant-section-desc">水电表数字和备注都可以不填，以后也能补。</Text>
           </View>
         </View>
       <View className="form-group">
@@ -768,11 +836,49 @@ export default function AddTenant() {
         />
       </View>
       </View>
+      )}
 
-      <View className="form-actions">
-        <View className={`save-btn ${saving ? 'disabled' : ''}`} onClick={saving ? undefined : handleSave}>
-          <Text className="save-btn-text">{isEdit ? '保存修改' : saving ? '正在保存…' : '保存租客'}</Text>
+      {activeWizardStep === 6 && (
+        <View className="tenant-form-section wizard-card wizard-review-card">
+          <View className="tenant-section-heading">
+            <View>
+              <Text className="tenant-section-kicker">最后一步</Text>
+              <Text className="tenant-section-title">核对一下，就完成了</Text>
+              <Text className="tenant-section-desc">信息有误可以点“上一步”返回修改。</Text>
+            </View>
+          </View>
+          <View className="wizard-review-list">
+            <View className="wizard-review-row"><Text>房间</Text><Text>{currentRoomName || `#${urlRoomId}`}</Text></View>
+            <View className="wizard-review-row"><Text>租客</Text><Text>{name || '未填写'} · {phone || '未填写'}</Text></View>
+            <View className="wizard-review-row"><Text>租期</Text><Text>{moveInDate || '未填'} 至 {contractEndDate || '未填'}</Text></View>
+            <View className="wizard-review-row"><Text>收租日</Text><Text>{rentDayToLabel(rentDay)}</Text></View>
+            <View className="wizard-review-row"><Text>押付方式</Text><Text>{paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '未选择'}</Text></View>
+            <View className="wizard-review-row"><Text>押金</Text><Text>{deposit ? `${deposit} 元` : '未填写'}</Text></View>
+            <View className="wizard-review-row"><Text>其他费用</Text><Text>{extraFees.length ? extraFees.map(fee => fee.name || '其他').join('、') : '无'}</Text></View>
+            {!isEdit && <View className="wizard-review-row"><Text>第一笔房租</Text><Text>{initialReceived ? `已收 ${initialAmount || previewTotal} 元` : '尚未收到'}</Text></View>}
+          </View>
+          <View className="wizard-review-total">
+            <Text>预计下一次收款</Text>
+            <Text>{previewTotal} 元</Text>
+          </View>
         </View>
+      )}
+
+      <View className="wizard-actions">
+        {safeWizardIndex > 0 && (
+          <View className="wizard-back-btn" onClick={goPreviousWizardStep}>
+            <Text>上一步</Text>
+          </View>
+        )}
+        {activeWizardStep === 6 ? (
+          <View className={`save-btn wizard-primary-btn ${saving ? 'disabled' : ''}`} onClick={saving ? undefined : handleSave}>
+            <Text className="save-btn-text">{isEdit ? '确认保存修改' : saving ? '正在保存…' : '确认保存租客'}</Text>
+          </View>
+        ) : (
+          <View className="save-btn wizard-primary-btn" onClick={goNextWizardStep}>
+            <Text className="save-btn-text">{activeWizardStep === 1 || activeWizardStep === 5 ? '跳过 / 下一步' : '下一步'}</Text>
+          </View>
+        )}
       </View>
     </View>
   );
