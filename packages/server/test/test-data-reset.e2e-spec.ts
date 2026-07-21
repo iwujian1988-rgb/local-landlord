@@ -9,6 +9,7 @@ import { BillItem } from '../src/modules/bill/bill-item.entity';
 import { FeeItem } from '../src/modules/fee/fee-item.entity';
 import { Document } from '../src/modules/document/document.entity';
 import { PaymentQr } from '../src/modules/payment-qr/payment-qr.entity';
+import { RentRecord } from '../src/modules/rent/rent-record.entity';
 
 describe('Test data reset (e2e)', () => {
   let app: INestApplication;
@@ -41,6 +42,11 @@ describe('Test data reset (e2e)', () => {
 
     const createdBill = await dataSource.getRepository(Bill).findOne({ where: { roomId } });
     expect(createdBill?.id).toBeTruthy();
+    expectOk(await apiCall(app, 'put', `/api/bills/${createdBill!.id}/confirm`, auth, {
+      actualAmount: Number(createdBill!.totalAmount),
+    }));
+    const createdRentRecord = await dataSource.getRepository(RentRecord).findOne({ where: { roomId } });
+    expect(createdRentRecord?.id).toBeTruthy();
     const me = expectOk(await apiCall(app, 'get', '/api/auth/me', auth));
     const reset = await apiCall(app, 'delete', '/api/auth/test-data', auth);
     expectOk(reset);
@@ -50,6 +56,7 @@ describe('Test data reset (e2e)', () => {
     expect(await dataSource.getRepository(Tenant).count({ where: { roomId } })).toBe(0);
     expect(await dataSource.getRepository(Bill).count({ where: { roomId } })).toBe(0);
     expect(await dataSource.getRepository(BillItem).count({ where: { billId: createdBill!.id } })).toBe(0);
+    expect(await dataSource.getRepository(RentRecord).count({ where: { roomId } })).toBe(0);
     expect(await dataSource.getRepository(FeeItem).count({ where: { roomId } })).toBe(0);
     expect(await dataSource.getRepository(Document).count({ where: { roomId } })).toBe(0);
     expect(await dataSource.getRepository(PaymentQr).count({ where: { landlordId: me.id } })).toBe(0);

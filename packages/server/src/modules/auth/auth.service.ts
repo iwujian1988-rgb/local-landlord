@@ -379,9 +379,12 @@ export class AuthService {
         if (billIds.length > 0) {
           await manager.getRepository(BillItem).delete({ billId: In(billIds) });
         }
-        await manager.getRepository(Bill).delete({ roomId: In(roomIds) });
-        await manager.getRepository(SingleCharge).delete({ roomId: In(roomIds) });
+        // rent_record.bill_id references bill.id in production MySQL, so rent
+        // records must be removed before their bills. SQLite tests without a
+        // confirmed payment do not expose this foreign-key ordering issue.
         await manager.getRepository(RentRecord).delete({ roomId: In(roomIds) });
+        await manager.getRepository(SingleCharge).delete({ roomId: In(roomIds) });
+        await manager.getRepository(Bill).delete({ roomId: In(roomIds) });
         await manager.getRepository(Document).delete({ roomId: In(roomIds) });
         await manager.getRepository(FeeItem).delete({ roomId: In(roomIds) });
         await manager.getRepository(Tenant).delete({ roomId: In(roomIds) });
