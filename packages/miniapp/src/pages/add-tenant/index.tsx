@@ -90,7 +90,7 @@ export default function AddTenant() {
   const [feeItems, setFeeItems] = useState<FeeFormItem[]>([]);
   const [feesLoading, setFeesLoading] = useState(false);
   const [feesLoadError, setFeesLoadError] = useState(false);
-  const [expandedFeeIndex, setExpandedFeeIndex] = useState<number | null>(null);
+  const [showExtraFees, setShowExtraFees] = useState(false);
 
   // P0-A: 入住实收
   const [initialReceived, setInitialReceived] = useState<boolean>(false);
@@ -247,6 +247,7 @@ export default function AddTenant() {
   }, []);
 
   const addFee = useCallback((name: string, type: 'fixed' | 'manual') => {
+    setShowExtraFees(true);
     setFeeItems(prev => {
       if (name && prev.some(fee => !fee.isRent && fee.name.trim() === name)) {
         Taro.showToast({ title: `已经添加${name}`, icon: 'none' });
@@ -261,8 +262,29 @@ export default function AddTenant() {
 
   const removeFee = useCallback((index: number) => {
     setFeeItems(prev => prev.filter((fee, i) => i !== index || fee.isRent));
-    setExpandedFeeIndex(null);
   }, []);
+
+  const clearExtraFees = useCallback(() => {
+    setFeeItems(prev => prev.filter(fee => fee.isRent));
+    setShowExtraFees(false);
+  }, []);
+
+  const handleNoExtraFees = useCallback(async () => {
+    if (feeItems.some(fee => !fee.isRent)) {
+      const result = await Taro.showModal({
+        title: '不收其他费用？',
+        content: '已添加的物业费、水电费等会被移除。',
+        confirmText: '确认移除',
+        cancelText: '保留费用',
+      });
+      if (!result.confirm) return;
+    }
+    clearExtraFees();
+  }, [feeItems, clearExtraFees]);
+
+  useEffect(() => {
+    if (feeItems.some(fee => !fee.isRent)) setShowExtraFees(true);
+  }, [feeItems]);
 
   useEffect(() => {
     if (!initialReceived || initialAmountEditedRef.current || feeItems.length === 0) return;
@@ -370,6 +392,18 @@ export default function AddTenant() {
   }, [isEdit, tenantId, name, phone, urlRoomId, rentDay, moveInDate, contractEndDate,
     deposit, note, paymentIdx, loadedPayMonths, initialReceived, initialAmount,
     initialMethodIdx, initialDate, moveInReading, feeItems, feesLoading, feesLoadError]);
+
+  const previewPayMonths = paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX
+    ? PAYMENT_PRESETS[paymentIdx].payMonths
+    : loadedPayMonths;
+  const rentFee = feeItems.find(fee => fee.isRent);
+  const extraFees = feeItems.filter(fee => !fee.isRent);
+  const fixedExtraFees = extraFees.filter(fee => fee.type === 'fixed');
+  const manualExtraFees = extraFees.filter(fee => fee.type === 'manual');
+  const previewTotal = calculateFeeCycleTotal(feeItems, previewPayMonths);
+  const previewRentTotal = rentFee
+    ? calculateFeeCycleTotal([rentFee], previewPayMonths)
+    : Math.round((currentRoomRent || 0) * previewPayMonths * 100) / 100;
 
   return (
     <View className="page-add-tenant">
@@ -522,102 +556,111 @@ export default function AddTenant() {
           </View>
         </View>
       <View className="form-group fee-form-group">
-        <Text className="form-label">每次收租，还要收哪些钱？</Text>
-        <Text className="fee-section-hint">房租已经自动加入。下面只需添加物业费、水电费等其他费用；没有就不用添加。</Text>
+        <View className="rent-fee-summary">
+          <View>
+            <Text className="rent-fee-label">房租</Text>
+            <Text className="rent-fee-note">已自动加入，不用重复填写</Text>
+          </View>
+          <Text className="rent-fee-price">{rentFee?.amount || currentRoomRent || 0} 元/月</Text>
+        </View>
+        <Text className="extra-fee-question">除了房租，还收别的钱吗？</Text>
+        <View className="extra-fee-answer-row">
+          <View className={`extra-fee-answer${!showExtraFees ? ' active' : ''}`} onClick={handleNoExtraFees}>
+            <Text className="answer-title">不收其他费用</Text>
+            <Text className="answer-desc">只有房租</Text>
+          </View>
+          <View className={`extra-fee-answer${showExtraFees ? ' active' : ''}`} onClick={() => setShowExtraFees(true)}>
+            <Text className="answer-title">还要收其他费用</Text>
+            <Text className="answer-desc">物业、水电等</Text>
+          </View>
+        </View>
         {feesLoading && <Text className="fee-section-status">正在加载收费项目…</Text>}
         {feesLoadError && (
           <View className="fee-load-error" onClick={loadFeeItems}>
             <Text>收费项目加载失败，点此重试</Text>
           </View>
         )}
-        <View className="tenant-fee-list">
-          {feeItems.map((fee, index) => (
-            <View className={`tenant-fee-card${fee.isRent ? ' rent' : ''}`} key={`${fee.name}-${index}`}>
-              <View className="tenant-fee-head">
-                {fee.isRent ? (
-                  <View className="tenant-fee-title-wrap">
-                    <Text className="tenant-fee-name readonly">房租</Text>
-                    <Text className="tenant-fee-auto-tag">已自动加入</Text>
-                  </View>
-                ) : (
-                  <Input
-                    className="tenant-fee-name"
-                    type="text"
-                    value={fee.name}
-                    placeholder="收费项目名称"
-                    maxlength={32}
-                    onInput={e => updateFee(index, { name: e.detail.value })}
-                  />
-                )}
-                {!fee.isRent && (
-                  <Text className="tenant-fee-remove" onClick={() => removeFee(index)}>删除</Text>
-                )}
-              </View>
+        {showExtraFees && (
+          <>
+            <Text className="fee-preset-title">点一下要收的费用</Text>
+            <View className="fee-preset-grid">
+              <View className="fee-preset" onClick={() => addFee('物业费', 'fixed')}><Text>+ 物业费</Text></View>
+              <View className="fee-preset" onClick={() => addFee('水电费', 'manual')}><Text>+ 水电费</Text></View>
+              <View className="fee-preset" onClick={() => addFee('网费', 'fixed')}><Text>+ 网费</Text></View>
+              <View className="fee-preset" onClick={() => addFee('', 'fixed')}><Text>+ 其他费用</Text></View>
+            </View>
 
-              {!fee.isRent && (
-                <View className="tenant-fee-types simple">
-                  <Text className="tenant-fee-question">金额怎么填？</Text>
-                  <View className={`tenant-fee-chip${fee.type === 'fixed' ? ' active' : ''}`} onClick={() => updateFee(index, { type: 'fixed' })}>
-                    <Text>现在填金额</Text>
-                  </View>
-                  <View className={`tenant-fee-chip${fee.type === 'manual' ? ' active' : ''}`} onClick={() => updateFee(index, { type: 'manual', amount: '0' })}>
-                    <Text>以后再填</Text>
-                  </View>
-                </View>
-              )}
-
-              {fee.type === 'fixed' && (
-                <View className="tenant-fee-amount-row">
-                  <Text className="tenant-fee-amount-label">金额</Text>
-                  <Input
-                    className="tenant-fee-amount-input"
-                    type="digit"
-                    value={fee.amount}
-                    placeholder="0"
-                    onInput={e => updateFee(index, { amount: e.detail.value })}
-                  />
-                  <Text className="tenant-fee-unit">元</Text>
-                </View>
-              )}
-
-              {!fee.isRent && fee.type === 'manual' && (
-                <Text className="tenant-fee-manual-tip">水电费等金额不固定的费用，可以等出账时再填写。</Text>
-              )}
-
-              {!fee.isRent && fee.type === 'fixed' && (
-                <View className="tenant-fee-more-block">
-                  <View className="tenant-fee-more" onClick={() => setExpandedFeeIndex(expandedFeeIndex === index ? null : index)}>
-                    <Text>更多设置</Text>
-                    <Text>{fee.cycleMode === 'rent' ? '跟房租一起收' : '每次只收一份'} {expandedFeeIndex === index ? '⌃' : '⌄'}</Text>
-                  </View>
-                  {expandedFeeIndex === index && (
-                    <View className="tenant-fee-cycle-panel">
-                      <Text className="tenant-fee-cycle-help">如果是“押一付三”，这笔费用怎么算？</Text>
-                      <View className="tenant-fee-cycle">
-                        <View className={`tenant-fee-cycle-option${fee.cycleMode === 'rent' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'rent' })}>
-                          <Text className="option-title">跟房租一起算</Text>
-                          <Text className="option-desc">收三个月房租，就收三份</Text>
-                        </View>
-                        <View className={`tenant-fee-cycle-option${fee.cycleMode === 'monthly' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'monthly' })}>
-                          <Text className="option-title">每次只算一份</Text>
-                          <Text className="option-desc">不管收几个月，都只收一份</Text>
+            {extraFees.length > 0 && (
+              <View className="selected-fee-list">
+                <Text className="selected-fee-title">已经添加</Text>
+                {feeItems.map((fee, index) => !fee.isRent && (
+                  <View className="selected-fee-card" key={`${fee.name}-${index}`}>
+                    <View className="selected-fee-head">
+                      {['物业费', '水电费', '网费'].includes(fee.name) ? (
+                        <Text className="selected-fee-name">{fee.name}</Text>
+                      ) : (
+                        <Input
+                          className="selected-fee-name-input"
+                          type="text"
+                          value={fee.name}
+                          placeholder="费用叫什么？"
+                          maxlength={32}
+                          onInput={e => updateFee(index, { name: e.detail.value })}
+                        />
+                      )}
+                      <Text className="selected-fee-remove" onClick={() => removeFee(index)}>移除</Text>
+                    </View>
+                    {fee.type === 'fixed' ? (
+                      <View className="selected-fee-amount">
+                        <Text>每月多少钱？</Text>
+                        <View className="selected-fee-input-wrap">
+                          <Input
+                            className="selected-fee-input"
+                            type="digit"
+                            value={fee.amount}
+                            placeholder="0"
+                            onInput={e => updateFee(index, { amount: e.detail.value })}
+                          />
+                          <Text>元</Text>
                         </View>
                       </View>
-                    </View>
-                  )}
+                    ) : (
+                      <Text className="selected-fee-later">具体金额等收租时再填写</Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {extraFees.length > 0 && (
+              <View className="fee-preview">
+                <Text className="fee-preview-title">预计下一次收款</Text>
+                <Text className="fee-preview-subtitle">按一次收 {previewPayMonths} 个月房租计算，不含押金</Text>
+                <View className="fee-preview-row">
+                  <Text>{previewPayMonths} 个月房租</Text>
+                  <Text>{previewRentTotal} 元</Text>
                 </View>
-              )}
-            </View>
-          ))}
-        </View>
+                {fixedExtraFees.map((fee, index) => (
+                  <View className="fee-preview-row" key={`${fee.name}-preview-${index}`}>
+                    <Text>{fee.name || '其他费用'}</Text>
+                    <Text>{calculateFeeCycleTotal([fee], previewPayMonths)} 元</Text>
+                  </View>
+                ))}
+                {manualExtraFees.map((fee, index) => (
+                  <View className="fee-preview-row muted" key={`${fee.name}-manual-${index}`}>
+                    <Text>{fee.name || '其他费用'}</Text>
+                    <Text>收租时填写</Text>
+                  </View>
+                ))}
+                <View className="fee-preview-total">
+                  <Text>预计合计</Text>
+                  <Text>{previewTotal} 元</Text>
+                </View>
+              </View>
+            )}
+          </>
+        )}
         {errors.fee && <Text className="form-error-text">{errors.fee}</Text>}
-        <Text className="tenant-fee-add-title">点击添加其他费用</Text>
-        <View className="tenant-fee-add-row">
-          <View className="tenant-fee-add" onClick={() => addFee('物业费', 'fixed')}><Text>+ 物业费</Text></View>
-          <View className="tenant-fee-add" onClick={() => addFee('水电费', 'manual')}><Text>+ 水电费</Text></View>
-          <View className="tenant-fee-add" onClick={() => addFee('网费', 'fixed')}><Text>+ 网费</Text></View>
-          <View className="tenant-fee-add" onClick={() => addFee('', 'fixed')}><Text>+ 其他</Text></View>
-        </View>
       </View>
       </View>
 

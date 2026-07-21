@@ -349,226 +349,247 @@
   text-align: center;
 }
 
-.tenant-fee-list {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.tenant-fee-card {
-  padding: 24px;
-  border: 3px solid var(--bg-soft, #F5EDE2);
-  border-radius: 28px;
-  background: var(--cream, #FFFDF9);
-
-  &.rent {
-    border-color: rgba(245, 215, 142, 0.7);
-    background: rgba(255, 249, 232, 0.72);
-  }
-}
-
-.tenant-fee-head,
-.tenant-fee-amount-row,
-.tenant-fee-types,
-.tenant-fee-cycle,
-.tenant-fee-add-row {
+.rent-fee-summary,
+.extra-fee-answer-row,
+.fee-preset-grid,
+.selected-fee-head,
+.selected-fee-amount,
+.selected-fee-input-wrap,
+.fee-preview-row,
+.fee-preview-total {
   display: flex;
   align-items: center;
 }
 
-.tenant-fee-head {
+.rent-fee-summary {
   justify-content: space-between;
   gap: 20px;
+  padding: 24px;
+  border: 3px solid rgba(245, 215, 142, 0.7);
+  border-radius: 26px;
+  background: rgba(255, 249, 232, 0.72);
 }
 
-.tenant-fee-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+.rent-fee-label,
+.rent-fee-note {
+  display: block;
 }
 
-.tenant-fee-auto-tag {
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(245, 215, 142, 0.35);
-  color: var(--text-secondary, #7A6F64);
+.rent-fee-label {
+  color: var(--text-primary, #4A4038);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.rent-fee-note {
+  margin-top: 6px;
+  color: var(--text-hint, #A89B8C);
   font-size: 22px;
 }
 
-.tenant-fee-name {
-  flex: 1;
-  min-width: 0;
-  height: 64px;
-  line-height: 64px;
+.rent-fee-price {
+  flex-shrink: 0;
+  color: var(--text-primary, #4A4038);
   font-size: 30px;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.extra-fee-question {
+  display: block;
+  margin-top: 30px;
   color: var(--text-primary, #4A4038);
-  border-bottom: 2px solid var(--bg-soft, #F5EDE2);
-
-  &.readonly { border-bottom: 0; }
+  font-size: 31px;
+  font-weight: 700;
 }
 
-.tenant-fee-remove {
-  padding: 12px 0 12px 20px;
-  color: var(--red, #D85C4A);
-  font-size: 24px;
-}
-
-.tenant-fee-types,
-.tenant-fee-cycle {
-  flex-wrap: wrap;
-  gap: 12px;
+.extra-fee-answer-row {
+  gap: 16px;
   margin-top: 18px;
 }
 
-.tenant-fee-types.simple {
-  align-items: center;
-}
-
-.tenant-fee-question {
-  width: 100%;
-  color: var(--text-secondary, #7A6F64);
-  font-size: 24px;
-}
-
-.tenant-fee-chip {
-  padding: 12px 20px;
-  border-radius: 999px;
-  background: var(--bg-soft, #F5EDE2);
-  color: var(--text-secondary, #7A6F64);
-  font-size: 24px;
-
-  &.active {
-    background: rgba(245, 215, 142, 0.45);
-    color: var(--text-primary, #4A4038);
-    font-weight: 600;
-  }
-}
-
-.tenant-fee-cycle-label {
-  margin-right: 4px;
-  color: var(--text-hint, #A89B8C);
-  font-size: 24px;
-}
-
-.tenant-fee-amount-row {
-  width: 310px;
-  margin-top: 18px;
-  padding: 0 20px;
-  border-radius: 20px;
-  background: var(--bg-soft, #F5EDE2);
-}
-
-.tenant-fee-amount-label {
-  margin-right: 18px;
-  color: var(--text-secondary, #7A6F64);
-  font-size: 24px;
-}
-
-.tenant-fee-amount-input {
+.extra-fee-answer {
   flex: 1;
-  height: 68px;
-  line-height: 68px;
-  font-size: 30px;
-  color: var(--text-primary, #4A4038);
-}
-
-.tenant-fee-unit {
-  color: var(--text-secondary, #7A6F64);
-  font-size: 24px;
-}
-
-.tenant-fee-manual-tip {
-  display: block;
-  margin-top: 18px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: var(--bg-soft, #F5EDE2);
-  color: var(--text-secondary, #7A6F64);
-  font-size: 23px;
-  line-height: 1.55;
-}
-
-.tenant-fee-more-block {
-  margin-top: 18px;
-  border-top: 2px solid var(--bg-soft, #F5EDE2);
-}
-
-.tenant-fee-more {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 18px;
-  color: var(--text-secondary, #7A6F64);
-  font-size: 23px;
-}
-
-.tenant-fee-cycle-panel {
-  margin-top: 16px;
-  padding: 18px;
-  border-radius: 20px;
-  background: var(--bg-soft, #F5EDE2);
-}
-
-.tenant-fee-cycle-help {
-  display: block;
-  color: var(--text-primary, #4A4038);
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.tenant-fee-cycle {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.tenant-fee-cycle-option {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 16px 18px;
-  border: 2px solid transparent;
-  border-radius: 18px;
+  min-height: 116px;
+  padding: 20px 14px;
+  border: 3px solid var(--bg-soft, #F5EDE2);
+  border-radius: 24px;
+  box-sizing: border-box;
   background: var(--cream, #FFFDF9);
+  text-align: center;
 
   &.active {
     border-color: var(--accent, #F5D78E);
-    background: rgba(245, 215, 142, 0.2);
+    background: rgba(245, 215, 142, 0.22);
   }
 
-  .option-title {
+  .answer-title,
+  .answer-desc {
+    display: block;
+  }
+
+  .answer-title {
     color: var(--text-primary, #4A4038);
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 25px;
+    font-weight: 700;
   }
 
-  .option-desc {
-    color: var(--text-secondary, #7A6F64);
+  .answer-desc {
+    margin-top: 8px;
+    color: var(--text-hint, #A89B8C);
     font-size: 21px;
   }
 }
 
-.tenant-fee-add-title {
+.fee-preset-title,
+.selected-fee-title {
   display: block;
-  margin-top: 22px;
+  margin-top: 28px;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.fee-preset-grid {
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.fee-preset {
+  flex: 0 0 calc(50% - 7px);
+  padding: 21px 12px;
+  border: 2px solid rgba(245, 215, 142, 0.8);
+  border-radius: 22px;
+  box-sizing: border-box;
+  background: rgba(255, 249, 232, 0.55);
+  color: var(--text-primary, #4A4038);
+  font-size: 25px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.selected-fee-list {
+  margin-top: 30px;
+}
+
+.selected-fee-title {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.selected-fee-card {
+  margin-top: 14px;
+  padding: 22px 24px;
+  border: 3px solid var(--bg-soft, #F5EDE2);
+  border-radius: 24px;
+  background: var(--cream, #FFFDF9);
+}
+
+.selected-fee-head {
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.selected-fee-name,
+.selected-fee-name-input {
+  flex: 1;
+  min-width: 0;
+  height: 60px;
+  line-height: 60px;
+  color: var(--text-primary, #4A4038);
+  font-size: 29px;
+  font-weight: 700;
+}
+
+.selected-fee-name-input {
+  border-top: 2px solid var(--bg-soft, #F5EDE2);
+  border-bottom: 2px solid var(--bg-soft, #F5EDE2);
+}
+
+.selected-fee-remove {
+  padding: 12px 0 12px 20px;
+  color: var(--red, #D85C4A);
+  font-size: 23px;
+}
+
+.selected-fee-amount {
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 16px;
   color: var(--text-secondary, #7A6F64);
   font-size: 24px;
 }
 
-.tenant-fee-add-row {
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 14px;
+.selected-fee-input-wrap {
+  width: 220px;
+  padding: 0 18px;
+  border-radius: 18px;
+  background: var(--bg-soft, #F5EDE2);
+  color: var(--text-secondary, #7A6F64);
 }
 
-.tenant-fee-add {
-  flex: 0 0 calc(50% - 8px);
-  box-sizing: border-box;
-  padding: 20px 12px;
-  border: 2px solid rgba(245, 215, 142, 0.8);
-  border-radius: 22px;
-  background: rgba(255, 249, 232, 0.55);
-  text-align: center;
+.selected-fee-input {
+  flex: 1;
+  min-width: 0;
+  height: 64px;
+  line-height: 64px;
   color: var(--text-primary, #4A4038);
-  font-size: 25px;
+  font-size: 29px;
+}
+
+.selected-fee-later {
+  display: block;
+  margin-top: 14px;
+  padding: 15px 18px;
+  border-radius: 18px;
+  background: var(--bg-soft, #F5EDE2);
+  color: var(--text-secondary, #7A6F64);
+  font-size: 23px;
+}
+
+.fee-preview {
+  margin-top: 28px;
+  padding: 24px;
+  border-radius: 26px;
+  background: rgba(245, 215, 142, 0.18);
+}
+
+.fee-preview-title,
+.fee-preview-subtitle {
+  display: block;
+}
+
+.fee-preview-title {
+  color: var(--text-primary, #4A4038);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.fee-preview-subtitle {
+  margin-top: 6px;
+  margin-bottom: 18px;
+  color: var(--text-hint, #A89B8C);
+  font-size: 21px;
+}
+
+.fee-preview-row,
+.fee-preview-total {
+  justify-content: space-between;
+  gap: 20px;
+  padding: 9px 0;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 23px;
+
+  &.muted {
+    color: var(--text-hint, #A89B8C);
+  }
+}
+
+.fee-preview-total {
+  margin-top: 10px;
+  padding-top: 18px;
+  border-top: 2px solid rgba(122, 111, 100, 0.15);
+  color: var(--text-primary, #4A4038);
+  font-size: 28px;
+  font-weight: 700;
 }
