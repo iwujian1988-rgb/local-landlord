@@ -68,6 +68,30 @@ describe('Tenant module (e2e)', () => {
       expect(room.status).toBe(1);
     });
 
+    it('TC-TENANT-001B: 可选日期不传时创建成功，房间列表立即显示已出租和租客', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2500, name: '101' });
+      const createRes = await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {
+        name: '王先生',
+        phone: '13812345678',
+        rentDay: 15,
+        payMonths: 1,
+        deposit: 5000,
+      });
+      expectOk(createRes);
+
+      const roomsRes = await apiCall(app, 'get', '/api/rooms', auth);
+      const rooms = expectOk(roomsRes);
+      expect(rooms).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: rId,
+          status: 1,
+          displayStatus: expect.stringMatching(/^(rented|approaching|overdue)$/),
+          tenantName: '王先生',
+          rent: 2500,
+        }),
+      ]));
+    });
+
     it('TC-TENANT-002: 押一付三自动建第一笔账单（无实收）', async () => {
       const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'room-002' });
       const tid = await createTenant(app, auth, rId, {

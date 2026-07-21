@@ -1,5 +1,5 @@
 import { getPropertyCoverImage } from '../src/utils/property-form';
-import { withInitialPayment } from '../src/utils/tenant-form';
+import { withInitialPayment, withOptionalTenantDates } from '../src/utils/tenant-form';
 
 describe('property form regressions', () => {
   it('TC-PROP-FORM-001: 编辑房源读取后端 coverImage 字段', () => {
@@ -46,5 +46,25 @@ describe('tenant initial-payment payload regressions', () => {
       initialMethod: 'wechat',
       initialDate: '2026-07-21',
     })).toEqual(base);
+  });
+});
+
+describe('tenant optional-date payload regressions', () => {
+  it('TC-TENANT-FORM-003: 空日期不得发送空字符串导致后端 400', () => {
+    expect(withOptionalTenantDates({ name: '王先生' }, {
+      moveInDate: '   ',
+      contractEndDate: '',
+    })).toEqual({ name: '王先生' });
+  });
+
+  it('TC-TENANT-FORM-004: 已选日期保持 ISO 值发送', () => {
+    expect(withOptionalTenantDates({ name: '王先生' }, {
+      moveInDate: '2026-07-21',
+      contractEndDate: '2027-07-21',
+    })).toEqual({
+      name: '王先生',
+      moveInDate: '2026-07-21',
+      contractEndDate: '2027-07-21',
+    });
   });
 });

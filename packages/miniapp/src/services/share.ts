@@ -35,9 +35,9 @@ export async function generateAndCopyShareLink(
       });
     });
     return res.data;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[share] generate failed:', err);
-    Taro.showToast({ title: '生成链接失败，请稍后重试', icon: 'none' });
+    Taro.showToast({ title: err?.message || '生成链接失败，请稍后重试', icon: 'none' });
     return null;
   }
 }

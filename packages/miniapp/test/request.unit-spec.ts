@@ -89,6 +89,25 @@ describe('authenticated request in guest mode', () => {
   });
 });
 
+describe('authenticated API error envelope', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Taro.clearStorageSync();
+    useAuthStore.setState({
+      token: 'valid-token', user: null, isLoggedIn: true, loginLoading: false, loginError: '',
+    });
+  });
+
+  it('TC-REQ-ERROR-001: 后端 400/500 不得被前端当成保存成功', async () => {
+    (Taro.request as jest.Mock).mockResolvedValueOnce({
+      statusCode: 400,
+      data: { code: 400, data: null, message: '合同日期格式错误' },
+    });
+
+    await expect(get('/rooms/1')).rejects.toThrow('合同日期格式错误');
+  });
+});
+
 /**
  * The two helpers below (shouldFallbackToHttps + safeJsonParse) are not
  * exported. They are exercised indirectly through callContainerCompat, which

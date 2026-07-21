@@ -86,6 +86,12 @@ const request = async <T = unknown>(
       throw new Error('访客模式不能查看账号数据，请先登录');
     }
 
+    // Taro.request and cloud.callContainer resolve normally for HTTP 4xx/5xx.
+    // Reject non-success envelopes so mutation pages cannot report false success.
+    if (typeof data?.code === 'number' && data.code !== 0) {
+      throw new Error(data.message || `请求失败（${data.code}）`);
+    }
+
     return data;
   } catch (err: any) {
     const msg = err?.errMsg || err?.message || '';

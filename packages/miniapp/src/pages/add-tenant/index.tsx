@@ -3,7 +3,7 @@ import Taro, { useDidHide } from '@tarojs/taro';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
-import { withInitialPayment } from '../../utils/tenant-form';
+import { withInitialPayment, withOptionalTenantDates } from '../../utils/tenant-form';
 import './index.scss';
 
 const rentDayLabels = Array.from({ length: 28 }, (_, i) => `${i + 1}号`);
@@ -231,17 +231,15 @@ export default function AddTenant() {
       ? PAYMENT_PRESETS[paymentIdx].payMonths
       : loadedPayMonths;
 
-    let tenantData: any = {
+    let tenantData: any = withOptionalTenantDates({
       name: name.trim(),
       phone: phone.trim(),
-      moveInDate: moveInDate.trim(),
-      contractEndDate: contractEndDate.trim(),
       rentDay,
       payMonths: resolvedPayMonths,
       deposit: deposit ? Number(deposit) : undefined,
       note: note.trim() || undefined,
       status: 1,
-    };
+    }, { moveInDate, contractEndDate });
 
     // P0-A: 入住实收（仅新建租客时附带；编辑模式不重新触发账单生成）
     tenantData = withInitialPayment(tenantData, {
@@ -291,9 +289,9 @@ export default function AddTenant() {
           Taro.navigateBack();
         }, 800);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AddTenant] 保存租客失败:', err);
-      Taro.showToast({ title: '保存失败', icon: 'none' });
+      Taro.showToast({ title: err?.message || '保存失败', icon: 'none' });
       saveInFlightRef.current = false;
       setSaving(false);
     }
