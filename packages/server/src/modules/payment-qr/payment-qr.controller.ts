@@ -40,7 +40,12 @@ export class PaymentQrController {
     @Body() dto: UpdatePaymentQrDto,
   ) {
     await this.paymentQrService.verifyOwnership(id, user.id);
-    return this.paymentQrService.update(id, dto);
+    const rawType = dto.typeNum ?? dto.type;
+    const normalizedType = typeof rawType === 'string' ? TYPE_STR_MAP[rawType] : rawType;
+    const payload: any = { ...dto };
+    delete payload.typeNum;
+    if (normalizedType !== undefined) payload.type = normalizedType;
+    return this.paymentQrService.update(id, payload);
   }
 
   @Put(':id/set-default')

@@ -8,6 +8,8 @@ import {
   validateTenantForm,
 } from '../src/utils/form-validation';
 import { buildCheckoutPayload } from '../src/utils/checkout-payload';
+import { buildPaymentQrPayload } from '../src/utils/payment-qr-form';
+import { getRoomNameFromResponse, normalizeFeeItems } from '../src/utils/fee-form';
 
 describe('property form regressions', () => {
   it('TC-PROP-FORM-001: 编辑房源读取后端 coverImage 字段', () => {
@@ -96,6 +98,43 @@ describe('checkout payload regressions', () => {
 
   it('TC-CHECKOUT-002: skip settlement still performs checkout explicitly', () => {
     expect(buildCheckoutPayload()).toEqual({ status: 0, action: 'checkout', depositStatus: 0 });
+  });
+});
+
+describe('payment QR payload regressions', () => {
+  const alipay = {
+    type: 'alipay' as const,
+    label: '支付宝',
+    imageUrl: 'cloud://bucket/alipay.png',
+    isDefault: true,
+  };
+
+  it('TC-QR-FORM-001: create sends numeric typeNum accepted by create DTO', () => {
+    expect(buildPaymentQrPayload(alipay, false)).toEqual({
+      label: '支付宝', imageUrl: alipay.imageUrl, isDefault: true, typeNum: 1,
+    });
+  });
+
+  it('TC-QR-FORM-002: update sends numeric type accepted by update DTO', () => {
+    expect(buildPaymentQrPayload(alipay, true)).toEqual({
+      label: '支付宝', imageUrl: alipay.imageUrl, isDefault: true, type: 1,
+    });
+  });
+});
+
+describe('fee page response regressions', () => {
+  it('TC-FEE-FORM-001: reads current array and legacy wrapped fee responses', () => {
+    const fee = { name: '房租', type: 0, amount: 2500, enabled: 1, isRent: 1 };
+    expect(normalizeFeeItems([fee])).toEqual([expect.objectContaining({
+      name: '房租', type: 'fixed', amount: '2500', enabled: true, isRent: true,
+    })]);
+    expect(normalizeFeeItems({ fees: [fee] })).toHaveLength(1);
+    expect(normalizeFeeItems({ items: [fee] })).toHaveLength(1);
+  });
+
+  it('TC-FEE-FORM-002: room detail title reads nested room response', () => {
+    expect(getRoomNameFromResponse({ room: { name: '101' } })).toBe('101');
+    expect(getRoomNameFromResponse({ name: '102' })).toBe('102');
   });
 });
 

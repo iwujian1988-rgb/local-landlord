@@ -146,6 +146,7 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
   // ============ Payment-qr ============
   describe('payment-qr 模块', () => {
     let qrId: number;
+    let alipayQrId: number;
 
     it('TC-QR-001: 上传收款二维码', async () => {
       const res = await apiCall(app, 'post', '/api/payment-qr', auth, {
@@ -157,21 +158,54 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
       qrId = res.body?.data?.id;
     });
 
-    it('TC-QR-002: 获取列表', async () => {
+    it('TC-QR-002: typeNum 创建支付宝码并设为默认', async () => {
+      const res = await apiCall(app, 'post', '/api/payment-qr', auth, {
+        label: '支付宝',
+        imageUrl: '/uploads/alipay.png',
+        typeNum: 1,
+        isDefault: true,
+      });
+      expect(res.body?.code).toBe(0);
+      alipayQrId = res.body?.data?.id;
+    });
+
+    it('TC-QR-003: 更新接口同时兼容字符串 type，且默认码唯一', async () => {
+      const updateRes = await apiCall(app, 'put', `/api/payment-qr/${qrId}`, auth, {
+        type: 'wechat',
+        imageUrl: '/uploads/wechat-new.png',
+        isDefault: true,
+      });
+      expect(updateRes.body?.code).toBe(0);
+
       const res = await apiCall(app, 'get', '/api/payment-qr', auth);
       expect(res.body?.code).toBe(0);
+      expect(res.body?.data?.codes.filter((code: any) => code.isDefault)).toHaveLength(1);
+      expect(res.body?.data?.codes.find((code: any) => code.id === qrId)).toEqual(
+        expect.objectContaining({ type: 'wechat', isDefault: true, imageUrl: '/uploads/wechat-new.png' }),
+      );
     });
 
-    it('TC-QR-003: 设为默认', async () => {
-      if (!qrId) return;
-      const res = await apiCall(app, 'put', `/api/payment-qr/${qrId}/set-default`, auth);
+    it('TC-QR-004: 设为默认', async () => {
+      if (!alipayQrId) return;
+      const res = await apiCall(app, 'put', `/api/payment-qr/${alipayQrId}/set-default`, auth);
       expect(res.body?.code).toBe(0);
+      const list = await apiCall(app, 'get', '/api/payment-qr', auth);
+      expect(list.body?.data?.codes.filter((code: any) => code.isDefault)).toHaveLength(1);
+      expect(list.body?.data?.codes.find((code: any) => code.id === alipayQrId)?.isDefault).toBe(true);
     });
 
-    it('TC-QR-004: 删除', async () => {
+    it('TC-QR-005: 删除', async () => {
       if (!qrId) return;
       const res = await apiCall(app, 'delete', `/api/payment-qr/${qrId}`, auth);
       expect(res.body?.code).toBe(0);
+    });
+
+    it('TC-QR-006: 非法 type 不得静默变成微信码', async () => {
+      const res = await apiCall(app, 'post', '/api/payment-qr', auth, {
+        imageUrl: '/uploads/invalid.png',
+        type: 'unknown',
+      });
+      expect(res.body?.code).not.toBe(0);
     });
   });
 

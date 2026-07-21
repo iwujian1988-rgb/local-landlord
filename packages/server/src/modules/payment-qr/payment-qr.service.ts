@@ -55,6 +55,12 @@ export class PaymentQrService {
     landlordId: number,
     data: { type: number; imageUrl: string; payeeName: string; note?: string; isDefault?: number },
   ): Promise<PaymentQr> {
+    if (data.isDefault) {
+      await this.paymentQrRepository.update(
+        { landlordId, isDefault: 1 },
+        { isDefault: 0 },
+      );
+    }
     const qr = this.paymentQrRepository.create({
       landlordId,
       type: data.type,
@@ -70,6 +76,12 @@ export class PaymentQrService {
   async update(id: number, dto: UpdatePaymentQrDto): Promise<PaymentQr> {
     const qr = await this.paymentQrRepository.findOne({ where: { id } });
     if (!qr) throw new NotFoundException('收款码不存在');
+    if (dto.isDefault) {
+      await this.paymentQrRepository.update(
+        { landlordId: qr.landlordId, isDefault: 1 },
+        { isDefault: 0 },
+      );
+    }
     if (dto.payeeNote !== undefined) {
       dto.note = dto.payeeNote;
       delete (dto as any).payeeNote;

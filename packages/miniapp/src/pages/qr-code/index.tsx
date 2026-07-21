@@ -7,6 +7,7 @@ import { get, post, put, del } from '../../services/request';
 import { uploadFile } from '../../services/upload';
 import { API_BASE_URL, normalizeUploadUrlForStorage, resolveAsset } from '../../config';
 import { pickImages } from '../../utils/pick-image';
+import { buildPaymentQrPayload } from '../../utils/payment-qr-form';
 import { useState, useCallback, useRef } from 'react';
 import './index.scss';
 
@@ -128,12 +129,12 @@ export default function QrCode() {
       //    belong to the landlord, not the QR)
       const currentCodes = codes.filter(c => c.imageUrl);
       for (const code of currentCodes) {
-        const payload = {
+        const payload = buildPaymentQrPayload({
           type: code.type,
           label: code.label,
           imageUrl: normalizeUploadUrlForStorage(code.imageUrl),
           isDefault: code.isDefault,
-        };
+        }, Boolean(code.id));
         const res = code.id
           ? await put(`/payment-qr/${code.id}`, payload)
           : await post('/payment-qr', payload);

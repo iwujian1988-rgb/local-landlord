@@ -1,13 +1,15 @@
-import { IsString, IsOptional, IsNumber, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsBoolean, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePaymentQrDto {
   @IsOptional()
   @IsString()
+  @IsIn(['wechat', 'alipay', 'bank'])
   type?: string;
 
   @IsOptional()
   @IsNumber()
+  @IsIn([0, 1, 2])
   @Type(() => Number)
   typeNum?: number;
 

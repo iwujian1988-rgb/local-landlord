@@ -6,14 +6,10 @@ import ErrorState from '../../components/ErrorState';
 import { get, post } from '../../services/request';
 import { useState, useCallback, useRef } from 'react';
 import { firstFormError, validateFeeForm } from '../../utils/form-validation';
+import { FeeFormItem, getRoomNameFromResponse, normalizeFeeItems } from '../../utils/fee-form';
 import './index.scss';
 
-interface FeeSetting {
-  name: string;
-  type: 'fixed' | 'manual';
-  amount: string;
-  enabled: boolean;
-  isRent: boolean;
+interface FeeSetting extends FeeFormItem {
   /**
    * Only meaningful when type==='fixed'. Controls whether the amount multiplies
    * by payMonths at bill-generation time:
@@ -36,7 +32,6 @@ export default function FeeSetup() {
   const roomId = Number(routerParams.roomId) || 0;
 
   const [fees, setFees] = useState<FeeSetting[]>([]);
-  const [roomName, setRoomName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -68,25 +63,8 @@ export default function FeeSetup() {
     setLoading(true);
     setError(false);
     try {
-      const [feeRes, roomRes] = await Promise.all([
-        get<any[]>(`/rooms/${rid}/fee-items`),
-        get<any>(`/rooms/${rid}`),
-      ]);
-      if (feeRes.code === 0) {
-        const items: FeeSetting[] = (feeRes.data || []).map((f: any) => ({
-          name: f.name,
-          type: f.type || 'fixed',
-          amount: String(f.amount ?? ''),
-          enabled: f.enabled !== false,
-          isRent: f.isRent || false,
-          cycleMode: f.cycleMode === 'monthly' ? 'monthly' : 'rent',
-        }));
-        setFees(items);
-      }
-      if (roomRes.code === 0 && roomRes.data) {
-        setRoomName(roomRes.data.name || '');
-        Taro.setNavigationBarTitle({ title: `${roomRes.data.name || '房间'} · 每月收费项目` });
-      }
+      const feeRes = await get<unknown>(`/rooms/${rid}/fee-items`);
+      setFees(normalizeFeeItems(feeRes.data));
     } catch (err) {
       console.error('[FeeSetup] 加载数据失败:', err);
       setError(true);
@@ -95,9 +73,22 @@ export default function FeeSetup() {
     }
   }, []);
 
+  // Room title is auxiliary and must never delay or blank the fee list.
+  const loadRoomTitle = useCallback(async (rid: number) => {
+    try {
+      const roomRes = await get<any>(`/rooms/${rid}`);
+      const resolvedRoomName = getRoomNameFromResponse(roomRes.data);
+      Taro.setNavigationBarTitle({ title: `${resolvedRoomName || '房间'} · 每月收费项目` });
+    } catch (roomErr) {
+      console.warn('[FeeSetup] 加载房间标题失败:', roomErr);
+    }
+  }, []);
+
   useDidShow(() => {
     if (effectiveRoomId) {
+      Taro.setNavigationBarTitle({ title: '房间 · 每月收费项目' });
       loadFees(effectiveRoomId);
+      loadRoomTitle(effectiveRoomId);
     } else {
       Taro.setNavigationBarTitle({ title: '收费项目' });
       loadRooms();
@@ -214,8 +205,6 @@ export default function FeeSetup() {
       </View>
     );
   }
-
-  const title = roomName ? `${roomName} · 每月收费项目` : '每月收费项目';
 
   return (
     <View className="page-fee-setup">
