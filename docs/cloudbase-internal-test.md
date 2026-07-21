@@ -6,7 +6,7 @@
 - 生产/体验版构建：`APP_USE_CLOUD=true`，接口走 `wx.cloud.callContainer`
 - 图片/H5 公网地址仍使用 `API_BASE` 推导，当前生产地址：
   - API: `https://local-landlord-265509-4-1439465517.sh.run.tcloudbase.com/api`
-  - H5: `https://prod-d6gpmvmbod40b5928.sh.run.tcloudbaseapp.com/h5`
+  - H5: `https://local-landlord-265509-4-1439465517.sh.run.tcloudbase.com/h5`
 
 ## 云托管服务配置
 
@@ -84,4 +84,3 @@ npx tsc -p packages/miniapp/tsconfig.json --noEmit
 cd packages/miniapp
 npx taro build --type weapp
 ```
-
