@@ -4,6 +4,82 @@
   padding-bottom: 160px;
 }
 
+.tenant-page-intro {
+  margin: 20px 24px 36px;
+  padding: 30px 32px;
+  border-radius: 32px;
+  background: rgba(245, 215, 142, 0.22);
+}
+
+.tenant-page-title,
+.tenant-page-room,
+.tenant-page-tip,
+.tenant-section-title,
+.tenant-section-desc {
+  display: block;
+}
+
+.tenant-page-title {
+  color: var(--text-primary, #4A4038);
+  font-size: 36px;
+  font-weight: 700;
+}
+
+.tenant-page-room {
+  margin-top: 10px;
+  color: var(--text-primary, #4A4038);
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.tenant-page-tip {
+  margin-top: 12px;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 24px;
+  line-height: 1.5;
+}
+
+.tenant-form-section {
+  margin-bottom: 42px;
+}
+
+.tenant-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0 32px 26px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid var(--bg-soft, #F5EDE2);
+}
+
+.tenant-section-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent, #F5D78E);
+  color: var(--text-primary, #4A4038);
+  font-size: 26px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 52px;
+}
+
+.tenant-section-title {
+  color: var(--text-primary, #4A4038);
+  font-size: 31px;
+  font-weight: 700;
+}
+
+.tenant-section-desc {
+  margin-top: 4px;
+  color: var(--text-hint, #A89B8C);
+  font-size: 23px;
+}
+
 /* Form Elements - 对齐 HTML: .form-group/.form-label/.form-input */
 .form-group {
   padding: 0 32px;
@@ -50,6 +126,14 @@
   color: var(--red);
   font-size: var(--font-xs);
   margin-top: 4px;
+}
+
+.form-help-text {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-hint, #A89B8C);
+  font-size: 23px;
+  line-height: 1.5;
 }
 
 .form-textarea {
@@ -276,6 +360,11 @@
   border: 3px solid var(--bg-soft, #F5EDE2);
   border-radius: 28px;
   background: var(--cream, #FFFDF9);
+
+  &.rent {
+    border-color: rgba(245, 215, 142, 0.7);
+    background: rgba(255, 249, 232, 0.72);
+  }
 }
 
 .tenant-fee-head,
@@ -290,6 +379,20 @@
 .tenant-fee-head {
   justify-content: space-between;
   gap: 20px;
+}
+
+.tenant-fee-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tenant-fee-auto-tag {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(245, 215, 142, 0.35);
+  color: var(--text-secondary, #7A6F64);
+  font-size: 22px;
 }
 
 .tenant-fee-name {
@@ -318,6 +421,16 @@
   margin-top: 18px;
 }
 
+.tenant-fee-types.simple {
+  align-items: center;
+}
+
+.tenant-fee-question {
+  width: 100%;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 24px;
+}
+
 .tenant-fee-chip {
   padding: 12px 20px;
   border-radius: 999px;
@@ -339,11 +452,17 @@
 }
 
 .tenant-fee-amount-row {
-  width: 240px;
+  width: 310px;
   margin-top: 18px;
   padding: 0 20px;
   border-radius: 20px;
   background: var(--bg-soft, #F5EDE2);
+}
+
+.tenant-fee-amount-label {
+  margin-right: 18px;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 24px;
 }
 
 .tenant-fee-amount-input {
@@ -359,17 +478,97 @@
   font-size: 24px;
 }
 
+.tenant-fee-manual-tip {
+  display: block;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: var(--bg-soft, #F5EDE2);
+  color: var(--text-secondary, #7A6F64);
+  font-size: 23px;
+  line-height: 1.55;
+}
+
+.tenant-fee-more-block {
+  margin-top: 18px;
+  border-top: 2px solid var(--bg-soft, #F5EDE2);
+}
+
+.tenant-fee-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 23px;
+}
+
+.tenant-fee-cycle-panel {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--bg-soft, #F5EDE2);
+}
+
+.tenant-fee-cycle-help {
+  display: block;
+  color: var(--text-primary, #4A4038);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.tenant-fee-cycle {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.tenant-fee-cycle-option {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px 18px;
+  border: 2px solid transparent;
+  border-radius: 18px;
+  background: var(--cream, #FFFDF9);
+
+  &.active {
+    border-color: var(--accent, #F5D78E);
+    background: rgba(245, 215, 142, 0.2);
+  }
+
+  .option-title {
+    color: var(--text-primary, #4A4038);
+    font-size: 24px;
+    font-weight: 600;
+  }
+
+  .option-desc {
+    color: var(--text-secondary, #7A6F64);
+    font-size: 21px;
+  }
+}
+
+.tenant-fee-add-title {
+  display: block;
+  margin-top: 22px;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 24px;
+}
+
 .tenant-fee-add-row {
+  flex-wrap: wrap;
   gap: 16px;
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .tenant-fee-add {
-  flex: 1;
+  flex: 0 0 calc(50% - 8px);
+  box-sizing: border-box;
   padding: 20px 12px;
-  border: 2px dashed var(--accent, #F5D78E);
+  border: 2px solid rgba(245, 215, 142, 0.8);
   border-radius: 22px;
+  background: rgba(255, 249, 232, 0.55);
   text-align: center;
-  color: var(--text-secondary, #7A6F64);
+  color: var(--text-primary, #4A4038);
   font-size: 25px;
 }

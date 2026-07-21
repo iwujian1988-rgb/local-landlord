@@ -90,6 +90,7 @@ export default function AddTenant() {
   const [feeItems, setFeeItems] = useState<FeeFormItem[]>([]);
   const [feesLoading, setFeesLoading] = useState(false);
   const [feesLoadError, setFeesLoadError] = useState(false);
+  const [expandedFeeIndex, setExpandedFeeIndex] = useState<number | null>(null);
 
   // P0-A: 入住实收
   const [initialReceived, setInitialReceived] = useState<boolean>(false);
@@ -245,15 +246,22 @@ export default function AddTenant() {
     setFeeItems(prev => prev.map((fee, i) => i === index ? { ...fee, ...patch } : fee));
   }, []);
 
-  const addFee = useCallback((type: 'fixed' | 'manual') => {
-    setFeeItems(prev => [...prev, {
-      name: '', type, amount: type === 'manual' ? '0' : '', enabled: true,
-      isRent: false, cycleMode: 'rent',
-    }]);
+  const addFee = useCallback((name: string, type: 'fixed' | 'manual') => {
+    setFeeItems(prev => {
+      if (name && prev.some(fee => !fee.isRent && fee.name.trim() === name)) {
+        Taro.showToast({ title: `已经添加${name}`, icon: 'none' });
+        return prev;
+      }
+      return [...prev, {
+        name, type, amount: type === 'manual' ? '0' : '', enabled: true,
+        isRent: false, cycleMode: 'rent',
+      }];
+    });
   }, []);
 
   const removeFee = useCallback((index: number) => {
     setFeeItems(prev => prev.filter((fee, i) => i !== index || fee.isRent));
+    setExpandedFeeIndex(null);
   }, []);
 
   useEffect(() => {
@@ -365,22 +373,23 @@ export default function AddTenant() {
 
   return (
     <View className="page-add-tenant">
-      {currentRoomName && (
-        <View className="form-group">
-          <Text className="form-label">关联房间</Text>
-          <Text className="form-readonly">{currentRoomName}</Text>
-        </View>
-      )}
+      <View className="tenant-page-intro">
+        <Text className="tenant-page-title">{isEdit ? '修改租客信息' : '给房间登记租客'}</Text>
+        <Text className="tenant-page-room">{currentRoomName || (urlRoomId > 0 ? `房间 #${urlRoomId}` : '正在读取房间…')}</Text>
+        <Text className="tenant-page-tip">带“必填”的需要填写，其他内容可以以后再补。</Text>
+      </View>
 
-      {!currentRoomName && urlRoomId > 0 && (
-        <View className="form-group">
-          <Text className="form-label">关联房间</Text>
-          <Text className="form-readonly">房间 #{urlRoomId}</Text>
+      <View className="tenant-form-section">
+        <View className="tenant-section-heading">
+          <Text className="tenant-section-number">1</Text>
+          <View>
+            <Text className="tenant-section-title">租客是谁</Text>
+            <Text className="tenant-section-desc">先填写姓名和联系电话</Text>
+          </View>
         </View>
-      )}
 
       <View className="form-group">
-        <Text className="form-label">租客姓名 *</Text>
+        <Text className="form-label">租客姓名（必填）</Text>
         <Input
           className={`form-input${errors.name ? ' error' : ''}`}
           type="text"
@@ -394,7 +403,7 @@ export default function AddTenant() {
       </View>
 
       <View className="form-group">
-        <Text className="form-label">租客电话 *</Text>
+        <Text className="form-label">联系电话（必填）</Text>
         <Input
           className={`form-input${errors.phone ? ' error' : ''}`}
           type="number"
@@ -408,7 +417,7 @@ export default function AddTenant() {
       </View>
 
       <View className="form-group">
-        <Text className="form-label">入住时间</Text>
+        <Text className="form-label">哪天入住？（可不填）</Text>
         <Picker mode="date" value={moveInDate} onChange={e => setMoveInDate(e.detail.value)}>
           <View className="date-input-wrap">
             <Text className="date-input-text" style={{ color: moveInDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
@@ -421,7 +430,7 @@ export default function AddTenant() {
       </View>
 
       <View className="form-group">
-        <Text className="form-label">合同到期时间</Text>
+        <Text className="form-label">合同哪天到期？（可不填）</Text>
         <Picker mode="date" value={contractEndDate} onChange={e => setContractEndDate(e.detail.value)}>
           <View className="date-input-wrap">
             <Text className="date-input-text" style={{ color: contractEndDate ? 'var(--text-primary)' : 'var(--text-muted)' }}>
@@ -432,9 +441,19 @@ export default function AddTenant() {
         </Picker>
         {errors.contractEndDate && <Text className="form-error-text">{errors.contractEndDate}</Text>}
       </View>
+      </View>
+
+      <View className="tenant-form-section">
+        <View className="tenant-section-heading">
+          <Text className="tenant-section-number">2</Text>
+          <View>
+            <Text className="tenant-section-title">怎么收房租</Text>
+            <Text className="tenant-section-desc">设置收租日期、收租周期和押金</Text>
+          </View>
+        </View>
 
       <View className="form-group">
-        <Text className="form-label">每月收租日</Text>
+        <Text className="form-label">每月几号收租？</Text>
         <Picker
           mode="selector"
           range={rentDayLabels}
@@ -448,10 +467,11 @@ export default function AddTenant() {
             <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>▾</Text>
           </View>
         </Picker>
+        <Text className="form-help-text">到了这一天，系统会提醒你收租。</Text>
       </View>
 
       <View className="form-group">
-        <Text className="form-label">押付方式</Text>
+        <Text className="form-label">押金和收租方式（可不选）</Text>
         <Picker
           mode="selector"
           range={PAYMENT_LABELS}
@@ -460,7 +480,7 @@ export default function AddTenant() {
         >
           <View className="form-select-wrap">
             <Text className="form-select-text" style={{ color: paymentIdx >= 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-              {paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '选择押付方式（可选）'}
+              {paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '例如：押一付一、押一付三'}
             </Text>
             <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>▾</Text>
           </View>
@@ -468,7 +488,7 @@ export default function AddTenant() {
       </View>
 
       <View className="form-group">
-        <Text className="form-label">押金金额</Text>
+        <Text className="form-label">押金是多少？（可不填）</Text>
         <View className="input-with-suffix">
           <Input
             className="form-input suffix-input"
@@ -486,15 +506,24 @@ export default function AddTenant() {
         </View>
         {errors.deposit && <Text className="form-error-text">{errors.deposit}</Text>}
         {currentRoomRent > 0 && paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX && (
-          <Text className="form-error-text" style={{ color: 'var(--text-hint)', marginTop: '8px' }}>
-            = 月租 {currentRoomRent} × 押 {PAYMENT_PRESETS[paymentIdx].depositMonths} 个月，每 {PAYMENT_PRESETS[paymentIdx].payMonths} 个月收一次
+          <Text className="form-help-text">
+            已按月租 {currentRoomRent} 元自动算好；以后每 {PAYMENT_PRESETS[paymentIdx].payMonths} 个月收一次房租。
           </Text>
         )}
       </View>
+      </View>
 
-      <View className="form-group">
-        <Text className="form-label">本次租约收费项目 *</Text>
-        <Text className="fee-section-hint">确认这位租客每个收费周期需要支付哪些项目。固定费用自动计算，水电等可设为出账时手填。</Text>
+      <View className="tenant-form-section">
+        <View className="tenant-section-heading">
+          <Text className="tenant-section-number">3</Text>
+          <View>
+            <Text className="tenant-section-title">还要收哪些费用</Text>
+            <Text className="tenant-section-desc">没有其他费用，可以直接跳过</Text>
+          </View>
+        </View>
+      <View className="form-group fee-form-group">
+        <Text className="form-label">每次收租，还要收哪些钱？</Text>
+        <Text className="fee-section-hint">房租已经自动加入。下面只需添加物业费、水电费等其他费用；没有就不用添加。</Text>
         {feesLoading && <Text className="fee-section-status">正在加载收费项目…</Text>}
         {feesLoadError && (
           <View className="fee-load-error" onClick={loadFeeItems}>
@@ -503,10 +532,13 @@ export default function AddTenant() {
         )}
         <View className="tenant-fee-list">
           {feeItems.map((fee, index) => (
-            <View className="tenant-fee-card" key={`${fee.name}-${index}`}>
+            <View className={`tenant-fee-card${fee.isRent ? ' rent' : ''}`} key={`${fee.name}-${index}`}>
               <View className="tenant-fee-head">
                 {fee.isRent ? (
-                  <Text className="tenant-fee-name readonly">房租</Text>
+                  <View className="tenant-fee-title-wrap">
+                    <Text className="tenant-fee-name readonly">房租</Text>
+                    <Text className="tenant-fee-auto-tag">已自动加入</Text>
+                  </View>
                 ) : (
                   <Input
                     className="tenant-fee-name"
@@ -523,18 +555,20 @@ export default function AddTenant() {
               </View>
 
               {!fee.isRent && (
-                <View className="tenant-fee-types">
+                <View className="tenant-fee-types simple">
+                  <Text className="tenant-fee-question">金额怎么填？</Text>
                   <View className={`tenant-fee-chip${fee.type === 'fixed' ? ' active' : ''}`} onClick={() => updateFee(index, { type: 'fixed' })}>
-                    <Text>固定金额</Text>
+                    <Text>现在填金额</Text>
                   </View>
                   <View className={`tenant-fee-chip${fee.type === 'manual' ? ' active' : ''}`} onClick={() => updateFee(index, { type: 'manual', amount: '0' })}>
-                    <Text>出账时手填</Text>
+                    <Text>以后再填</Text>
                   </View>
                 </View>
               )}
 
               {fee.type === 'fixed' && (
                 <View className="tenant-fee-amount-row">
+                  <Text className="tenant-fee-amount-label">金额</Text>
                   <Input
                     className="tenant-fee-amount-input"
                     type="digit"
@@ -546,39 +580,66 @@ export default function AddTenant() {
                 </View>
               )}
 
+              {!fee.isRent && fee.type === 'manual' && (
+                <Text className="tenant-fee-manual-tip">水电费等金额不固定的费用，可以等出账时再填写。</Text>
+              )}
+
               {!fee.isRent && fee.type === 'fixed' && (
-                <View className="tenant-fee-cycle">
-                  <Text className="tenant-fee-cycle-label">收取方式</Text>
-                  <View className={`tenant-fee-chip${fee.cycleMode === 'rent' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'rent' })}>
-                    <Text>跟房租周期</Text>
+                <View className="tenant-fee-more-block">
+                  <View className="tenant-fee-more" onClick={() => setExpandedFeeIndex(expandedFeeIndex === index ? null : index)}>
+                    <Text>更多设置</Text>
+                    <Text>{fee.cycleMode === 'rent' ? '跟房租一起收' : '每次只收一份'} {expandedFeeIndex === index ? '⌃' : '⌄'}</Text>
                   </View>
-                  <View className={`tenant-fee-chip${fee.cycleMode === 'monthly' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'monthly' })}>
-                    <Text>每次只收1份</Text>
-                  </View>
+                  {expandedFeeIndex === index && (
+                    <View className="tenant-fee-cycle-panel">
+                      <Text className="tenant-fee-cycle-help">如果是“押一付三”，这笔费用怎么算？</Text>
+                      <View className="tenant-fee-cycle">
+                        <View className={`tenant-fee-cycle-option${fee.cycleMode === 'rent' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'rent' })}>
+                          <Text className="option-title">跟房租一起算</Text>
+                          <Text className="option-desc">收三个月房租，就收三份</Text>
+                        </View>
+                        <View className={`tenant-fee-cycle-option${fee.cycleMode === 'monthly' ? ' active' : ''}`} onClick={() => updateFee(index, { cycleMode: 'monthly' })}>
+                          <Text className="option-title">每次只算一份</Text>
+                          <Text className="option-desc">不管收几个月，都只收一份</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
           ))}
         </View>
         {errors.fee && <Text className="form-error-text">{errors.fee}</Text>}
+        <Text className="tenant-fee-add-title">点击添加其他费用</Text>
         <View className="tenant-fee-add-row">
-          <View className="tenant-fee-add" onClick={() => addFee('fixed')}><Text>+ 固定费用</Text></View>
-          <View className="tenant-fee-add" onClick={() => addFee('manual')}><Text>+ 手填费用</Text></View>
+          <View className="tenant-fee-add" onClick={() => addFee('物业费', 'fixed')}><Text>+ 物业费</Text></View>
+          <View className="tenant-fee-add" onClick={() => addFee('水电费', 'manual')}><Text>+ 水电费</Text></View>
+          <View className="tenant-fee-add" onClick={() => addFee('网费', 'fixed')}><Text>+ 网费</Text></View>
+          <View className="tenant-fee-add" onClick={() => addFee('', 'fixed')}><Text>+ 其他</Text></View>
         </View>
+      </View>
       </View>
 
       {!isEdit && (
+        <View className="tenant-form-section">
+          <View className="tenant-section-heading">
+            <Text className="tenant-section-number">4</Text>
+            <View>
+              <Text className="tenant-section-title">入住时收钱了吗</Text>
+              <Text className="tenant-section-desc">如实选择，系统会自动记账</Text>
+            </View>
+          </View>
         <View className="form-group">
-          <Text className="form-label">本次实收（首期账单）</Text>
           <View
             className={`form-toggle-row${initialReceived ? ' on' : ''}`}
             onClick={() => handleToggleInitialReceived(!initialReceived)}
           >
             <Text className="form-toggle-text">
-              {initialReceived ? '✓ 已收' : '○ 本次入住已收首期费用'}
+              {initialReceived ? '✓ 已经收到第一笔房租' : '○ 还没有收到第一笔房租'}
             </Text>
             <Text className="form-toggle-hint">
-              {initialReceived ? '系统将自动建第一笔账单并标记为已收' : '勾选后自动建账单，未勾选则只建未收账单'}
+              {initialReceived ? '保存后，这笔钱会记为“已收”' : '点这里切换为“已经收到”'}
             </Text>
           </View>
           {initialReceived && (
@@ -625,10 +686,19 @@ export default function AddTenant() {
             </View>
           )}
         </View>
+        </View>
       )}
 
+      <View className="tenant-form-section">
+        <View className="tenant-section-heading">
+          <Text className="tenant-section-number">{isEdit ? '4' : '5'}</Text>
+          <View>
+            <Text className="tenant-section-title">其他信息</Text>
+            <Text className="tenant-section-desc">都可以不填，以后也能修改</Text>
+          </View>
+        </View>
       <View className="form-group">
-        <Text className="form-label">入住水电读数</Text>
+        <Text className="form-label">入住时的水电表数字（可不填）</Text>
         <Input
           className="form-input"
           type="text"
@@ -639,13 +709,11 @@ export default function AddTenant() {
           maxlength={200}
         />
         {errors.moveInReading && <Text className="form-error-text">{errors.moveInReading}</Text>}
-        <Text className="form-error-text" style={{ color: 'var(--text-hint)', marginTop: '8px' }}>
-          退租时对照读数算水电费，避免扯皮
-        </Text>
+        <Text className="form-help-text">现在记下来，退租时更方便核对水电费。</Text>
       </View>
 
       <View className="form-group">
-        <Text className="form-label">备注</Text>
+        <Text className="form-label">备注（可不填）</Text>
         <Textarea
           className="form-textarea"
           placeholder="写点备注（可选）"
@@ -656,10 +724,11 @@ export default function AddTenant() {
           autoHeight
         />
       </View>
+      </View>
 
       <View className="form-actions">
         <View className={`save-btn ${saving ? 'disabled' : ''}`} onClick={saving ? undefined : handleSave}>
-          <Text className="save-btn-text">{isEdit ? '更新' : saving ? '保存中...' : '保存'}</Text>
+          <Text className="save-btn-text">{isEdit ? '保存修改' : saving ? '正在保存…' : '保存租客'}</Text>
         </View>
       </View>
     </View>
