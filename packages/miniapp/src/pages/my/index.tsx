@@ -111,7 +111,10 @@ export default function My() {
               if (!second.confirm) return;
               try {
                 Taro.showLoading({ title: '清空中...' });
-                await del('/auth/test-data');
+                const result = await del('/auth/test-data');
+                if (result.code !== 0) {
+                  throw new Error(result.message || '清空失败，请重试');
+                }
                 ['draft_property', 'draft_room_info', 'draft_tenant', 'tempRoomPhotos'].forEach((key) => Taro.removeStorageSync(key));
                 Taro.hideLoading();
                 Taro.showToast({ title: '测试数据已清空', icon: 'success' });
