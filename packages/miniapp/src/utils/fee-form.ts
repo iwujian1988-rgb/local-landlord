@@ -5,7 +5,8 @@ export interface FeeFormItem {
   enabled: boolean;
   isRent: boolean;
   cycleMode: 'rent' | 'monthly';
-  collectionTiming: 'advance' | 'arrears';
+  /** Missing on historical data; it means advance collection. */
+  collectionTiming?: 'advance' | 'arrears';
   billingMonths?: number;
   initialMonths?: number;
 }

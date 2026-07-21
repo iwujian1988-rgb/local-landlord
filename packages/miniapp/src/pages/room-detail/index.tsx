@@ -167,7 +167,7 @@ export default function RoomDetail() {
       Taro.showModal({
         title: '退租成功',
         content: '房间已变为空置状态，是否立即登记新租客？',
-        confirmText: '登记新租客',
+        confirmText: '去登记',
         cancelText: '稍后再说',
         success: (res) => {
           if (res.confirm) {

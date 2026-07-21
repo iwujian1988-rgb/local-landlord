@@ -87,7 +87,7 @@ export async function forwardBillShare(billId: number): Promise<ShareLinkResult 
     Taro.showModal({
       title: '付款链接已复制',
       content: '下一步：打开租客的微信聊天，长按输入框粘贴并发送。租客不用登录，打开链接就能看账单和收款码。',
-      confirmText: '发送前预览',
+      confirmText: '预览',
       cancelText: '去微信发送',
       success: (res) => {
         if (res.confirm) {
@@ -112,7 +112,7 @@ export async function forwardSingleChargeShare(singleChargeId: number): Promise<
     Taro.showModal({
       title: '付款链接已复制',
       content: '下一步：打开租客的微信聊天，长按输入框粘贴并发送。租客不用登录，打开链接就能看到金额和收款码。',
-      confirmText: '发送前预览',
+      confirmText: '预览',
       cancelText: '去微信发送',
       success: (res) => {
         if (res.confirm) {

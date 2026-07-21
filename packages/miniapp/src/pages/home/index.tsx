@@ -59,6 +59,11 @@ interface PageData {
   vacantRooms: VacantRoom[];
 }
 
+interface DiscoveryAlert {
+  roomId?: number;
+  message?: string;
+}
+
 const emptyData: PageData = {
   greeting: '', pendingCount: 0, pendingDesc: '', pendingHouseholds: 0,
   monthlyCollected: 0, showRoomGuide: false, showTenantGuide: false,
@@ -158,6 +163,17 @@ export default function Home() {
   });
 
   const hasPendingActions = data.pendingCount > 0 || data.expiringContracts.length > 0;
+
+  const handleDiscoveryAlert = useCallback((alert?: DiscoveryAlert) => {
+    if (!alert) return;
+    if (Number(alert.roomId) > 0) {
+      Taro.navigateTo({ url: `/pages/room-detail/index?roomId=${alert.roomId}` });
+      return;
+    }
+    // Summary alerts (such as several rooms sharing one rent day) do not have
+    // a single room target. The rent list is still the actionable destination.
+    Taro.switchTab({ url: '/pages/rent-list/index' });
+  }, []);
 
   return (
     <ScrollView className="page-home" scrollY>
@@ -261,7 +277,7 @@ export default function Home() {
 
           {/* Discovery / Reminder */}
           {data.discoveryAlerts.length > 0 && (
-            <View className="reminder-card">
+            <View className="reminder-card" onClick={() => handleDiscoveryAlert(data.discoveryAlerts[0])}>
               <View className="reminder-icon"><Image src={bellImg} mode="aspectFit" /></View>
               <View className="reminder-body">
                 <Text className="reminder-title">你可能漏了</Text>
@@ -269,10 +285,9 @@ export default function Home() {
                   <View
                     key={idx}
                     className="reminder-item"
-                    onClick={() => {
-                      if (alert.roomId > 0) {
-                        Taro.navigateTo({ url: `/pages/room-detail/index?roomId=${alert.roomId}` });
-                      }
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDiscoveryAlert(alert);
                     }}
                   >
                     <Text className="reminder-dot" />
