@@ -45,4 +45,17 @@ describe('independent tenancy fee schedules', () => {
       { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 13 },
     ])).toThrow();
   });
+
+  it('拒绝把只收到一个月当成付三租约的完整首期', () => {
+    expect(() => normalizeFeeRules([
+      { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 1 },
+    ])).toThrow('房租首次应收月数必须是“付3”的整倍数');
+  });
+
+  it('允许一次提前收取多个完整房租周期', () => {
+    const [rent] = normalizeFeeRules([
+      { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 6 },
+    ]);
+    expect(rent.initialMonths).toBe(6);
+  });
 });

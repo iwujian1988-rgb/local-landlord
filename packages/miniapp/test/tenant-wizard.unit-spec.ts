@@ -2,6 +2,7 @@ import {
   getNextTenantWizardIndex,
   getPreviousTenantWizardIndex,
   getNextRentCollectionText,
+  getRentInitialMonthOptions,
   getTenantWizardStepIds,
 } from '../src/utils/tenant-wizard';
 
@@ -34,5 +35,11 @@ describe('tenant wizard navigation', () => {
       .toBe('2026年10月15日再收3个月，共3000元');
     expect(getNextRentCollectionText(1, 3, 1000, '2026-01-20', 0))
       .toBe('2026年2月28日再收3个月，共3000元');
+  });
+
+  it('never offers fewer initial rent months than the selected contract cycle', () => {
+    expect(getRentInitialMonthOptions(1)).toEqual([1, 3, 6, 12]);
+    expect(getRentInitialMonthOptions(3)).toEqual([3, 6, 9, 12]);
+    expect(getRentInitialMonthOptions(6)).toEqual([6, 12]);
   });
 });

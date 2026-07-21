@@ -67,6 +67,12 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
     const isRent = raw?.isRent === true || raw?.isRent === 1 ? 1 : 0;
     if (isRent) rentCount += 1;
     if (rentCount > 1) throw new BadRequestException('只能设置一个房租项目');
+    const billingMonths = raw?.billingMonths === undefined ? undefined : Number(raw.billingMonths);
+    const initialMonths = raw?.initialMonths === undefined ? undefined : Number(raw.initialMonths);
+    if (isRent && billingMonths !== undefined && initialMonths !== undefined
+      && (initialMonths < billingMonths || initialMonths % billingMonths !== 0)) {
+      throw new BadRequestException(`房租首次应收月数必须是“付${billingMonths}”的整倍数`);
+    }
 
     return {
       name,
@@ -75,8 +81,8 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
       enabled: isRent ? 1 : (raw?.enabled === false || raw?.enabled === 0 ? 0 : 1),
       isRent,
       cycleMode: isRent ? 'rent' : (raw?.cycleMode === 'monthly' ? 'monthly' : 'rent'),
-      billingMonths: raw?.billingMonths === undefined ? undefined : Number(raw.billingMonths),
-      initialMonths: raw?.initialMonths === undefined ? undefined : Number(raw.initialMonths),
+      billingMonths,
+      initialMonths,
       sortOrder: index,
     } as FeeRule;
   });

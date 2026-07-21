@@ -50,3 +50,12 @@ export function getNextRentCollectionText(
 
   return `${when}再收${normalizedBillingMonths}个月，共${nextAmount}元`;
 }
+
+/** Standard first rent equals the contract cycle; only expose larger advance-payment options. */
+export function getRentInitialMonthOptions(billingMonths: number): number[] {
+  const cycle = Math.max(1, Math.min(12, Math.trunc(billingMonths || 1)));
+  if (cycle === 1) return [1, 3, 6, 12];
+  const options: number[] = [];
+  for (let months = cycle; months <= 12; months += cycle) options.push(months);
+  return options;
+}

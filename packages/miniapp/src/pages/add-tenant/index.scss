@@ -656,6 +656,17 @@
   line-height: 1.5;
 }
 
+.elder-partial-tip {
+  margin: 16px 32px 0;
+  padding: 20px 22px;
+  border: 2px solid rgba(201, 95, 50, 0.22);
+  border-radius: 22px;
+  background: #FFF9F3;
+  color: var(--text-secondary, #7A6F64);
+  font-size: 23px;
+  line-height: 1.55;
+}
+
 .elder-tip-box {
   margin: 24px 32px 0;
   color: var(--text-secondary, #7A6F64);
