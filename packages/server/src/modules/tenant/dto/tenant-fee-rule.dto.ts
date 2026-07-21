@@ -26,4 +26,18 @@ export class TenantFeeRuleDto {
   @IsOptional()
   @IsIn(['rent', 'monthly'])
   cycleMode?: 'rent' | 'monthly';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  @Type(() => Number)
+  billingMonths?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  @Type(() => Number)
+  initialMonths?: number;
 }

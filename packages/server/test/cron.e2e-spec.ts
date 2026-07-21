@@ -175,6 +175,35 @@ describe('Cron behavior (e2e)', () => {
         expect.objectContaining({ feeName: '水费', amount: 0 }),
       ]));
     });
+
+    it('TC-CRON-AUTO-003: 房租季度收、网费半年收，在各自到期月合并且不重复', async () => {
+      const moveIn = new Date();
+      moveIn.setMonth(moveIn.getMonth() - 6);
+      const moveInDate = `${moveIn.getFullYear()}-${String(moveIn.getMonth() + 1).padStart(2, '0')}-01`;
+      const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: '独立周期自动账单房' });
+      await expectOk(await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {
+        name: '独立周期租客', phone: '13911110004', moveInDate,
+        rentDay: new Date().getDate(), payMonths: 3,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 3 },
+          { name: '网费', type: 'fixed', amount: 50, enabled: true, isRent: false, billingMonths: 6, initialMonths: 6 },
+        ],
+      }));
+
+      expectOk(await apiCall(app, 'post', '/api/subscription/trigger-auto-bills', adminAuth, {}));
+      const current = await dataSource.getRepository(Bill).findOne({
+        where: { roomId: rId, period: currentMonthStr() }, relations: ['items'],
+      });
+      expect(Number(current?.totalAmount)).toBe(3300);
+      expect(current?.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ feeName: '房租', amount: 3000 }),
+        expect.objectContaining({ feeName: '网费', amount: 300 }),
+      ]));
+
+      // Re-running the job is idempotent.
+      expectOk(await apiCall(app, 'post', '/api/subscription/trigger-auto-bills', adminAuth, {}));
+      expect(await dataSource.getRepository(Bill).count({ where: { roomId: rId, period: currentMonthStr() } })).toBe(1);
+    });
   });
 
   describe('所有 trigger 端点应一次性跑通', () => {

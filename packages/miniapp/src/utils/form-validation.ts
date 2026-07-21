@@ -50,6 +50,7 @@ interface TenantFormValues {
   deposit: string;
   initialReceived: boolean;
   initialAmount: string;
+  initialDepositAmount?: string;
   initialDate: string;
   moveInReading: string;
 }
@@ -79,8 +80,9 @@ export function validateTenantForm(values: TenantFormValues): FormErrors {
   }
   if (values.initialReceived) {
     const amount = Number(values.initialAmount);
-    if (!values.initialAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
-      errors.initialAmount = '已选择“已收”，请输入大于0的实收金额';
+    const depositAmount = Number(values.initialDepositAmount || 0);
+    if ((!Number.isFinite(amount) || amount < 0) || (!Number.isFinite(depositAmount) || depositAmount < 0) || amount + depositAmount <= 0) {
+      errors.initialAmount = '已选择“已收”，实收押金和费用合计需大于0';
     }
     if (!isValidDateOnly(values.initialDate)) errors.initialDate = '请选择有效的收款日期';
   }
@@ -96,6 +98,8 @@ interface FeeFormValue {
   amount: string;
   enabled: boolean;
   isRent?: boolean;
+  billingMonths?: number;
+  initialMonths?: number;
 }
 
 export function validateFeeForm(fees: FeeFormValue[]): FormErrors {
@@ -116,6 +120,12 @@ export function validateFeeForm(fees: FeeFormValue[]): FormErrors {
       if (!/^\d+(\.\d{1,2})?$/.test(fee.amount.trim()) || !Number.isFinite(amount) || amount < 0 || amount > 99999999.99) {
         return { fee: `${label}请输入有效金额` };
       }
+    }
+    if (fee.billingMonths !== undefined && (!Number.isInteger(fee.billingMonths) || Number(fee.billingMonths) < 1 || Number(fee.billingMonths) > 12)) {
+      return { fee: `${label}请选择正常收取周期` };
+    }
+    if (fee.initialMonths !== undefined && (!Number.isInteger(fee.initialMonths) || Number(fee.initialMonths) < 1 || Number(fee.initialMonths) > 12)) {
+      return { fee: `${label}请选择入住预收月数` };
     }
   }
   return {};

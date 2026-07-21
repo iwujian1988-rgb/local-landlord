@@ -110,6 +110,12 @@ class CreateAdminTenantBodyDto {
   initialPaymentAmount?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  initialDepositAmount?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(256)
   moveInReading?: string;

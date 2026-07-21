@@ -64,12 +64,19 @@ export class CreateTenantDto {
   @IsDateString()
   initialPaymentDate?: string;
 
-  /** 实收金额（首期房租，不含押金） */
+  /** 首期房租及其他费用的实收金额（不含押金） */
   @IsOptional()
   @IsNumber()
   @Min(0)
   @Type(() => Number)
   initialPaymentAmount?: number;
+
+  /** 入住时实际收到的押金。押金单独核算，不计入租金收入。 */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  initialDepositAmount?: number;
 
   /** 入住水电读数 */
   @IsOptional()

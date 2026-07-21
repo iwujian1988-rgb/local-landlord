@@ -5,7 +5,7 @@ import { get, post, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
 import { withInitialPayment, withOptionalTenantDates } from '../../utils/tenant-form';
 import { firstFormError, validateTenantForm } from '../../utils/form-validation';
-import { calculateFeeCycleTotal, FeeFormItem, normalizeFeeItems } from '../../utils/fee-form';
+import { calculateInitialFeeTotal, FeeFormItem, normalizeFeeItems } from '../../utils/fee-form';
 import { validateFeeForm } from '../../utils/form-validation';
 import './index.scss';
 
@@ -43,6 +43,7 @@ const CUSTOM_PAYMENT_IDX = PAYMENT_LABELS.length - 1;
 
 const PAYMENT_METHOD_LABELS = ['现金', '微信', '支付宝', '银行转账'];
 const PAYMENT_METHOD_VALUES = ['cash', 'wechat', 'alipay', 'bank'];
+const MONTH_OPTIONS = [1, 3, 6, 12];
 
 function todayISO(): string {
   const d = new Date();
@@ -87,6 +88,7 @@ export default function AddTenant() {
   const saveCompletedRef = useRef(false);
   const feeDraftRestoredRef = useRef(false);
   const initialAmountEditedRef = useRef(false);
+  const initialDepositEditedRef = useRef(false);
   const [feeItems, setFeeItems] = useState<FeeFormItem[]>([]);
   const [feesLoading, setFeesLoading] = useState(false);
   const [feesLoadError, setFeesLoadError] = useState(false);
@@ -96,6 +98,7 @@ export default function AddTenant() {
   // P0-A: 入住实收
   const [initialReceived, setInitialReceived] = useState<boolean>(false);
   const [initialAmount, setInitialAmount] = useState<string>('');
+  const [initialDepositAmount, setInitialDepositAmount] = useState<string>('');
   const [initialMethodIdx, setInitialMethodIdx] = useState<number>(0);
   const [initialDate, setInitialDate] = useState<string>(todayISO());
   // P0-C: 入住水电读数
@@ -155,12 +158,13 @@ export default function AddTenant() {
             setInitialMethodIdx(mIdx >= 0 ? mIdx : 0);
             setInitialDate(found.initialPaymentDate || todayISO());
             setInitialAmount(found.initialPaymentAmount != null ? String(found.initialPaymentAmount) : '');
+            setInitialDepositAmount(found.initialDepositAmount != null ? String(found.initialDepositAmount) : '');
           }
           // P0-C: 回填入住水电读数
           if (found.moveInReading) {
             setMoveInReading(found.moveInReading);
           }
-          if (Array.isArray(found.feeItems)) setFeeItems(normalizeFeeItems(found.feeItems));
+          if (Array.isArray(found.feeItems)) setFeeItems(normalizeFeeItems(found.feeItems, Number(found.payMonths) || 1));
         }
       }).catch(() => {});
     }
@@ -190,6 +194,7 @@ export default function AddTenant() {
         if (draft.note) setNote(draft.note);
         if (draft.initialReceived) setInitialReceived(true);
         if (draft.initialAmount) setInitialAmount(draft.initialAmount);
+        if (draft.initialDepositAmount) setInitialDepositAmount(draft.initialDepositAmount);
         if (draft.initialMethodIdx !== undefined) setInitialMethodIdx(draft.initialMethodIdx);
         if (draft.initialDate) setInitialDate(draft.initialDate);
         if (draft.moveInReading) setMoveInReading(draft.moveInReading);
@@ -211,7 +216,7 @@ export default function AddTenant() {
         roomId: urlRoomId,
         name, phone, moveInDate, contractEndDate,
         rentDay, deposit, note, paymentIdx,
-        initialReceived, initialAmount, initialMethodIdx, initialDate, moveInReading,
+        initialReceived, initialAmount, initialDepositAmount, initialMethodIdx, initialDate, moveInReading,
         feeItems, wizardIndex,
       };
       if (name || phone) {
@@ -225,24 +230,27 @@ export default function AddTenant() {
     if (idx !== CUSTOM_PAYMENT_IDX && currentRoomRent > 0) {
       const { depositMonths, payMonths: pm } = PAYMENT_PRESETS[idx];
       setDeposit(String(currentRoomRent * depositMonths));
-      // 同步更新实收金额默认值（押X付Y 的首期房租 = 月租 × payMonths）
+      setFeeItems(prev => prev.map(fee => fee.isRent
+        ? { ...fee, billingMonths: pm, initialMonths: pm, cycleMode: 'rent' }
+        : fee));
       if (initialReceived && !initialAmountEditedRef.current) {
-        setInitialAmount(String(calculateFeeCycleTotal(feeItems, pm)));
+        setInitialAmount(String(calculateInitialFeeTotal(feeItems.map(fee => fee.isRent ? { ...fee, initialMonths: pm } : fee))));
+      }
+      if (initialReceived && !initialDepositEditedRef.current) {
+        setInitialDepositAmount(String(currentRoomRent * depositMonths));
       }
     }
   }, [currentRoomRent, initialReceived, feeItems]);
 
   const handleToggleInitialReceived = useCallback((on: boolean) => {
     setInitialReceived(on);
-    if (on && !initialAmount && currentRoomRent > 0) {
-      // 默认填入：月租 × payMonths（首期房租，不含押金）
-      const pm = paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX
-        ? PAYMENT_PRESETS[paymentIdx].payMonths
-        : loadedPayMonths;
+    if (on && currentRoomRent > 0) {
       initialAmountEditedRef.current = false;
-      setInitialAmount(String(calculateFeeCycleTotal(feeItems, pm)));
+      initialDepositEditedRef.current = false;
+      setInitialAmount(String(calculateInitialFeeTotal(feeItems)));
+      setInitialDepositAmount(String(Number(deposit) || 0));
     }
-  }, [initialAmount, currentRoomRent, paymentIdx, loadedPayMonths, feeItems]);
+  }, [currentRoomRent, feeItems, deposit]);
 
   const updateFee = useCallback((index: number, patch: Partial<FeeFormItem>) => {
     setFeeItems(prev => prev.map((fee, i) => i === index ? { ...fee, ...patch } : fee));
@@ -257,7 +265,7 @@ export default function AddTenant() {
       }
       return [...prev, {
         name, type, amount: type === 'manual' ? '0' : '', enabled: true,
-        isRent: false, cycleMode: 'rent',
+        isRent: false, cycleMode: 'monthly', billingMonths: 1, initialMonths: 1,
       }];
     });
   }, []);
@@ -290,11 +298,8 @@ export default function AddTenant() {
 
   useEffect(() => {
     if (!initialReceived || initialAmountEditedRef.current || feeItems.length === 0) return;
-    const payMonths = paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX
-      ? PAYMENT_PRESETS[paymentIdx].payMonths
-      : loadedPayMonths;
-    setInitialAmount(String(calculateFeeCycleTotal(feeItems, payMonths)));
-  }, [feeItems, initialReceived, paymentIdx, loadedPayMonths]);
+    setInitialAmount(String(calculateInitialFeeTotal(feeItems)));
+  }, [feeItems, initialReceived]);
 
   const handleSave = useCallback(async () => {
     if (saveInFlightRef.current) return;
@@ -305,7 +310,7 @@ export default function AddTenant() {
     setErrors({});
     const validationErrors = validateTenantForm({
       name, phone, roomId: urlRoomId, moveInDate, contractEndDate, deposit,
-      initialReceived, initialAmount, initialDate, moveInReading,
+      initialReceived, initialAmount, initialDepositAmount, initialDate, moveInReading,
     });
     Object.assign(validationErrors, validateFeeForm(feeItems));
     if (Object.keys(validationErrors).length > 0) {
@@ -334,6 +339,8 @@ export default function AddTenant() {
         ...fee,
         name: fee.name.trim(),
         amount: fee.type === 'manual' ? 0 : Number(fee.amount),
+        billingMonths: fee.billingMonths,
+        initialMonths: fee.initialMonths,
       })),
     }, { moveInDate, contractEndDate });
 
@@ -342,6 +349,7 @@ export default function AddTenant() {
       isEdit,
       initialReceived,
       initialAmount,
+      initialDepositAmount,
       initialMethod: PAYMENT_METHOD_VALUES[initialMethodIdx] || PAYMENT_METHOD_VALUES[0],
       initialDate: initialDate || todayISO(),
     });
@@ -392,7 +400,7 @@ export default function AddTenant() {
       setSaving(false);
     }
   }, [isEdit, tenantId, name, phone, urlRoomId, rentDay, moveInDate, contractEndDate,
-    deposit, note, paymentIdx, loadedPayMonths, initialReceived, initialAmount,
+    deposit, note, paymentIdx, loadedPayMonths, initialReceived, initialAmount, initialDepositAmount,
     initialMethodIdx, initialDate, moveInReading, feeItems, feesLoading, feesLoadError]);
 
   const previewPayMonths = paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX
@@ -402,9 +410,9 @@ export default function AddTenant() {
   const extraFees = feeItems.filter(fee => !fee.isRent);
   const fixedExtraFees = extraFees.filter(fee => fee.type === 'fixed');
   const manualExtraFees = extraFees.filter(fee => fee.type === 'manual');
-  const previewTotal = calculateFeeCycleTotal(feeItems, previewPayMonths);
+  const previewTotal = calculateInitialFeeTotal(feeItems);
   const previewRentTotal = rentFee
-    ? calculateFeeCycleTotal([rentFee], previewPayMonths)
+    ? calculateInitialFeeTotal([rentFee])
     : Math.round((currentRoomRent || 0) * previewPayMonths * 100) / 100;
   const wizardStepIds = isEdit ? [0, 1, 2, 3, 5, 6] : [0, 1, 2, 3, 4, 5, 6];
   const safeWizardIndex = Math.min(wizardIndex, wizardStepIds.length - 1);
@@ -417,7 +425,7 @@ export default function AddTenant() {
     }
     const allErrors = validateTenantForm({
       name, phone, roomId: urlRoomId, moveInDate, contractEndDate, deposit,
-      initialReceived, initialAmount, initialDate, moveInReading,
+      initialReceived, initialAmount, initialDepositAmount, initialDate, moveInReading,
     });
     if (activeWizardStep === 3) Object.assign(allErrors, validateFeeForm(feeItems));
     const fieldsByStep: Record<number, string[]> = {
@@ -610,6 +618,23 @@ export default function AddTenant() {
           </Text>
         )}
       </View>
+
+      {rentFee && (
+        <View className="form-group">
+          <Text className="form-label">入住这次先收几个月房租？</Text>
+          <View className="fee-month-chips">
+            {MONTH_OPTIONS.map(months => (
+              <View key={`rent-initial-${months}`} className={`fee-month-chip${rentFee.initialMonths === months ? ' active' : ''}`} onClick={() => {
+                const rentIndex = feeItems.findIndex(fee => fee.isRent);
+                if (rentIndex >= 0) updateFee(rentIndex, { initialMonths: months });
+              }}>
+                <Text>{months}个月</Text>
+              </View>
+            ))}
+          </View>
+          <Text className="form-help-text">通常和“付几”相同；如果这次多收了半年或一年，可在这里改。</Text>
+        </View>
+      )}
       </View>
       )}
 
@@ -677,17 +702,35 @@ export default function AddTenant() {
                       <Text className="selected-fee-remove" onClick={() => removeFee(index)}>移除</Text>
                     </View>
                     {fee.type === 'fixed' ? (
-                      <View className="selected-fee-amount">
-                        <Text>每月多少钱？</Text>
-                        <View className="selected-fee-input-wrap">
-                          <Input
-                            className="selected-fee-input"
-                            type="digit"
-                            value={fee.amount}
-                            placeholder="0"
-                            onInput={e => updateFee(index, { amount: e.detail.value })}
-                          />
-                          <Text>元</Text>
+                      <View>
+                        <View className="selected-fee-amount">
+                          <Text>每月多少钱？</Text>
+                          <View className="selected-fee-input-wrap">
+                            <Input
+                              className="selected-fee-input"
+                              type="digit"
+                              value={fee.amount}
+                              placeholder="0"
+                              onInput={e => updateFee(index, { amount: e.detail.value })}
+                            />
+                            <Text>元</Text>
+                          </View>
+                        </View>
+                        <Text className="selected-fee-later">平时多久收一次？</Text>
+                        <View className="fee-month-chips">
+                          {MONTH_OPTIONS.map(months => (
+                            <View key={`billing-${months}`} className={`fee-month-chip${fee.billingMonths === months ? ' active' : ''}`} onClick={() => updateFee(index, { billingMonths: months })}>
+                              <Text>{months === 1 ? '每月' : `每${months}个月`}</Text>
+                            </View>
+                          ))}
+                        </View>
+                        <Text className="selected-fee-later">入住这次先收几个月？</Text>
+                        <View className="fee-month-chips">
+                          {MONTH_OPTIONS.map(months => (
+                            <View key={`initial-${months}`} className={`fee-month-chip${fee.initialMonths === months ? ' active' : ''}`} onClick={() => updateFee(index, { initialMonths: months })}>
+                              <Text>{months}个月</Text>
+                            </View>
+                          ))}
                         </View>
                       </View>
                     ) : (
@@ -701,15 +744,15 @@ export default function AddTenant() {
             {extraFees.length > 0 && (
               <View className="fee-preview">
                 <Text className="fee-preview-title">预计下一次收款</Text>
-                <Text className="fee-preview-subtitle">按一次收 {previewPayMonths} 个月房租计算，不含押金</Text>
+                <Text className="fee-preview-subtitle">按入住这次选定的预收月数计算，不含押金</Text>
                 <View className="fee-preview-row">
-                  <Text>{previewPayMonths} 个月房租</Text>
+                  <Text>{rentFee?.initialMonths || previewPayMonths} 个月房租</Text>
                   <Text>{previewRentTotal} 元</Text>
                 </View>
                 {fixedExtraFees.map((fee, index) => (
                   <View className="fee-preview-row" key={`${fee.name}-preview-${index}`}>
                     <Text>{fee.name || '其他费用'}</Text>
-                    <Text>{calculateFeeCycleTotal([fee], previewPayMonths)} 元</Text>
+                    <Text>{calculateInitialFeeTotal([fee])} 元（{fee.initialMonths}个月）</Text>
                   </View>
                 ))}
                 {manualExtraFees.map((fee, index) => (
@@ -736,8 +779,8 @@ export default function AddTenant() {
           <View className="tenant-section-heading">
             <View>
               <Text className="tenant-section-kicker">第一笔账</Text>
-              <Text className="tenant-section-title">第一笔房租收到了吗？</Text>
-              <Text className="tenant-section-desc">如实选择，系统会自动生成对应的收租记录。</Text>
+              <Text className="tenant-section-title">入住这次的钱收到了吗？</Text>
+              <Text className="tenant-section-desc">押金和房租分开记账，避免以后退押金、算收入时混在一起。</Text>
             </View>
           </View>
         <View className="form-group">
@@ -746,7 +789,7 @@ export default function AddTenant() {
             onClick={() => handleToggleInitialReceived(!initialReceived)}
           >
             <Text className="form-toggle-text">
-              {initialReceived ? '✓ 已经收到第一笔房租' : '○ 还没有收到第一笔房租'}
+              {initialReceived ? '✓ 入住款已经收到了' : '○ 还没有收到入住款'}
             </Text>
             <Text className="form-toggle-hint">
               {initialReceived ? '保存后，这笔钱会记为“已收”' : '点这里切换为“已经收到”'}
@@ -754,15 +797,34 @@ export default function AddTenant() {
           </View>
           {initialReceived && (
             <View className="form-sub-fields">
+              <View className="fee-preview">
+                <View className="fee-preview-row"><Text>应收押金</Text><Text>{Number(deposit) || 0} 元</Text></View>
+                <View className="fee-preview-row"><Text>房租和其他费用</Text><Text>{previewTotal} 元</Text></View>
+                <View className="fee-preview-total"><Text>本次合计</Text><Text>{Math.round(((Number(deposit) || 0) + previewTotal) * 100) / 100} 元</Text></View>
+              </View>
               <View className="form-sub-row">
-                <Text className="form-sub-label">实收金额</Text>
+                <Text className="form-sub-label">实收押金</Text>
+                <View className="input-with-suffix">
+                  <Input
+                    className="form-input suffix-input"
+                    type="digit"
+                    value={initialDepositAmount}
+                    onInput={(e) => { initialDepositEditedRef.current = true; setInitialDepositAmount(e.detail.value); }}
+                    placeholder={`默认 ${Number(deposit) || 0}`}
+                    placeholderStyle="color: #B5A99A"
+                  />
+                  <Text className="input-suffix">元</Text>
+                </View>
+              </View>
+              <View className="form-sub-row">
+                <Text className="form-sub-label">实收房租和其他费用</Text>
                 <View className="input-with-suffix">
                   <Input
                     className="form-input suffix-input"
                     type="digit"
                     value={initialAmount}
                     onInput={(e) => { initialAmountEditedRef.current = true; setInitialAmount(e.detail.value); }}
-                    placeholder={`默认 ${calculateFeeCycleTotal(feeItems, paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX ? PAYMENT_PRESETS[paymentIdx].payMonths : loadedPayMonths)}`}
+                    placeholder={`默认 ${previewTotal}`}
                     placeholderStyle="color: #B5A99A"
                   />
                   <Text className="input-suffix">元</Text>
@@ -855,10 +917,10 @@ export default function AddTenant() {
             <View className="wizard-review-row"><Text>押付方式</Text><Text>{paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '未选择'}</Text></View>
             <View className="wizard-review-row"><Text>押金</Text><Text>{deposit ? `${deposit} 元` : '未填写'}</Text></View>
             <View className="wizard-review-row"><Text>其他费用</Text><Text>{extraFees.length ? extraFees.map(fee => fee.name || '其他').join('、') : '无'}</Text></View>
-            {!isEdit && <View className="wizard-review-row"><Text>第一笔房租</Text><Text>{initialReceived ? `已收 ${initialAmount || previewTotal} 元` : '尚未收到'}</Text></View>}
+            {!isEdit && <View className="wizard-review-row"><Text>入住收款</Text><Text>{initialReceived ? `押金 ${initialDepositAmount || 0} 元，费用 ${initialAmount || 0} 元` : '尚未收到'}</Text></View>}
           </View>
           <View className="wizard-review-total">
-            <Text>预计下一次收款</Text>
+            <Text>入住应收费用（不含押金）</Text>
             <Text>{previewTotal} 元</Text>
           </View>
         </View>

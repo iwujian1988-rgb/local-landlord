@@ -223,6 +223,53 @@ describe('Tenant module (e2e)', () => {
       ]));
     });
 
+    it('TC-TENANT-004B2: 押一付三 + 网费预收半年，押金独立记录且不混入账单', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: 'room-independent-prepay' });
+      await createTenant(app, auth, rId, {
+        name: '独立预收', phone: '13800004455', moveInDate: `${currentMonthStr()}-01`,
+        rentDay: 1, payMonths: 3, deposit: 1000,
+        initialPaymentMethod: 'wechat', initialPaymentDate: `${currentMonthStr()}-01`,
+        initialPaymentAmount: 3300, initialDepositAmount: 1000,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 3 },
+          { name: '网费', type: 'fixed', amount: 50, enabled: true, isRent: false, billingMonths: 6, initialMonths: 6 },
+        ],
+      });
+
+      const bill = await getCurrentBill(rId);
+      expect(bill.billStatus).toBe(1);
+      expect(Number(bill.paidAmount)).toBe(3300);
+      expect(bill.billItems).toEqual([
+        expect.objectContaining({ name: '房租', amount: 3000 }),
+        expect.objectContaining({ name: '网费', amount: 300 }),
+      ]);
+
+      const records = expectOk(await apiCall(app, 'get', `/api/rooms/${rId}/records`, auth));
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'deposit_paid', title: '入住押金已收', amount: 1000 }),
+        expect.objectContaining({ type: 'bill_paid', amount: 3300 }),
+      ]));
+    });
+
+    it('TC-TENANT-004B3: 只收到押金时不得把首期费用误标为已付', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: 'room-deposit-only' });
+      await createTenant(app, auth, rId, {
+        name: '只交押金', phone: '13800004456', moveInDate: `${currentMonthStr()}-01`,
+        deposit: 1000, initialPaymentMethod: 'cash', initialPaymentDate: `${currentMonthStr()}-01`,
+        initialPaymentAmount: 0, initialDepositAmount: 1000,
+      });
+      const bill = await getCurrentBill(rId);
+      expect(bill.billStatus).toBe(0);
+      expect(Number(bill.paidAmount)).toBe(0);
+      const records = expectOk(await apiCall(app, 'get', `/api/rooms/${rId}/records`, auth));
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'deposit_paid', amount: 1000 }),
+      ]));
+      expect(records).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'bill_paid' }),
+      ]));
+    });
+
     it('TC-TENANT-004C: 非法收费规则不产生半套租客/房间数据', async () => {
       const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'room-fee-rollback' });
       const failed = await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {

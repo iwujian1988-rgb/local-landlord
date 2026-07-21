@@ -10,7 +10,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { FeeItem } from '../fee/fee-item.entity';
-import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
+import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 
@@ -260,19 +260,13 @@ export class BillService {
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Find any bill whose coverage window includes the current month.
-    // New multi-month bills: period <= current <= periodEnd.
-    // Legacy single-month bills (periodEnd IS NULL): only period = current.
-    // Exclude cancelled (status=4) — those are退租作废 bills.
+    // Bills are collection events. A prepaid bill covering later months must
+    // not masquerade as a new bill in those months.
     const currentBillQuery = this.billRepository
       .createQueryBuilder('bill')
       .where('bill.room_id = :roomId', { roomId })
       .andWhere('bill.status != :cancelled', { cancelled: 4 })
-      .andWhere(
-        '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
-        'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
-        { monthStr },
-      );
+      .andWhere('bill.period = :monthStr', { monthStr });
     if (tenant) {
       currentBillQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: tenant.id });
     }
@@ -300,12 +294,18 @@ export class BillService {
           type: 'fixed',
           feeId: undefined,
         }))
-      : feeItems.filter(fee => fee.enabled).map(fee => ({
-          name: fee.name,
-          amount: feeRuleCycleAmount(fee, payMonths),
-          type: fee.type === 0 ? 'fixed' : 'manual',
-          feeId: undefined,
-        }));
+      : feeItems.flatMap(fee => {
+          const dueMonths = tenant
+            ? feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr)
+            : 1;
+          if (!fee.enabled || dueMonths === 0) return [];
+          return [{
+            name: fee.name,
+            amount: feeRuleAmountForMonths(fee, dueMonths),
+            type: fee.type === 0 ? 'fixed' : 'manual',
+            feeId: undefined,
+          }];
+        });
 
     return {
       roomName: room.name,
@@ -349,8 +349,7 @@ export class BillService {
 
       // Use periodEnd (if set) as the effective "due-month" for overdue detection.
       // Old bills without periodEnd fall back to period (single-month behavior).
-      const effectivePeriod = bill.periodEnd || bill.period;
-      const effectiveDate = dayjs(effectivePeriod + '-01');
+      const effectiveDate = dayjs(bill.period + '-01');
 
       if (rentDay === 0) {
         dueDay = effectiveDate.endOf('month').date();

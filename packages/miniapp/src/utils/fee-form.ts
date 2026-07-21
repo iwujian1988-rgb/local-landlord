@@ -5,10 +5,12 @@ export interface FeeFormItem {
   enabled: boolean;
   isRent: boolean;
   cycleMode: 'rent' | 'monthly';
+  billingMonths?: number;
+  initialMonths?: number;
 }
 
 /** Accept current array responses and older wrapped response aliases. */
-export function normalizeFeeItems(data: unknown): FeeFormItem[] {
+export function normalizeFeeItems(data: unknown, legacyPayMonths = 1): FeeFormItem[] {
   const source = Array.isArray(data)
     ? data
     : Array.isArray((data as any)?.fees)
@@ -23,7 +25,14 @@ export function normalizeFeeItems(data: unknown): FeeFormItem[] {
     enabled: fee.enabled !== false && fee.enabled !== 0,
     isRent: fee.isRent === true || fee.isRent === 1,
     cycleMode: fee.cycleMode === 'monthly' ? 'monthly' : 'rent',
+    billingMonths: normalizeMonths(fee.billingMonths, fee.cycleMode === 'monthly' ? 1 : legacyPayMonths),
+    initialMonths: normalizeMonths(fee.initialMonths, fee.billingMonths ?? (fee.cycleMode === 'monthly' ? 1 : legacyPayMonths)),
   }));
+}
+
+function normalizeMonths(value: unknown, fallback: number): number {
+  const months = Number(value);
+  return Number.isInteger(months) && months >= 1 && months <= 12 ? months : Math.max(1, fallback || 1);
 }
 
 export function getRoomNameFromResponse(data: unknown): string {
@@ -35,7 +44,17 @@ export function calculateFeeCycleTotal(fees: FeeFormItem[], payMonths: number): 
   const total = fees.reduce((sum, fee) => {
     if (!fee.enabled || fee.type === 'manual') return sum;
     const amount = Number(fee.amount) || 0;
-    return sum + Math.round(amount * (fee.cycleMode === 'monthly' ? 1 : Math.max(1, payMonths)) * 100) / 100;
+    const months = fee.billingMonths || (fee.cycleMode === 'monthly' ? 1 : Math.max(1, payMonths));
+    return sum + Math.round(amount * months * 100) / 100;
+  }, 0);
+  return Math.round(total * 100) / 100;
+}
+
+export function calculateInitialFeeTotal(fees: FeeFormItem[]): number {
+  const total = fees.reduce((sum, fee) => {
+    if (!fee.enabled || fee.type === 'manual') return sum;
+    const amount = Number(fee.amount) || 0;
+    return sum + Math.round(amount * normalizeMonths(fee.initialMonths, 1) * 100) / 100;
   }, 0);
   return Math.round(total * 100) / 100;
 }

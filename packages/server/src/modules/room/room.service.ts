@@ -396,6 +396,9 @@ export class RoomService {
         initialPaymentAmount: activeTenant.initialPaymentAmount != null
           ? Number(activeTenant.initialPaymentAmount)
           : null,
+        initialDepositAmount: activeTenant.initialDepositAmount != null
+          ? Number(activeTenant.initialDepositAmount)
+          : null,
         // P0-C: 入住水电读数（退租时对照展示）
         moveInReading: activeTenant.moveInReading || '',
         moveOutReading: activeTenant.moveOutReading || '',

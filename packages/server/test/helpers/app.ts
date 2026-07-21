@@ -145,7 +145,8 @@ export async function createTenant(
   overrides: Partial<{
     name: string; phone: string; moveInDate: string;
     rentDay: number; payMonths: number; deposit: number;
-    initialPaymentMethod: string; initialPaymentDate: string; initialPaymentAmount: number;
+    initialPaymentMethod: string; initialPaymentDate: string; initialPaymentAmount: number; initialDepositAmount: number;
+    feeItems: Array<Record<string, unknown>>;
     moveInReading: string;
   }> = {},
 ): Promise<number> {

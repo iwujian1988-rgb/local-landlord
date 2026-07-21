@@ -182,7 +182,7 @@ describe('Stats module — overdue logic (e2e)', () => {
     expect(res.body?.code).toBe(0);
   });
 
-  it('TC-STATS-012: 租约收费规则在账单、收租统计和房源预计收入中口径一致', async () => {
+  it('TC-STATS-012: 首期账单按预收周期统计，房源预计收入按标准月金额展示', async () => {
     const freshAuth = await loginAsLandlord(app, `dev_stats_rules_${Date.now()}`);
     const propId = await createProperty(app, freshAuth);
     const roomId = await createRoom(app, freshAuth, propId, { rent: 2000, name: '规则统计房' });
@@ -205,7 +205,8 @@ describe('Stats module — overdue logic (e2e)', () => {
 
     const properties = expectOk(await apiCall(app, 'get', '/api/properties', freshAuth));
     const property = properties.find((item: any) => item.id === propId);
-    expect(Number(property.monthlyExpectedIncome)).toBe(6600);
+    // “预计月收入”是标准月口径，不应把季度预收误当成每月收入。
+    expect(Number(property.monthlyExpectedIncome)).toBe(2400);
   });
   it('TC-STATS-013: 同房间同月换租客只用当前租客账单计算应收状态', async () => {
     const freshAuth = await loginAsLandlord(app, `dev_stats_relet_${Date.now()}`);
@@ -228,5 +229,24 @@ describe('Stats module — overdue logic (e2e)', () => {
     expect(stats.totalExpected).toBe(4000);
     expect(stats.totalCollected).toBe(600);
     expect(stats.totalPending).toBe(2000);
+  });
+
+  it('TC-STATS-014: 入住押金单独留痕但不计入租金收入', async () => {
+    const freshAuth = await loginAsLandlord(app, `dev_stats_deposit_${Date.now()}`);
+    const propId = await createProperty(app, freshAuth);
+    const roomId = await createRoom(app, freshAuth, propId, { rent: 1000, name: '押金统计房' });
+    expectOk(await apiCall(app, 'post', `/api/rooms/${roomId}/tenant`, freshAuth, {
+      name: '押金统计租客', phone: '13900000014', moveInDate: `${currentMonthStr()}-01`,
+      rentDay: 1, payMonths: 3, deposit: 1000,
+      initialPaymentMethod: 'cash', initialPaymentDate: `${currentMonthStr()}-01`,
+      initialPaymentAmount: 3000, initialDepositAmount: 1000,
+      feeItems: [
+        { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 3 },
+      ],
+    }));
+    const stats = expectOk(await apiCall(app, 'get', '/api/stats/rent?period=month', freshAuth));
+    expect(stats.totalExpected).toBe(3000);
+    expect(stats.totalCollected).toBe(3000);
+    expect(stats.totalPending).toBe(0);
   });
 });

@@ -13,7 +13,7 @@ export class RentRecord {
   roomId: number;
 
   @Column({ name: 'bill_id', type: 'integer', nullable: true })
-  billId: number;
+  billId: number | null;
 
   @Column({ type: 'tinyint', unsigned: true })
   type: number;

@@ -41,6 +41,7 @@ interface TenantData {
   initialPaymentMethod?: string | null;
   initialPaymentDate?: string | null;
   initialPaymentAmount?: number | null;
+  initialDepositAmount?: number | null;
 }
 
 interface MoveOutPreview {

@@ -10,7 +10,7 @@ import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
-import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
+import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { SystemConfig } from '../system/system-config.entity';
 
 @Injectable()
@@ -140,8 +140,6 @@ export class SubscriptionService {
     const today = now.date();
     const isLastDay = now.endOf('month').date() === today;
     const monthStr = now.format('YYYY-MM');
-    const currentMonth = now.month();
-    const currentYear = now.year();
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
@@ -153,15 +151,6 @@ export class SubscriptionService {
       const payMonths = tenant.payMonths ?? 1;
       const isRentDay = rentDay === today || (rentDay === 0 && isLastDay);
       if (!isRentDay) continue;
-
-      // Cycle check for multi-month tenants (押X付Y where Y > 1):
-      // only generate on months where (monthsSinceMoveIn % payMonths === 0)
-      if (payMonths > 1 && tenant.moveInDate) {
-        const moveIn = dayjs(tenant.moveInDate);
-        const monthsSinceMoveIn = (currentYear - moveIn.year()) * 12 + (currentMonth - moveIn.month());
-        if (monthsSinceMoveIn < 0) continue;
-        if (monthsSinceMoveIn % payMonths !== 0) continue;
-      }
 
       const existing = await this.billRepository.findOne({
         where: { roomId: tenant.roomId, tenantId: tenant.id, period: monthStr },
@@ -179,28 +168,23 @@ export class SubscriptionService {
 
       const items: { feeName: string; amount: number }[] = [];
       let totalAmount = 0;
+      let periodEnd = monthStr;
 
       if (feeItems.length > 0) {
         for (const fee of feeItems) {
           if (!fee.enabled) continue;
-          // Fixed items (房租, fixed网费 etc.) get multiplied by payMonths to
-          // collect for the whole cycle upfront — UNLESS the fee is marked
-          // cycleMode='monthly' (e.g. 停车管理费 charged per-month regardless of
-          // how many months the rent cycle covers). Manual items (水电, 维修)
-          // start at 0 — landlord fills in actual values before sending.
-          const amt = feeRuleCycleAmount(fee, payMonths);
+          const dueMonths = feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr);
+          if (dueMonths === 0) continue;
+          const amt = feeRuleAmountForMonths(fee, dueMonths);
           items.push({ feeName: fee.name, amount: amt });
           totalAmount += amt;
+          if (fee.isRent) periodEnd = dayjs(monthStr + '-01').add(dueMonths - 1, 'month').format('YYYY-MM');
         }
       }
 
-      if (items.length === 0) {
-        const rent = Number(room.rent) || 0;
-        items.push({ feeName: '房租', amount: rent * payMonths });
-        totalAmount = rent * payMonths;
-      }
-
-      const periodEnd = dayjs(monthStr + '-01').add(payMonths - 1, 'month').format('YYYY-MM');
+      // No fee is due in this month (for example rent quarterly and internet
+      // half-yearly). Do not create an empty bill.
+      if (items.length === 0) continue;
 
       const bill = this.billRepository.create({
         roomId: room.id,
@@ -287,24 +271,13 @@ export class SubscriptionService {
     const today = now.date();
     const isLastDay = now.endOf('month').date() === today;
     const monthStr = now.format('YYYY-MM');
-    const currentMonth = now.month();
-    const currentYear = now.year();
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
     for (const tenant of tenants) {
       const rentDay = tenant.rentDay ?? 1;
-      const payMonths = tenant.payMonths ?? 1;
       const shouldNotify = rentDay === today || (rentDay === 0 && isLastDay);
       if (!shouldNotify) continue;
-
-      // Skip non-cycle months for multi-month tenants
-      if (payMonths > 1 && tenant.moveInDate) {
-        const moveIn = dayjs(tenant.moveInDate);
-        const monthsSinceMoveIn = (currentYear - moveIn.year()) * 12 + (currentMonth - moveIn.month());
-        if (monthsSinceMoveIn < 0) continue;
-        if (monthsSinceMoveIn % payMonths !== 0) continue;
-      }
 
       const bill = await this.billRepository.findOne({
         where: { roomId: tenant.roomId, tenantId: tenant.id, period: monthStr },
@@ -432,9 +405,8 @@ export class SubscriptionService {
       if (!bill.tenant || !bill.room) continue;
 
       const rentDay = bill.tenant.rentDay ?? 1;
-      // Use periodEnd (if set) for overdue detection — multi-month bills cover
-      // through this month. Old bills fall back to period (single-month).
-      const effectivePeriod = bill.periodEnd || bill.period;
+      // A prepaid bill is due in its collection month; coverage must not delay reminders.
+      const effectivePeriod = bill.period;
       let dueDay: number;
       if (rentDay === 0) {
         dueDay = dayjs(effectivePeriod + '-01').endOf('month').date();

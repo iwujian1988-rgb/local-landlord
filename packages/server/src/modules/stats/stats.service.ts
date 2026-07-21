@@ -7,7 +7,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
-import { FeeRule, feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
+import { FeeRule, feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
 
@@ -109,17 +109,12 @@ export class StatsService {
           const tenant = await this.tenantRepository.findOne({
             where: { roomId: room.id, status: 1 },
           });
-          // Find any bill covering current month — supports multi-month (押X付Y)
-          // bills where period <= monthStr <= periodEnd.
+          // Bills are collection events; only count bills issued in this month.
           const billQuery = this.billRepository
             .createQueryBuilder('bill')
             .where('bill.room_id = :roomId', { roomId: room.id })
             .andWhere('bill.status != :cancelled', { cancelled: 4 })
-            .andWhere(
-              '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
-              'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
-              { monthStr },
-            );
+            .andWhere('bill.period = :monthStr', { monthStr });
           if (tenant) {
             billQuery.andWhere('bill.tenant_id = :tenantId', { tenantId: tenant.id });
           }
@@ -129,13 +124,11 @@ export class StatsService {
           const rent = Number(room.rent) || 0;
           const payMonths = tenant?.payMonths ?? 1;
 
-          // Build expected from fee items — × payMonths for押X付Y tenants
           const legacyFees = await this.feeItemRepository.find({ where: { roomId: room.id } });
           const fees = resolveFeeRules(tenant?.feeRules, legacyFees, rent);
-          let totalExpected = 0;
-          for (const f of fees) {
-            totalExpected += feeRuleCycleAmount(f, payMonths);
-          }
+          const totalExpected = tenant
+            ? this.getEstimatedExpectedForMonth(fees, tenant, monthStr, payMonths)
+            : 0;
 
           if (bill) {
             expected += Number(bill.totalAmount) || totalExpected;
@@ -289,8 +282,8 @@ export class StatsService {
           .createQueryBuilder('bill')
           .where('bill.room_id = :roomId', { roomId: room.id })
           .andWhere('bill.status != :cancelled', { cancelled: 4 })
+          .andWhere('bill.period >= :startMonth', { startMonth: periodInfo.startMonth })
           .andWhere('bill.period <= :endMonth', { endMonth: periodInfo.endMonth })
-          .andWhere('COALESCE(bill.period_end, bill.period) >= :startMonth', { startMonth: periodInfo.startMonth })
           .orderBy('bill.period', 'ASC')
           .getMany();
 
@@ -299,11 +292,7 @@ export class StatsService {
           const billTotal = Number(bill.totalAmount) || 0;
           expected += billTotal;
 
-          for (const m of periodInfo.months) {
-            if (bill.period <= m && (bill.periodEnd || bill.period) >= m) {
-              billCoveredMonths.add(m);
-            }
-          }
+          billCoveredMonths.add(bill.period);
 
           if (bill.status === 1) {
             collected += billTotal;
@@ -332,11 +321,11 @@ export class StatsService {
           const legacyFees = await this.feeItemRepository.find({ where: { roomId: room.id } });
           const fees = resolveFeeRules(tenant.feeRules, legacyFees, rent);
           const payMonths = tenant.payMonths ?? 1;
-          const cycleExpected = this.getEstimatedCycleExpectedForStats(fees, payMonths);
-
           for (const month of periodInfo.months) {
             if (billCoveredMonths.has(month)) continue;
-            if (!this.isTenantDueMonthForStats(tenant, month, payMonths)) continue;
+            const cycleExpected = this.getEstimatedExpectedForMonth(fees, tenant, month, payMonths);
+            const hasManualDue = fees.some(f => feeRuleDueMonths(f, payMonths, tenant.moveInDate, month) > 0);
+            if (cycleExpected <= 0 && !hasManualDue) continue;
 
             expected += cycleExpected;
             pending += cycleExpected;
@@ -449,20 +438,12 @@ export class StatsService {
     return new Date(date.getFullYear(), date.getMonth() + count, 1);
   }
 
-  private getEstimatedCycleExpectedForStats(fees: FeeRule[], payMonths: number): number {
+  private getEstimatedExpectedForMonth(fees: FeeRule[], tenant: Tenant, month: string, payMonths: number): number {
     let total = 0;
     for (const f of fees) {
-      total += feeRuleCycleAmount(f, payMonths);
+      total += feeRuleAmountForMonths(f, feeRuleDueMonths(f, payMonths, tenant.moveInDate, month));
     }
     return total;
-  }
-
-  private isTenantDueMonthForStats(tenant: Tenant, month: string, payMonths: number): boolean {
-    if (!tenant.moveInDate) return true;
-    const moveIn = new Date(tenant.moveInDate);
-    const [year, monthNumber] = month.split('-').map(Number);
-    const monthsSinceMoveIn = (year - moveIn.getFullYear()) * 12 + ((monthNumber - 1) - moveIn.getMonth());
-    return monthsSinceMoveIn >= 0 && monthsSinceMoveIn % payMonths === 0;
   }
 
   private isBillOverdueForStats(bill: Bill, tenant: Tenant | null, now: Date): boolean {
@@ -556,28 +537,18 @@ export class StatsService {
       const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const payMonths = tenant?.payMonths ?? 1;
 
-      // For multi-month cycles, skip tenants whose current month is not in cycle.
-      // (They show up in rent-list's "upcoming" section, not in today's todo.)
-      if (tenant && payMonths > 1 && tenant.moveInDate) {
-        const moveIn = new Date(tenant.moveInDate);
-        const monthsSinceMoveIn = (currentYear - moveIn.getFullYear()) * 12 + (currentMonth - moveIn.getMonth());
-        if (monthsSinceMoveIn >= 0 && monthsSinceMoveIn % payMonths !== 0) {
-          continue;
-        }
-      }
+      const legacyFees = await this.feeItemRepository.find({ where: { roomId: room.id } });
+      const fees = resolveFeeRules(tenant.feeRules, legacyFees, Number(room.rent) || 0);
+      if (!fees.some(fee => feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr) > 0)) continue;
 
-      // Find the bill covering current month (multi-month aware)
+      // Find the bill issued in this collection month.
       const bill = allRoomIds.length > 0
         ? await this.billRepository
             .createQueryBuilder('bill')
             .where('bill.roomId = :roomId', { roomId: room.id })
             .andWhere('bill.tenantId = :tenantId', { tenantId: tenant.id })
             .andWhere('bill.status != :cancelled', { cancelled: 4 })
-            .andWhere(
-              '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
-              'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
-              { monthStr },
-            )
+            .andWhere('bill.period = :monthStr', { monthStr })
             .getOne()
         : null;
 
@@ -590,7 +561,7 @@ export class StatsService {
             .where('bill.roomId = :roomId', { roomId: room.id })
             .andWhere('bill.tenantId = :tenantId', { tenantId: tenant.id })
             .andWhere('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
-            .andWhere('((bill.period_end IS NULL AND bill.period < :current) OR (bill.period_end IS NOT NULL AND bill.period_end < :current))', { current: monthStr })
+            .andWhere('bill.period < :current', { current: monthStr })
             .getCount()) > 0
         : false;
 
@@ -617,20 +588,14 @@ export class StatsService {
       }
     }
 
-    // Monthly collected — count both paid-in-full and partial payments.
-    // Multi-month (押X付Y) bills covering current period are attributed to the
-    // current month for stats purposes.
+    // Monthly collected — count a prepaid bill once, in its collection month.
     let monthlyCollected = 0;
     if (allRoomIds.length > 0) {
       const result = await this.billRepository
         .createQueryBuilder('bill')
         .where('bill.roomId IN (:...ids)', { ids: allRoomIds })
         .andWhere('bill.status IN (:...statuses)', { statuses: [1, 3] })
-        .andWhere(
-          '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
-          'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
-          { monthStr },
-        )
+        .andWhere('bill.period = :monthStr', { monthStr })
         // Use CASE to pick paidAmount when partial, else totalAmount
         .select('SUM(CASE WHEN bill.status = 3 THEN bill.paid_amount ELSE bill.total_amount END)', 'total')
         .getRawOne();

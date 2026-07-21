@@ -8,7 +8,7 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
 import { FeeItem } from '../fee/fee-item.entity';
-import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
+import { resolveFeeRules } from '../fee/fee-rules';
 import { Document } from '../document/document.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
@@ -194,12 +194,11 @@ export class PropertyService {
       if (room.status !== 1) continue;
       const tenant = await this.tenantRepository.findOne({ where: { roomId: room.id, status: 1 } });
       if (!tenant) continue;
-      const payMonths = tenant.payMonths ?? 1;
       const legacyFeeItems = await this.feeItemRepository.find({ where: { roomId: room.id, enabled: 1 } });
       const feeItems = resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0);
       let roomExpected = 0;
       for (const item of feeItems) {
-        roomExpected += feeRuleCycleAmount(item, payMonths);
+        if (item.enabled && item.type === 0) roomExpected += Number(item.amount) || 0;
       }
       monthlyExpectedIncome += roomExpected;
     }

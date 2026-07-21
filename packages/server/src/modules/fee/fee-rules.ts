@@ -11,6 +11,10 @@ export interface FeeRule {
   enabled: number;
   isRent: number;
   cycleMode: FeeCycleMode;
+  /** Normal collection interval after the first collection. */
+  billingMonths?: number;
+  /** Months collected on move-in. May differ from billingMonths. */
+  initialMonths?: number;
   sortOrder: number;
 }
 
@@ -42,6 +46,14 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
     if (raw?.cycleMode !== undefined && !['rent', 'monthly'].includes(raw.cycleMode)) {
       throw new BadRequestException(`第${index + 1}个收费项目收取周期不正确`);
     }
+    for (const field of ['billingMonths', 'initialMonths'] as const) {
+      if (raw?.[field] !== undefined) {
+        const months = Number(raw[field]);
+        if (!Number.isInteger(months) || months < 1 || months > 12) {
+          throw new BadRequestException(`第${index + 1}个收费项目的预收月数必须是1到12个月`);
+        }
+      }
+    }
 
     const type: FeeRuleType = raw.type === 'manual' || raw.type === 1 ? 1 : 0;
     const amount = type === 1 ? 0 : Number(raw?.amount);
@@ -63,6 +75,8 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
       enabled: isRent ? 1 : (raw?.enabled === false || raw?.enabled === 0 ? 0 : 1),
       isRent,
       cycleMode: isRent ? 'rent' : (raw?.cycleMode === 'monthly' ? 'monthly' : 'rent'),
+      billingMonths: raw?.billingMonths === undefined ? undefined : Number(raw.billingMonths),
+      initialMonths: raw?.initialMonths === undefined ? undefined : Number(raw.initialMonths),
       sortOrder: index,
     } as FeeRule;
   });
@@ -79,6 +93,8 @@ export function feeEntitiesToRules(items: FeeItem[]): FeeRule[] {
     enabled: item.enabled ? 1 : 0,
     isRent: item.isRent ? 1 : 0,
     cycleMode: item.cycleMode === 'monthly' ? 'monthly' : 'rent',
+    billingMonths: undefined,
+    initialMonths: undefined,
     sortOrder: item.sortOrder ?? index,
   }));
 }
@@ -91,6 +107,8 @@ export function defaultRentRule(rent: number): FeeRule {
     enabled: 1,
     isRent: 1,
     cycleMode: 'rent',
+    billingMonths: undefined,
+    initialMonths: undefined,
     sortOrder: 0,
   };
 }
@@ -114,7 +132,50 @@ export function resolveFeeRules(
 
 export function feeRuleCycleAmount(rule: FeeRule, payMonths: number): number {
   if (!rule.enabled || rule.type === 1) return 0;
-  return Math.round(rule.amount * (rule.cycleMode === 'monthly' ? 1 : Math.max(1, payMonths)) * 100) / 100;
+  return feeRuleAmountForMonths(rule, feeRuleBillingMonths(rule, payMonths));
+}
+
+export function feeRuleBillingMonths(rule: FeeRule, payMonths: number): number {
+  const explicit = Number(rule.billingMonths);
+  if (Number.isInteger(explicit) && explicit >= 1 && explicit <= 12) return explicit;
+  return rule.cycleMode === 'monthly' ? 1 : Math.max(1, payMonths || 1);
+}
+
+export function feeRuleInitialMonths(rule: FeeRule, payMonths: number): number {
+  const explicit = Number(rule.initialMonths);
+  if (Number.isInteger(explicit) && explicit >= 1 && explicit <= 12) return explicit;
+  return feeRuleBillingMonths(rule, payMonths);
+}
+
+export function feeRuleAmountForMonths(rule: FeeRule, months: number): number {
+  if (!rule.enabled || rule.type === 1 || months <= 0) return 0;
+  return Math.round(rule.amount * months * 100) / 100;
+}
+
+export function feeRuleInitialAmount(rule: FeeRule, payMonths: number): number {
+  return feeRuleAmountForMonths(rule, feeRuleInitialMonths(rule, payMonths));
+}
+
+/**
+ * Returns how many months this fee should collect in the target month.
+ * The first collection is made on move-in for `initialMonths`; the next one
+ * starts immediately after that covered range, then follows `billingMonths`.
+ */
+export function feeRuleDueMonths(
+  rule: FeeRule,
+  payMonths: number,
+  moveInDate: string,
+  targetPeriod: string,
+): number {
+  const start = new Date(`${moveInDate.slice(0, 7)}-01T00:00:00`);
+  const target = new Date(`${targetPeriod}-01T00:00:00`);
+  const offset = (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth();
+  if (offset < 0) return 0;
+  const initialMonths = feeRuleInitialMonths(rule, payMonths);
+  if (offset === 0) return initialMonths;
+  if (offset < initialMonths) return 0;
+  const billingMonths = feeRuleBillingMonths(rule, payMonths);
+  return (offset - initialMonths) % billingMonths === 0 ? billingMonths : 0;
 }
 
 export function feeRulesToResponse(rules: FeeRule[]) {
@@ -127,5 +188,7 @@ export function feeRulesToResponse(rules: FeeRule[]) {
       enabled: !!rule.enabled,
       isRent: !!rule.isRent,
       cycleMode: rule.cycleMode === 'monthly' ? 'monthly' : 'rent',
+      billingMonths: rule.billingMonths,
+      initialMonths: rule.initialMonths,
     }));
 }

@@ -33,6 +33,7 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'tenant', column: 'initial_payment_method', definition: '`initial_payment_method` varchar(20) NULL' },
   { table: 'tenant', column: 'initial_payment_date', definition: '`initial_payment_date` varchar(10) NULL' },
   { table: 'tenant', column: 'initial_payment_amount', definition: '`initial_payment_amount` decimal(10,2) NULL' },
+  { table: 'tenant', column: 'initial_deposit_amount', definition: '`initial_deposit_amount` decimal(10,2) NULL' },
   { table: 'tenant', column: 'move_in_reading', definition: '`move_in_reading` varchar(256) NULL' },
   { table: 'tenant', column: 'move_out_reading', definition: '`move_out_reading` varchar(256) NULL' },
   { table: 'tenant', column: 'prepaid_refund_amount', definition: '`prepaid_refund_amount` decimal(10,2) NULL' },

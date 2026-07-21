@@ -69,6 +69,9 @@ export class Tenant {
   @Column({ name: 'initial_payment_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
   initialPaymentAmount: number | null;
 
+  @Column({ name: 'initial_deposit_amount', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  initialDepositAmount: number | null;
+
   // ====== 水电气读数（P0-C）======
   // 自由文本，如 "电 1234 水 56 气 12"。仅做凭证，不参与自动算费。
   @Column({ name: 'move_in_reading', type: 'varchar', length: 256, nullable: true })

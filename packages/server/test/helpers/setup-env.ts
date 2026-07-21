@@ -17,4 +17,7 @@ process.env.DISABLE_THROTTLE = '1';
 // fail with "no such table".
 process.env.NODE_ENV = 'development';
 process.env.DB_TYPE = 'sqljs';
-process.env.DB_LOCATION = 'data/test_e2e.sqlite';
+// Allow CI/local callers to provide an isolated database per run. Reusing one
+// persisted sql.js file across interrupted suites can leave a malformed test
+// image and create false product failures.
+process.env.DB_LOCATION = process.env.DB_LOCATION || 'data/test_e2e.sqlite';

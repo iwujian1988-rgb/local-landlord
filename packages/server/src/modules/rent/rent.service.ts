@@ -11,10 +11,10 @@ import { Property } from '../property/property.entity';
 import { CreateSingleChargeDto } from './dto/create-single-charge.dto';
 import { RemindTenantDto } from './dto/remind-tenant.dto';
 import { FeeItem } from '../fee/fee-item.entity';
-import { feeRuleCycleAmount, resolveFeeRules } from '../fee/fee-rules';
+import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 
 const RECORD_TYPE_MAP: Record<number, string> = {
-  0: 'bill_sent', 1: 'bill_paid', 2: 'single_charge', 3: 'single_paid', 4: 'reminder',
+  0: 'bill_sent', 1: 'bill_paid', 2: 'single_charge', 3: 'single_paid', 4: 'reminder', 5: 'deposit_paid',
 };
 
 const DOT_COLOR_MAP: Record<number, string> = {
@@ -139,18 +139,14 @@ export class RentService {
     const todayDate = now.getDate();
     const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-    // Find any bill that covers the current month (handles multi-month cycles).
+    // A bill is a collection event; prepaid coverage is not another bill.
     const coveringBills = activeTenantIds.length > 0
       ? await this.billRepository
           .createQueryBuilder('bill')
           .where('bill.room_id IN (:...roomIds)', { roomIds })
           .andWhere('bill.tenant_id IN (:...tenantIds)', { tenantIds: activeTenantIds })
           .andWhere('bill.status != :cancelled', { cancelled: 4 })
-          .andWhere(
-            '((bill.period <= :monthStr AND bill.period_end >= :monthStr) ' +
-            'OR (bill.period = :monthStr AND bill.period_end IS NULL))',
-            { monthStr },
-          )
+          .andWhere('bill.period = :monthStr', { monthStr })
           .getMany()
       : [];
     const currentBillMap = new Map<number, Bill>();
@@ -168,8 +164,7 @@ export class RentService {
       : [];
     const priorOverdueMap = new Map<number, boolean>();
     for (const b of unpaidBills) {
-      const effectiveEnd = b.periodEnd || b.period;
-      if (effectiveEnd < monthStr) priorOverdueMap.set(b.roomId, true);
+      if (b.period < monthStr) priorOverdueMap.set(b.roomId, true);
     }
 
     const todayList: PendingEntry[] = [];
@@ -186,28 +181,30 @@ export class RentService {
       const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
       const payMonths = tenant?.payMonths ?? 1;
       const hasPriorOverdue = priorOverdueMap.get(room.id) || false;
-      const estimatedTotal = resolveFeeRules(
+      const resolvedRules = resolveFeeRules(
         tenant?.feeRules,
         legacyFeeMap.get(room.id) || [],
         Number(room.rent) || 0,
-      ).reduce((sum, rule) => sum + feeRuleCycleAmount(rule, payMonths), 0);
+      );
+      const estimatedTotal = tenant
+        ? resolvedRules.reduce((sum, rule) => {
+            const months = feeRuleDueMonths(rule, payMonths, tenant.moveInDate, monthStr);
+            return sum + feeRuleAmountForMonths(rule, months);
+          }, 0)
+        : 0;
 
       // Cycle check: is current month a due-month?
-      let isDueMonth = true;
+      let isDueMonth = estimatedTotal > 0 || resolvedRules.some(rule =>
+        tenant ? feeRuleDueMonths(rule, payMonths, tenant.moveInDate, monthStr) > 0 : false,
+      );
       let nextDueMonth: string | null = null;
-      if (tenant && payMonths > 1) {
-        const moveIn = dayjs(tenant.moveInDate);
-        const monthsSinceMoveIn = (currentYear - moveIn.year()) * 12 + (currentMonth - moveIn.month());
-        if (monthsSinceMoveIn < 0) {
-          // Tenant moves in future — first due is the first rentDay at/after moveIn
-          isDueMonth = false;
-          nextDueMonth = dayjs(moveIn).format('YYYY-MM');
-        } else if (monthsSinceMoveIn % payMonths === 0) {
-          isDueMonth = true;
-        } else {
-          isDueMonth = false;
-          const monthsAhead = payMonths - (monthsSinceMoveIn % payMonths);
-          nextDueMonth = dayjs(monthStr + '-01').add(monthsAhead, 'month').format('YYYY-MM');
+      if (tenant && !isDueMonth) {
+        for (let ahead = 1; ahead <= 12; ahead++) {
+          const candidate = dayjs(monthStr + '-01').add(ahead, 'month').format('YYYY-MM');
+          if (resolvedRules.some(rule => feeRuleDueMonths(rule, payMonths, tenant.moveInDate, candidate) > 0)) {
+            nextDueMonth = candidate;
+            break;
+          }
         }
       }
 

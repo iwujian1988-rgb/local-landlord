@@ -2,6 +2,7 @@ interface InitialPaymentOptions {
   isEdit: boolean;
   initialReceived: boolean;
   initialAmount: string;
+  initialDepositAmount?: string;
   initialMethod: string;
   initialDate: string;
 }
@@ -33,11 +34,13 @@ export function withInitialPayment<T extends Record<string, any>>(
   options: InitialPaymentOptions,
 ): T & Record<string, any> {
   const amount = Number(options.initialAmount);
-  if (options.isEdit || !options.initialReceived || !(amount > 0)) return base;
+  const depositAmount = Number(options.initialDepositAmount);
+  if (options.isEdit || !options.initialReceived || (!(amount > 0) && !(depositAmount > 0))) return base;
   return {
     ...base,
     initialPaymentMethod: options.initialMethod,
     initialPaymentDate: options.initialDate,
-    initialPaymentAmount: amount,
+    initialPaymentAmount: amount > 0 ? amount : 0,
+    ...(depositAmount > 0 ? { initialDepositAmount: depositAmount } : {}),
   };
 }

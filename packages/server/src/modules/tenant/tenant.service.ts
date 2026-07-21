@@ -12,7 +12,7 @@ import { RentRecord } from '../rent/rent-record.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { MoveOutDto } from './dto/move-out.dto';
-import { FeeRule, feeRuleCycleAmount, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from '../fee/fee-rules';
+import { FeeRule, feeRuleInitialAmount, feeRuleInitialMonths, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from '../fee/fee-rules';
 
 @Injectable()
 export class TenantService {
@@ -104,6 +104,7 @@ export class TenantService {
         initialPaymentMethod: dto.initialPaymentMethod ?? null,
         initialPaymentDate: dto.initialPaymentDate ?? null,
         initialPaymentAmount: dto.initialPaymentAmount ?? null,
+        initialDepositAmount: dto.initialDepositAmount ?? null,
         moveInReading: dto.moveInReading ?? null,
         feeRules,
       });
@@ -130,7 +131,7 @@ export class TenantService {
   ): Promise<Bill | null> {
     const moveInDate = dayjs(tenant.moveInDate);
     const period = moveInDate.format('YYYY-MM');
-    const periodEnd = moveInDate.add(payMonths - 1, 'month').format('YYYY-MM');
+    let periodEnd = period;
 
     // Idempotency: skip if a bill already covers this period
     const billRepo = manager.getRepository(Bill);
@@ -146,9 +147,11 @@ export class TenantService {
     if (feeRules.length > 0) {
       for (const fee of feeRules) {
         if (!fee.enabled) continue;
-        const amt = feeRuleCycleAmount(fee, payMonths);
+        const months = feeRuleInitialMonths(fee, payMonths);
+        const amt = feeRuleInitialAmount(fee, payMonths);
         items.push({ feeName: fee.name, amount: amt });
         totalAmount += amt;
+        if (fee.isRent) periodEnd = moveInDate.add(months - 1, 'month').format('YYYY-MM');
       }
     }
     if (items.length === 0) {
@@ -163,7 +166,7 @@ export class TenantService {
     const explicitAmount = Number(tenant.initialPaymentAmount) || 0;
     const recordedAmount = explicitAmount > 0
       ? Math.min(explicitAmount, totalAmount)
-      : (tenant.initialPaymentMethod ? totalAmount : 0);
+      : (tenant.initialPaymentMethod && tenant.initialDepositAmount == null ? totalAmount : 0);
     const paymentStatus = recordedAmount >= totalAmount && totalAmount > 0
       ? 1
       : (recordedAmount > 0 ? 3 : 0);
@@ -210,6 +213,22 @@ export class TenantService {
         amount: recordedAmount,
       });
       await manager.getRepository(RentRecord).save(rentRecord);
+    }
+
+    const depositReceived = Math.min(
+      Math.max(0, Number(tenant.initialDepositAmount) || 0),
+      Math.max(0, Number(tenant.deposit) || 0),
+    );
+    if (depositReceived > 0) {
+      const depositRecord = manager.getRepository(RentRecord).create({
+        roomId: room.id,
+        billId: null,
+        type: 5,
+        title: '入住押金已收',
+        description: `${tenant.initialPaymentDate || '入住时'}收取；押金不计入租金收入`,
+        amount: depositReceived,
+      });
+      await manager.getRepository(RentRecord).save(depositRecord);
     }
 
     return savedBill;
