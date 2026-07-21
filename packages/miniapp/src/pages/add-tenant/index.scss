@@ -621,6 +621,27 @@
   font-weight: 700;
 }
 
+.rent-collection-choice {
+  align-items: flex-start;
+  min-height: 164px;
+}
+
+.rent-collection-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.elder-choice-next {
+  display: block;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 2px solid rgba(122, 111, 100, 0.14);
+  color: #B5522B;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .elder-answer-confirmed,
 .elder-tip-box {
   display: flex;

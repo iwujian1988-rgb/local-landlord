@@ -7,7 +7,7 @@ import { withInitialPayment, withOptionalTenantDates } from '../../utils/tenant-
 import { firstFormError, validateTenantForm } from '../../utils/form-validation';
 import { calculateInitialFeeTotal, FeeFormItem, normalizeFeeItems } from '../../utils/fee-form';
 import { validateFeeForm } from '../../utils/form-validation';
-import { getNextTenantWizardIndex, getPreviousTenantWizardIndex, getTenantWizardStepIds } from '../../utils/tenant-wizard';
+import { getNextRentCollectionText, getNextTenantWizardIndex, getPreviousTenantWizardIndex, getTenantWizardStepIds } from '../../utils/tenant-wizard';
 import './index.scss';
 
 const rentDayLabels = Array.from({ length: 28 }, (_, i) => `${i + 1}号`);
@@ -631,7 +631,7 @@ export default function AddTenant() {
           <View>
             <Text className="tenant-section-kicker">{activeWizardStep === 2 ? '收租提醒' : activeWizardStep === 3 ? '押金和房租' : '第一次收房租'}</Text>
             <Text className="tenant-section-title">{activeWizardStep === 2 ? '每月几号提醒你收租？' : activeWizardStep === 3 ? '平时怎么收房租？' : '入住这次先收几个月房租？'}</Text>
-            <Text className="tenant-section-desc">{activeWizardStep === 2 ? '只需要选一个日期，到了这一天系统会提醒你。' : activeWizardStep === 3 ? '点一个常用方式，押金会自动算好。' : '例如押一付三，就选择 3 个月。'}</Text>
+            <Text className="tenant-section-desc">{activeWizardStep === 2 ? '只需要选一个日期，到了这一天系统会提醒你。' : activeWizardStep === 3 ? '点一个常用方式，押金会自动算好。' : `你选择的是${paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '按月收租'}，系统会明确告诉你下一次何时收。`}</Text>
           </View>
         </View>
 
@@ -696,17 +696,26 @@ export default function AddTenant() {
       {activeWizardStep === 4 && rentFee && (
         <View className="form-group">
           <View className="elder-choice-stack">
-            {MONTH_OPTIONS.map(months => (
-              <View key={`rent-initial-${months}`} className={`elder-choice-row${rentFee.initialMonths === months ? ' active' : ''}`} onClick={() => {
-                const rentIndex = feeItems.findIndex(fee => fee.isRent);
-                if (rentIndex >= 0) updateFee(rentIndex, { initialMonths: months });
-              }}>
-                <View><Text className="elder-choice-title">先收 {months} 个月</Text><Text className="elder-choice-desc">月租 {currentRoomRent || Number(rentFee.amount) || 0} 元</Text></View>
-                <Text className="elder-choice-amount">{Math.round((currentRoomRent || Number(rentFee.amount) || 0) * months * 100) / 100} 元</Text>
-              </View>
-            ))}
+            {MONTH_OPTIONS.map(months => {
+              const monthlyRent = currentRoomRent || Number(rentFee.amount) || 0;
+              return (
+                <View key={`rent-initial-${months}`} className={`elder-choice-row rent-collection-choice${rentFee.initialMonths === months ? ' active' : ''}`} onClick={() => {
+                  const rentIndex = feeItems.findIndex(fee => fee.isRent);
+                  if (rentIndex >= 0) updateFee(rentIndex, { initialMonths: months });
+                }}>
+                  <View className="rent-collection-copy">
+                    <Text className="elder-choice-title">先收 {months} 个月{months === previewPayMonths ? '（推荐）' : ''}</Text>
+                    <Text className="elder-choice-desc">本次收 {Math.round(monthlyRent * months * 100) / 100} 元</Text>
+                    <Text className="elder-choice-next">{getNextRentCollectionText(months, previewPayMonths, monthlyRent, moveInDate, rentDay)}</Text>
+                  </View>
+                  {rentFee.initialMonths === months && <Text className="elder-answer-check">✓</Text>}
+                </View>
+              );
+            })}
           </View>
-          <View className="elder-tip-box"><Text>这里只决定入住第一次收多少钱，以后仍按你选择的押付方式正常收租。</Text></View>
+          <View className="elder-tip-box"><Text>{rentFee.initialMonths === previewPayMonths
+            ? `按${paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '当前方式'}，本次收 ${previewPayMonths} 个月，${getNextRentCollectionText(previewPayMonths, previewPayMonths, currentRoomRent || Number(rentFee.amount) || 0, moveInDate, rentDay)}。`
+            : `注意：这不会改变以后每 ${previewPayMonths} 个月收一次。${getNextRentCollectionText(rentFee.initialMonths || 1, previewPayMonths, currentRoomRent || Number(rentFee.amount) || 0, moveInDate, rentDay)}。`}</Text></View>
         </View>
       )}
       </View>
