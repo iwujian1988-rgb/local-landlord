@@ -28,6 +28,10 @@ export class TenantFeeRuleDto {
   cycleMode?: 'rent' | 'monthly';
 
   @IsOptional()
+  @IsIn(['advance', 'arrears'])
+  collectionTiming?: 'advance' | 'arrears';
+
+  @IsOptional()
   @IsNumber()
   @Min(1)
   @Max(12)

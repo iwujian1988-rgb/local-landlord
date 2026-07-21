@@ -5,6 +5,7 @@ export interface FeeFormItem {
   enabled: boolean;
   isRent: boolean;
   cycleMode: 'rent' | 'monthly';
+  collectionTiming: 'advance' | 'arrears';
   billingMonths?: number;
   initialMonths?: number;
 }
@@ -25,6 +26,7 @@ export function normalizeFeeItems(data: unknown, legacyPayMonths = 1): FeeFormIt
     enabled: fee.enabled !== false && fee.enabled !== 0,
     isRent: fee.isRent === true || fee.isRent === 1,
     cycleMode: fee.cycleMode === 'monthly' ? 'monthly' : 'rent',
+    collectionTiming: fee.collectionTiming === 'arrears' ? 'arrears' : 'advance',
     billingMonths: normalizeMonths(fee.billingMonths, fee.cycleMode === 'monthly' ? 1 : legacyPayMonths),
     initialMonths: normalizeMonths(fee.initialMonths, fee.billingMonths ?? (fee.cycleMode === 'monthly' ? 1 : legacyPayMonths)),
   }));
@@ -52,7 +54,7 @@ export function calculateFeeCycleTotal(fees: FeeFormItem[], payMonths: number): 
 
 export function calculateInitialFeeTotal(fees: FeeFormItem[]): number {
   const total = fees.reduce((sum, fee) => {
-    if (!fee.enabled || fee.type === 'manual') return sum;
+    if (!fee.enabled || fee.type === 'manual' || fee.collectionTiming === 'arrears') return sum;
     const amount = Number(fee.amount) || 0;
     return sum + Math.round(amount * normalizeMonths(fee.initialMonths, 1) * 100) / 100;
   }, 0);

@@ -726,6 +726,20 @@
   font-size: 22px;
 }
 
+.fee-initial-month-picker {
+  margin: 20px 32px 0;
+  padding: 22px;
+  border-radius: 22px;
+  background: var(--bg-soft, #F5EDE2);
+}
+
+.fee-initial-month-label {
+  display: block;
+  color: var(--text-primary, #4A4038);
+  font-size: 27px;
+  font-weight: 700;
+}
+
 .elder-choice-next {
   display: block;
   margin-top: 14px;

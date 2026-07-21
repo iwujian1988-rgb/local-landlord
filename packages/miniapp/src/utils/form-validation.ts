@@ -98,6 +98,7 @@ interface FeeFormValue {
   amount: string;
   enabled: boolean;
   isRent?: boolean;
+  collectionTiming?: 'advance' | 'arrears';
   billingMonths?: number;
   initialMonths?: number;
 }
@@ -126,6 +127,9 @@ export function validateFeeForm(fees: FeeFormValue[]): FormErrors {
     }
     if (fee.initialMonths !== undefined && (!Number.isInteger(fee.initialMonths) || Number(fee.initialMonths) < 1 || Number(fee.initialMonths) > 12)) {
       return { fee: `${label}请选择入住预收月数` };
+    }
+    if (fee.collectionTiming !== undefined && !['advance', 'arrears'].includes(fee.collectionTiming)) {
+      return { fee: `${label}请选择入住收取方式` };
     }
   }
   return {};

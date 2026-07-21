@@ -165,7 +165,7 @@ export default function FeeSetup() {
   const addCustomFee = useCallback(() => {
     setFees((prev) => [
       ...prev,
-      { name: '', type: 'fixed', amount: '', enabled: true, isRent: false, cycleMode: 'rent', billingMonths: 1, initialMonths: 1 },
+      { name: '', type: 'fixed', amount: '', enabled: true, isRent: false, cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 1, initialMonths: 1 },
     ]);
   }, []);
 

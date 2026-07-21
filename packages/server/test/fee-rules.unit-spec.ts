@@ -9,7 +9,7 @@ import {
 function fixed(overrides: Partial<FeeRule> = {}): FeeRule {
   return {
     name: '房租', type: 0, amount: 1000, enabled: 1, isRent: 1,
-    cycleMode: 'rent', billingMonths: 3, initialMonths: 3, sortOrder: 0,
+    cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 3, initialMonths: 3, sortOrder: 0,
     ...overrides,
   };
 }
@@ -57,5 +57,22 @@ describe('independent tenancy fee schedules', () => {
       { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 6 },
     ]);
     expect(rent.initialMonths).toBe(6);
+  });
+
+  it('后收费用不进入首期，并在用完一个周期后首次到期', () => {
+    const propertyFee = fixed({
+      name: '物业费', amount: 100, isRent: 0, billingMonths: 3, initialMonths: 3,
+      collectionTiming: 'arrears',
+    });
+    expect(feeRuleInitialAmount(propertyFee, 3)).toBe(0);
+    expect(feeRuleDueMonths(propertyFee, 3, '2026-01-15', '2026-01')).toBe(0);
+    expect(feeRuleDueMonths(propertyFee, 3, '2026-01-15', '2026-03')).toBe(0);
+    expect(feeRuleDueMonths(propertyFee, 3, '2026-01-15', '2026-04')).toBe(3);
+  });
+
+  it('不允许把房租配置为后收', () => {
+    expect(() => normalizeFeeRules([
+      { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, billingMonths: 3, initialMonths: 3, collectionTiming: 'arrears' },
+    ])).toThrow('房租必须在入住时预收');
   });
 });

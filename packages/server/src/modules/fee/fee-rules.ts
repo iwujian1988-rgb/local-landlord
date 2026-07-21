@@ -3,6 +3,7 @@ import { FeeItem } from './fee-item.entity';
 
 export type FeeRuleType = 0 | 1;
 export type FeeCycleMode = 'rent' | 'monthly';
+export type FeeCollectionTiming = 'advance' | 'arrears';
 
 export interface FeeRule {
   name: string;
@@ -11,6 +12,8 @@ export interface FeeRule {
   enabled: number;
   isRent: number;
   cycleMode: FeeCycleMode;
+  /** Advance: included in move-in bill. Arrears: collect after a full cycle is used. */
+  collectionTiming: FeeCollectionTiming;
   /** Normal collection interval after the first collection. */
   billingMonths?: number;
   /** Months collected on move-in. May differ from billingMonths. */
@@ -46,6 +49,9 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
     if (raw?.cycleMode !== undefined && !['rent', 'monthly'].includes(raw.cycleMode)) {
       throw new BadRequestException(`第${index + 1}个收费项目收取周期不正确`);
     }
+    if (raw?.collectionTiming !== undefined && !['advance', 'arrears'].includes(raw.collectionTiming)) {
+      throw new BadRequestException(`第${index + 1}个收费项目入住收取方式不正确`);
+    }
     for (const field of ['billingMonths', 'initialMonths'] as const) {
       if (raw?.[field] !== undefined) {
         const months = Number(raw[field]);
@@ -69,6 +75,10 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
     if (rentCount > 1) throw new BadRequestException('只能设置一个房租项目');
     const billingMonths = raw?.billingMonths === undefined ? undefined : Number(raw.billingMonths);
     const initialMonths = raw?.initialMonths === undefined ? undefined : Number(raw.initialMonths);
+    const collectionTiming: FeeCollectionTiming = raw?.collectionTiming === 'arrears' ? 'arrears' : 'advance';
+    if (isRent && collectionTiming === 'arrears') {
+      throw new BadRequestException('房租必须在入住时预收，不能设置为后收');
+    }
     if (isRent && billingMonths !== undefined && initialMonths !== undefined
       && (initialMonths < billingMonths || initialMonths % billingMonths !== 0)) {
       throw new BadRequestException(`房租首次应收月数必须是“付${billingMonths}”的整倍数`);
@@ -81,6 +91,7 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
       enabled: isRent ? 1 : (raw?.enabled === false || raw?.enabled === 0 ? 0 : 1),
       isRent,
       cycleMode: isRent ? 'rent' : (raw?.cycleMode === 'monthly' ? 'monthly' : 'rent'),
+      collectionTiming: isRent ? 'advance' : collectionTiming,
       billingMonths,
       initialMonths,
       sortOrder: index,
@@ -99,6 +110,7 @@ export function feeEntitiesToRules(items: FeeItem[]): FeeRule[] {
     enabled: item.enabled ? 1 : 0,
     isRent: item.isRent ? 1 : 0,
     cycleMode: item.cycleMode === 'monthly' ? 'monthly' : 'rent',
+    collectionTiming: 'advance',
     billingMonths: undefined,
     initialMonths: undefined,
     sortOrder: item.sortOrder ?? index,
@@ -113,6 +125,7 @@ export function defaultRentRule(rent: number): FeeRule {
     enabled: 1,
     isRent: 1,
     cycleMode: 'rent',
+    collectionTiming: 'advance',
     billingMonths: undefined,
     initialMonths: undefined,
     sortOrder: 0,
@@ -148,6 +161,7 @@ export function feeRuleBillingMonths(rule: FeeRule, payMonths: number): number {
 }
 
 export function feeRuleInitialMonths(rule: FeeRule, payMonths: number): number {
+  if (rule.collectionTiming === 'arrears') return 0;
   const explicit = Number(rule.initialMonths);
   if (Number.isInteger(explicit) && explicit >= 1 && explicit <= 12) return explicit;
   return feeRuleBillingMonths(rule, payMonths);
@@ -177,6 +191,10 @@ export function feeRuleDueMonths(
   const target = new Date(`${targetPeriod}-01T00:00:00`);
   const offset = (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth();
   if (offset < 0) return 0;
+  if (rule.collectionTiming === 'arrears') {
+    const billingMonths = feeRuleBillingMonths(rule, payMonths);
+    return offset > 0 && offset % billingMonths === 0 ? billingMonths : 0;
+  }
   const initialMonths = feeRuleInitialMonths(rule, payMonths);
   if (offset === 0) return initialMonths;
   if (offset < initialMonths) return 0;
@@ -194,6 +212,7 @@ export function feeRulesToResponse(rules: FeeRule[]) {
       enabled: !!rule.enabled,
       isRent: !!rule.isRent,
       cycleMode: rule.cycleMode === 'monthly' ? 'monthly' : 'rent',
+      collectionTiming: rule.collectionTiming === 'arrears' ? 'arrears' : 'advance',
       billingMonths: rule.billingMonths,
       initialMonths: rule.initialMonths,
     }));

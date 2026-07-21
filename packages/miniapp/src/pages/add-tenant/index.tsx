@@ -292,7 +292,7 @@ export default function AddTenant() {
     }
     setFeeItems(prev => [...prev, {
       name, type, amount: type === 'manual' ? '0' : '', enabled: true,
-      isRent: false, cycleMode: 'monthly', billingMonths: 1, initialMonths: 1,
+      isRent: false, cycleMode: 'monthly', collectionTiming: 'advance', billingMonths: 1, initialMonths: 1,
     }]);
     setFeeEditorIndex(feeItems.length);
     setFeeEditorStage(name ? (type === 'manual' ? 3 : 1) : 0);
@@ -804,7 +804,7 @@ export default function AddTenant() {
                   <View className="elder-fee-summary-row" key={`${fee.name}-${index}`}>
                     <View onClick={() => { setFeeEditorIndex(index); setFeeEditorStage(fee.type === 'manual' ? 3 : (fee.name ? 1 : 0)); }}>
                       <Text className="selected-fee-name">{fee.name || '未命名费用'}</Text>
-                      <Text className="rent-fee-note">{fee.type === 'manual' ? '收租时再填金额' : `${fee.amount || 0} 元/月，入住先收 ${fee.initialMonths || 1} 个月`}</Text>
+                      <Text className="rent-fee-note">{fee.type === 'manual' ? '收租时再填金额' : fee.collectionTiming === 'arrears' ? `${fee.amount || 0} 元/月，入住后再收` : `${fee.amount || 0} 元/月，入住先收 ${fee.initialMonths || 1} 个月`}</Text>
                     </View>
                     <Text className="selected-fee-remove" onClick={() => removeFee(index)}>移除</Text>
                   </View>
@@ -814,7 +814,7 @@ export default function AddTenant() {
             {extraFees.length > 0 && <View className="fee-preview compact">
               <Text className="fee-preview-title">入住费用合计</Text>
               <View className="fee-preview-row"><Text>房租</Text><Text>{previewRentTotal} 元</Text></View>
-              {fixedExtraFees.map((fee, index) => <View className="fee-preview-row" key={`${fee.name}-preview-${index}`}><Text>{fee.name || '其他费用'}</Text><Text>{calculateInitialFeeTotal([fee])} 元</Text></View>)}
+              {fixedExtraFees.map((fee, index) => <View className="fee-preview-row" key={`${fee.name}-preview-${index}`}><Text>{fee.name || '其他费用'}</Text><Text>{fee.collectionTiming === 'arrears' ? '本次不收' : `${calculateInitialFeeTotal([fee])} 元`}</Text></View>)}
               {manualExtraFees.map((fee, index) => <View className="fee-preview-row muted" key={`${fee.name}-manual-${index}`}><Text>{fee.name || '其他费用'}</Text><Text>以后填写</Text></View>)}
               <View className="fee-preview-total"><Text>不含押金</Text><Text>{previewTotal} 元</Text></View>
             </View>}
@@ -835,8 +835,21 @@ export default function AddTenant() {
               <View className="elder-choice-stack">{MONTH_OPTIONS.map(months => <View key={`billing-${months}`} className={`elder-choice-row${activeFeeEditor.billingMonths === months ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { billingMonths: months })}><Text className="elder-choice-title">{months === 1 ? '每月收一次' : `每 ${months} 个月收一次`}</Text></View>)}</View>
             </View>}
             {feeEditorStage === 3 && activeFeeEditor.type === 'fixed' && <View>
-              <Text className="elder-question-title">入住这次先收几个月？</Text>
-              <View className="elder-choice-stack">{MONTH_OPTIONS.map(months => <View key={`initial-${months}`} className={`elder-choice-row${activeFeeEditor.initialMonths === months ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { initialMonths: months })}><Text className="elder-choice-title">先收 {months} 个月</Text><Text className="elder-choice-amount">{Math.round((Number(activeFeeEditor.amount) || 0) * months * 100) / 100} 元</Text></View>)}</View>
+              <Text className="elder-question-title">这项费用什么时候收？</Text>
+              <View className="elder-choice-stack">
+                <View className={`elder-choice-row${activeFeeEditor.collectionTiming === 'arrears' ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { collectionTiming: 'arrears' })}>
+                  <View><Text className="elder-choice-title">入住后再收</Text><Text className="elder-choice-desc">这次不算进首期账单，用完一个周期后再收</Text></View>
+                  {activeFeeEditor.collectionTiming === 'arrears' && <Text className="elder-answer-check">✓</Text>}
+                </View>
+                <View className={`elder-choice-row${activeFeeEditor.collectionTiming !== 'arrears' ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { collectionTiming: 'advance' })}>
+                  <View><Text className="elder-choice-title">入住先收</Text><Text className="elder-choice-desc">这次一起收进首期账单</Text></View>
+                  {activeFeeEditor.collectionTiming !== 'arrears' && <Text className="elder-answer-check">✓</Text>}
+                </View>
+              </View>
+              {activeFeeEditor.collectionTiming !== 'arrears' && <View className="fee-initial-month-picker">
+                <Text className="fee-initial-month-label">先收几个月？</Text>
+                <View className="rent-advance-options">{MONTH_OPTIONS.map(months => <View key={`initial-${months}`} className={`rent-advance-option${activeFeeEditor.initialMonths === months ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { initialMonths: months })}><Text>{months} 个月</Text></View>)}</View>
+              </View>}
             </View>}
             {activeFeeEditor.type === 'manual' && <View className="elder-manual-note">
               <Text className="elder-question-title">水电费以后按实际金额填写</Text>

@@ -148,6 +148,7 @@ export class TenantService {
       for (const fee of feeRules) {
         if (!fee.enabled) continue;
         const months = feeRuleInitialMonths(fee, payMonths);
+        if (months === 0) continue;
         const amt = feeRuleInitialAmount(fee, payMonths);
         items.push({ feeName: fee.name, amount: amt });
         totalAmount += amt;
