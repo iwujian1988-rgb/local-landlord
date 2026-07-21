@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
 import { withInitialPayment, withOptionalTenantDates } from '../../utils/tenant-form';
+import { firstFormError, validateTenantForm } from '../../utils/form-validation';
 import './index.scss';
 
 const rentDayLabels = Array.from({ length: 28 }, (_, i) => `${i + 1}号`);
@@ -210,16 +211,13 @@ export default function AddTenant() {
   const handleSave = useCallback(async () => {
     if (saveInFlightRef.current) return;
     setErrors({});
-    if (!name.trim()) {
-      setErrors({ name: '请输入租客姓名' });
-      return;
-    }
-    if (!phone.trim()) {
-      setErrors({ phone: '请输入租客电话' });
-      return;
-    }
-    if (!urlRoomId) {
-      setErrors({ room: '没有找到对应房间，请返回重新进入' });
+    const validationErrors = validateTenantForm({
+      name, phone, roomId: urlRoomId, moveInDate, contractEndDate, deposit,
+      initialReceived, initialAmount, initialDate, moveInReading,
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      Taro.showToast({ title: firstFormError(validationErrors), icon: 'none' });
       return;
     }
 
@@ -322,6 +320,7 @@ export default function AddTenant() {
           type="text"
           placeholder="如：王先生"
           value={name}
+          maxlength={32}
           onInput={(e) => { setName(e.detail.value); setErrors({}); }}
           placeholderStyle="color: #B5A99A"
         />
@@ -352,6 +351,7 @@ export default function AddTenant() {
             <Text style={{ fontSize: '28px', color: 'var(--text-muted)', lineHeight: 1 }}>📅</Text>
           </View>
         </Picker>
+        {errors.moveInDate && <Text className="form-error-text">{errors.moveInDate}</Text>}
       </View>
 
       <View className="form-group">
@@ -364,6 +364,7 @@ export default function AddTenant() {
             <Text style={{ fontSize: '28px', color: 'var(--text-muted)', lineHeight: 1 }}>📅</Text>
           </View>
         </Picker>
+        {errors.contractEndDate && <Text className="form-error-text">{errors.contractEndDate}</Text>}
       </View>
 
       <View className="form-group">
@@ -417,6 +418,7 @@ export default function AddTenant() {
           />
           <Text className="input-suffix">元</Text>
         </View>
+        {errors.deposit && <Text className="form-error-text">{errors.deposit}</Text>}
         {currentRoomRent > 0 && paymentIdx >= 0 && paymentIdx !== CUSTOM_PAYMENT_IDX && (
           <Text className="form-error-text" style={{ color: 'var(--text-hint)', marginTop: '8px' }}>
             = 月租 {currentRoomRent} × 押 {PAYMENT_PRESETS[paymentIdx].depositMonths} 个月，每 {PAYMENT_PRESETS[paymentIdx].payMonths} 个月收一次
@@ -454,6 +456,7 @@ export default function AddTenant() {
                   <Text className="input-suffix">元</Text>
                 </View>
               </View>
+              {errors.initialAmount && <Text className="form-error-text">{errors.initialAmount}</Text>}
               <View className="form-sub-row">
                 <Text className="form-sub-label">收款方式</Text>
                 <Picker
@@ -477,6 +480,7 @@ export default function AddTenant() {
                   </View>
                 </Picker>
               </View>
+              {errors.initialDate && <Text className="form-error-text">{errors.initialDate}</Text>}
             </View>
           )}
         </View>
@@ -493,6 +497,7 @@ export default function AddTenant() {
           placeholderStyle="color: #B5A99A"
           maxlength={200}
         />
+        {errors.moveInReading && <Text className="form-error-text">{errors.moveInReading}</Text>}
         <Text className="form-error-text" style={{ color: 'var(--text-hint)', marginTop: '8px' }}>
           退租时对照读数算水电费，避免扯皮
         </Text>

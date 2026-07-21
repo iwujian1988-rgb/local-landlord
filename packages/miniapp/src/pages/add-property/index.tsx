@@ -8,6 +8,7 @@ import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
 import { normalizeUploadUrlForStorage, resolveAsset } from '../../config';
 import { getPropertyCoverImage } from '../../utils/property-form';
+import { validatePropertyForm } from '../../utils/form-validation';
 import './index.scss';
 
 export default function AddProperty() {
@@ -91,8 +92,9 @@ export default function AddProperty() {
   const handleSave = useCallback(async () => {
     if (saveInFlightRef.current) return;
     setErrors({});
-    if (!name.trim()) {
-      setErrors({ name: '请输入房源名称' });
+    const validationErrors = validatePropertyForm(name);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
     saveInFlightRef.current = true;
@@ -210,6 +212,7 @@ export default function AddProperty() {
           type="text"
           placeholder="如：幸福里小区 2号楼"
           value={name}
+          maxlength={64}
           onInput={(e) => { setName(e.detail.value); setErrors({}); }}
           placeholderStyle="color: #B5A99A"
         />

@@ -137,6 +137,36 @@ describe('Property / Room / Rent edge cases (e2e)', () => {
       // Throws BadRequestException → 400 in body envelope.
       expect(res.body?.code).not.toBe(0);
     });
+
+    it('TC-ROOM-EDGE-009: 前端退租 PUT 必须正确落库押金退款与扣除原因', async () => {
+      const rId = await createRoom(app, auth, propertyId, { name: '退租结算房', rent: 2000 });
+      const tenantId = await createTenant(app, auth, rId, {
+        name: '退租人',
+        phone: '13933333333',
+        deposit: 2000,
+        moveInDate: `${currentMonthStr()}-01`,
+      });
+      const checkout = await apiCall(app, 'put', `/api/rooms/${rId}`, auth, {
+        status: 0,
+        action: 'checkout',
+        depositStatus: 1,
+        depositRefundAmount: 1800,
+        depositDeductReason: '维修扣除200元',
+        moveOutReading: '电1340 / 水78',
+      });
+      expect(checkout.body?.code).toBe(0);
+
+      const tenant = await apiCall(app, 'get', `/api/tenants/${tenantId}`, auth);
+      expect(tenant.body?.data).toEqual(expect.objectContaining({
+        status: 0,
+        depositStatus: 1,
+        depositRefundAmount: 1800,
+        depositDeductReason: '维修扣除200元',
+        moveOutReading: '电1340 / 水78',
+      }));
+      const room = await apiCall(app, 'get', `/api/rooms/${rId}`, auth);
+      expect(room.body?.data?.status).toBe(0);
+    });
   });
 
   describe('rent 单独收款', () => {

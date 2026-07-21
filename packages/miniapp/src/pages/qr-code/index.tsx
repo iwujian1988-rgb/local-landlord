@@ -7,7 +7,7 @@ import { get, post, put, del } from '../../services/request';
 import { uploadFile } from '../../services/upload';
 import { API_BASE_URL, normalizeUploadUrlForStorage, resolveAsset } from '../../config';
 import { pickImages } from '../../utils/pick-image';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import './index.scss';
 
 interface QRItem {
@@ -30,6 +30,7 @@ export default function QrCode() {
   const [payeeNote, setPayeeNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const saveInFlightRef = useRef(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -84,29 +85,34 @@ export default function QrCode() {
   }, []);
 
   const handleDelete = useCallback(async (type: string, id?: string) => {
-    if (id) {
-      await del(`/payment-qr/${id}`);
+    try {
+      if (id) await del(`/payment-qr/${id}`);
+      setCodes((prev) =>
+        prev.map((c) => (c.type === type ? { ...c, imageUrl: undefined, id: undefined, isDefault: false } : c))
+      );
+      Taro.showToast({ title: '已删除', icon: 'none', duration: 2000 });
+    } catch (err: any) {
+      Taro.showToast({ title: err?.message || '删除失败，请重试', icon: 'none' });
     }
-    setCodes((prev) =>
-      prev.map((c) => (c.type === type ? { ...c, imageUrl: undefined, id: undefined, isDefault: false } : c))
-    );
-    Taro.showToast({ title: '已删除', icon: 'none', duration: 2000 });
   }, []);
 
   const handleSetDefault = useCallback(async (item: QRItem) => {
-    if (item.id) {
-      await put(`/payment-qr/${item.id}/set-default`);
+    try {
+      if (item.id) await put(`/payment-qr/${item.id}/set-default`);
+      setCodes((prev) =>
+        prev.map((c) => ({ ...c, isDefault: c.type === item.type }))
+      );
+      Taro.showToast({ title: '已设为默认', icon: 'none', duration: 2000 });
+    } catch (err: any) {
+      Taro.showToast({ title: err?.message || '设置失败，请重试', icon: 'none' });
     }
-    setCodes((prev) =>
-      prev.map((c) => ({ ...c, isDefault: c.type === item.type }))
-    );
-    Taro.showToast({ title: '已设为默认', icon: 'none', duration: 2000 });
   }, []);
 
   const [saving, setSaving] = useState(false);
 
   const handleSave = useCallback(async () => {
-    if (saving) return;
+    if (saveInFlightRef.current) return;
+    saveInFlightRef.current = true;
     setSaving(true);
     try {
       // 1. Persist landlord-level payee info (defaultPayeeName + paymentNote)
@@ -153,9 +159,10 @@ export default function QrCode() {
         confirmText: '知道了',
       });
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [saving, codes, payeeName, payeeNote]);
+  }, [codes, payeeName, payeeNote]);
 
   const handlePreview = useCallback(() => {
     Taro.navigateTo({ url: '/pages/payment/index' });

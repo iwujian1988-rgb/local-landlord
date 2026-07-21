@@ -95,6 +95,10 @@ export default function Contracts() {
   useDidShow(() => { Taro.setNavigationBarTitle({ title: '合同收据' }); loadData(); });
 
   const handleUpload = useCallback(async (file: UploadFile, note: string) => {
+    if (roomId <= 0) {
+      Taro.showToast({ title: '没有找到对应房间，请返回重新进入', icon: 'none' });
+      return;
+    }
     try {
       const result = await uploadFile(file.tempFilePath);
       const uploadedUrl = result.url;

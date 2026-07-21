@@ -4,7 +4,8 @@ import EmptyState from '../../components/EmptyState';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { get, post } from '../../services/request';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
+import { firstFormError, validateFeeForm } from '../../utils/form-validation';
 import './index.scss';
 
 interface FeeSetting {
@@ -39,6 +40,7 @@ export default function FeeSetup() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
 
   // Room picker state (when no roomId)
   const [rooms, setRooms] = useState<RoomOption[]>([]);
@@ -74,7 +76,7 @@ export default function FeeSetup() {
         const items: FeeSetting[] = (feeRes.data || []).map((f: any) => ({
           name: f.name,
           type: f.type || 'fixed',
-          amount: String(f.amount || ''),
+          amount: String(f.amount ?? ''),
           enabled: f.enabled !== false,
           isRent: f.isRent || false,
           cycleMode: f.cycleMode === 'monthly' ? 'monthly' : 'rent',
@@ -132,7 +134,13 @@ export default function FeeSetup() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (submitting || !effectiveRoomId) return;
+    if (submitInFlightRef.current || !effectiveRoomId) return;
+    const validationErrors = validateFeeForm(fees);
+    if (Object.keys(validationErrors).length > 0) {
+      Taro.showToast({ title: firstFormError(validationErrors), icon: 'none' });
+      return;
+    }
+    submitInFlightRef.current = true;
     setSubmitting(true);
     try {
       // Coerce amount from input-string to number before POSTing — the input
@@ -141,6 +149,7 @@ export default function FeeSetup() {
       // silently rounds/truncates in some edge cases).
       const payload = fees.map(f => ({
         ...f,
+        name: f.name.trim(),
         amount: f.type === 'manual' ? 0 : (Number(f.amount) || 0),
       }));
       await post(`/rooms/${effectiveRoomId}/fee-items`, { fees: payload });
@@ -157,9 +166,10 @@ export default function FeeSetup() {
       console.error('[FeeSetup] 保存失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });
     } finally {
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
-  }, [fees, effectiveRoomId, submitting]);
+  }, [fees, effectiveRoomId]);
 
   const addCustomFee = useCallback(() => {
     setFees((prev) => [
@@ -224,7 +234,7 @@ export default function FeeSetup() {
               fees.map((fee, idx) => (
                 <View key={idx} className="fee-item">
                   <View className="fee-info">
-                    {fee.name ? (
+                    {fee.isRent ? (
                       <Text className="fee-name">{fee.name}</Text>
                     ) : (
                       <Input
@@ -232,6 +242,7 @@ export default function FeeSetup() {
                         type="text"
                         placeholder="输入项目名称"
                         value={fee.name}
+                        maxlength={32}
                         onInput={(e) => updateName(idx, e.detail.value)}
                       />
                     )}

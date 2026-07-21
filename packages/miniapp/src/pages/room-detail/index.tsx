@@ -10,6 +10,8 @@ import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useState, useCallback } from 'react';
 import { get, put, del } from '../../services/request';
+import { buildCheckoutPayload } from '../../utils/checkout-payload';
+import { isValidDateOnly } from '../../utils/form-validation';
 import './index.scss';
 
 interface RoomData {
@@ -159,11 +161,7 @@ export default function RoomDetail() {
   }) => {
     setData(prev => ({ ...prev, depositVisible: false }));
     try {
-      await put(`/rooms/${roomId}`, {
-        status: 0,
-        action: 'checkout',
-        ...(depositData || { depositStatus: 0 }),
-      });
+      await put(`/rooms/${roomId}`, buildCheckoutPayload(depositData));
       setData(prev => ({ ...prev, tenant: null, roomStatus: '空着', moveOutPreview: null }));
       Taro.showModal({
         title: '退租成功',
@@ -212,6 +210,15 @@ export default function RoomDetail() {
       Taro.showToast({ title: '租客信息缺失', icon: 'none' });
       return;
     }
+    if (!isValidDateOnly(newEndDate)) {
+      Taro.showToast({ title: '请选择有效的合同到期日期', icon: 'none' });
+      return;
+    }
+    const currentEndDate = data.tenant?.contractEndDate || '';
+    if (currentEndDate && newEndDate <= currentEndDate) {
+      Taro.showToast({ title: '新到期日必须晚于原到期日', icon: 'none' });
+      return;
+    }
     try {
       await put(`/tenants/${data.tenantId}`, { contractEndDate: newEndDate });
       setData(prev => ({
@@ -224,7 +231,7 @@ export default function RoomDetail() {
       console.error('[RoomDetail] 续签失败:', err);
       Taro.showToast({ title: '续签失败', icon: 'none' });
     }
-  }, [data.tenantId]);
+  }, [data.tenantId, data.tenant?.contractEndDate]);
 
   const getStatusLabel = () => {
     if (data.room?.status === 1) return '已租';

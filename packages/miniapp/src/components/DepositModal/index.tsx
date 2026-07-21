@@ -146,6 +146,7 @@ export default function DepositModal({
                   value={deductReason}
                   onInput={(e) => setDeductReason(e.detail.value)}
                   placeholder="如：维修 100 元"
+                  maxlength={256}
                 />
               </View>
             </View>
@@ -165,6 +166,7 @@ export default function DepositModal({
                 value={moveOutReading}
                 onInput={(e) => setMoveOutReading(e.detail.value)}
                 placeholder="如：电 1340 / 水 78"
+                maxlength={256}
               />
             </View>
           </View>

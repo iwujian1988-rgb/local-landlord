@@ -5,6 +5,7 @@ import { get, post, put } from '../../services/request';
 import { uploadFile } from '../../services/upload';
 import { normalizeUploadUrlForStorage, resolveAsset } from '../../config';
 import { pickImages } from '../../utils/pick-image';
+import { firstFormError, validateRoomForm } from '../../utils/form-validation';
 import './index.scss';
 
 const facilityOptions = ['有空调', '有独卫', '能做饭', '可养宠'];
@@ -109,7 +110,7 @@ export default function AddRoomInfo() {
   }, []);
 
   useDidHide(() => {
-    if (roomId <= 0) {
+    if (roomId <= 0 && !saveCompletedRef.current) {
       const formData = {
         name, rent, area, floor, orientation,
         selectedFacilities, note, status, availableType, availableDate,
@@ -129,12 +130,12 @@ export default function AddRoomInfo() {
   const handleSave = useCallback(async () => {
     if (saveInFlightRef.current) return;
     setErrors({});
-    if (!name.trim()) {
-      setErrors({ name: '请输入房间名称' });
-      return;
-    }
-    if (!rent.trim() || Number(rent) <= 0) {
-      setErrors({ rent: '请输入有效租金' });
+    const validationErrors = validateRoomForm({
+      name, rent, propertyId, isEdit, availableType, availableDate,
+    });
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      Taro.showToast({ title: firstFormError(validationErrors), icon: 'none' });
       return;
     }
     saveInFlightRef.current = true;
@@ -250,6 +251,7 @@ export default function AddRoomInfo() {
           type="text"
           placeholder="如：101 / 主卧 / 单间A"
           value={name}
+          maxlength={32}
           onInput={(e) => { setName(e.detail.value); setErrors({}); }}
           placeholderStyle="color: #B5A99A"
         />
@@ -308,11 +310,12 @@ export default function AddRoomInfo() {
         </View>
         {availableType === 'date' && (
           <Picker mode="date" value={availableDate} onChange={e => setAvailableDate(e.detail.value)}>
-            <View className="form-input" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', color: availableDate ? 'var(--text-primary)' : 'var(--text-hint)' }}>
+            <View className={`form-input${errors.availableDate ? ' error' : ''}`} style={{ marginTop: '16px', display: 'flex', alignItems: 'center', color: availableDate ? 'var(--text-primary)' : 'var(--text-hint)' }}>
               {availableDate || '请选择可入住日期'}
             </View>
           </Picker>
         )}
+        {errors.availableDate && <Text className="form-error-text">{errors.availableDate}</Text>}
       </View>
       )}
 
