@@ -88,6 +88,32 @@ describe('logout', () => {
     expect(Taro.getStorageSync('openid')).toBe('');
     expect(Taro.getStorageSync('landlord_info')).toBe('');
   });
+
+  it('TC-AUTH-GUEST-001: 进入访客模式清空身份和用户草稿缓存', () => {
+    Taro.setStorageSync('auth_token', 'old-token');
+    Taro.setStorageSync('landlord_info', { id: 9 });
+    Taro.setStorageSync('draft_property', { name: '旧账号房源' });
+    Taro.setStorageSync('tempRoomPhotos', ['old-photo']);
+    useAuthStore.setState({ token: 'old-token', isLoggedIn: true });
+
+    useAuthStore.getState().enterGuestMode();
+
+    expect(useAuthStore.getState().isLoggedIn).toBe(false);
+    expect(useAuthStore.getState().token).toBe('');
+    expect(Taro.getStorageSync('guest_mode')).toBe(1);
+    expect(Taro.getStorageSync('auth_token')).toBe('');
+    expect(Taro.getStorageSync('draft_property')).toBe('');
+    expect(Taro.getStorageSync('tempRoomPhotos')).toBe('');
+  });
+
+  it('TC-AUTH-GUEST-002: 访客模式禁止静默恢复旧 token', async () => {
+    Taro.setStorageSync('guest_mode', 1);
+    Taro.setStorageSync('auth_token', 'stale-token');
+    const token = await useAuthStore.getState().loginSilently();
+    expect(token).toBe('');
+    expect(useAuthStore.getState().isLoggedIn).toBe(false);
+    expect(Taro.getStorageSync('auth_token')).toBe('');
+  });
 });
 
 describe('login (USE_CLOUD=false) — wx.login → /auth/wechat/login', () => {
@@ -111,6 +137,7 @@ describe('login (USE_CLOUD=false) — wx.login → /auth/wechat/login', () => {
 
     expect(Taro.getStorageSync('auth_token')).toBe('srv-token');
     expect(Taro.getStorageSync('landlord_info')).toEqual({ id: 7, name: '王', phone: '138' });
+    expect(Taro.getStorageSync('guest_mode')).toBe('');
   });
 
   it('TC-AUTH-LOGIN-002: 嵌套 .data.data.token 也能 unwrap', async () => {

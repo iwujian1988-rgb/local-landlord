@@ -9,7 +9,8 @@
  * useAuthStore state on every call — covered instead by useAuthStore tests.
  */
 import Taro from '@tarojs/taro';
-import { directRequest, directPost } from '../src/services/request';
+import { directRequest, directPost, get } from '../src/services/request';
+import { useAuthStore } from '../src/store/useAuthStore';
 
 describe('directRequest', () => {
   beforeEach(() => {
@@ -62,6 +63,29 @@ describe('directPost', () => {
     expect(call.method).toBe('POST');
     expect(call.data).toEqual({ k: 'v' });
     expect(call.url).toBe('https://example.test/api/foo');
+  });
+});
+
+describe('authenticated request in guest mode', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Taro.clearStorageSync();
+    useAuthStore.setState({
+      token: '', user: null, isLoggedIn: false, loginLoading: false, loginError: '',
+    });
+  });
+
+  it('TC-REQ-GUEST-001: 401 不得静默 wx.login 回旧账号', async () => {
+    Taro.setStorageSync('guest_mode', 1);
+    (Taro.request as jest.Mock).mockResolvedValueOnce({
+      statusCode: 200,
+      data: { code: 401, message: 'Unauthorized' },
+    });
+
+    await expect(get('/rooms')).rejects.toThrow(/访客模式不能查看账号数据/);
+    expect(Taro.login).not.toHaveBeenCalled();
+    expect(Taro.getStorageSync('guest_mode')).toBe(1);
+    expect(useAuthStore.getState().isLoggedIn).toBe(false);
   });
 });
 

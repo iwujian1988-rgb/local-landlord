@@ -1,12 +1,13 @@
 import { View, Text, Image, Input, Textarea } from '@tarojs/components';
 import Taro, { useDidHide } from '@tarojs/taro';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import UploadModal, { UploadFile } from '../../components/UploadModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
 import { normalizeUploadUrlForStorage, resolveAsset } from '../../config';
+import { getPropertyCoverImage } from '../../utils/property-form';
 import './index.scss';
 
 export default function AddProperty() {
@@ -22,6 +23,8 @@ export default function AddProperty() {
   const [uploadError, setUploadError] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const saveCompletedRef = useRef(false);
 
   useEffect(() => {
     const params = Taro.getCurrentInstance().router?.params;
@@ -47,17 +50,15 @@ export default function AddProperty() {
   const loadProperty = async (pid: string) => {
     setLoading(true);
     try {
-      const res = await get<any>('/properties');
+      const res = await get<any>(`/properties/${pid}`);
       if (res.code === 0 && res.data) {
-        const properties = Array.isArray(res.data) ? res.data : (res.data.list || []);
-        const cached = properties.find((p: any) => String(p.id || p._id) === pid);
+        const cached = res.data;
         if (cached) {
           setName(cached.name || '');
           setAddress(cached.address || '');
           setNote(cached.note || '');
-          if (cached.coverImageURL) {
-            setCoverImageURL(cached.coverImageURL);
-          }
+          const savedCover = getPropertyCoverImage(cached);
+          if (savedCover) setCoverImageURL(savedCover);
           if (cached.coverImageFileID) {
             setCoverImageFileID(cached.coverImageFileID);
           }
@@ -79,7 +80,7 @@ export default function AddProperty() {
   }, []);
 
   useDidHide(() => {
-    if (!propertyId) {
+    if (!propertyId && !saveCompletedRef.current) {
       const formData = { name, address, note, coverImageURL, coverImageFileID };
       if (name || address || note) {
         Taro.setStorageSync('draft_property', formData);
@@ -88,12 +89,13 @@ export default function AddProperty() {
   });
 
   const handleSave = useCallback(async () => {
-    if (saving) return;
+    if (saveInFlightRef.current) return;
     setErrors({});
     if (!name.trim()) {
       setErrors({ name: '请输入房源名称' });
       return;
     }
+    saveInFlightRef.current = true;
     setSaving(true);
     
     const payload: any = {
@@ -108,6 +110,7 @@ export default function AddProperty() {
     try {
       if (propertyId) {
         await put(`/properties/${propertyId}`, payload);
+        saveCompletedRef.current = true;
         Taro.removeStorageSync('draft_property');
         Taro.showToast({ title: '房源已更新', icon: 'none', duration: 2000 });
         setTimeout(() => {
@@ -130,6 +133,7 @@ export default function AddProperty() {
         const createRes = await post<any>('/properties', payload);
         if (createRes.code === 0) {
           const newId = createRes.data?.id || createRes.data?._id || Date.now();
+          saveCompletedRef.current = true;
           Taro.removeStorageSync('draft_property');
           Taro.showToast({ title: '房源已添加', icon: 'none', duration: 2000 });
           setTimeout(() => {
@@ -150,15 +154,17 @@ export default function AddProperty() {
           }, 800);
         } else {
           Taro.showToast({ title: '添加失败', icon: 'none' });
+          saveInFlightRef.current = false;
           setSaving(false);
         }
       }
     } catch (err) {
       console.error('[AddProperty] 保存房源失败:', err);
       Taro.showToast({ title: propertyId ? '更新失败' : '添加失败', icon: 'none' });
+      saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [saving, name, address, note, propertyId, coverImageURL, coverImageFileID]);
+  }, [name, address, note, propertyId, coverImageURL, coverImageFileID]);
 
   return (
     <View className="page-add-property">

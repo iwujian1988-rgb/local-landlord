@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import Taro from '@tarojs/taro';
 import { USE_CLOUD } from '../config';
 import { directPost, post } from '../services/request';
+import { clearUserSessionCaches } from '../utils/storage';
 
 interface AuthState {
   token: string;
@@ -13,6 +14,14 @@ interface AuthState {
   loginSilently: () => Promise<string>;
   login: () => Promise<void>;
   logout: () => void;
+  enterGuestMode: () => void;
+}
+
+function clearStoredIdentity(): void {
+  Taro.removeStorageSync('auth_token');
+  Taro.removeStorageSync('openid');
+  Taro.removeStorageSync('landlord_info');
+  clearUserSessionCaches();
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -24,6 +33,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loginError: '',
 
   loginSilently: async () => {
+    if (Taro.getStorageSync('guest_mode')) {
+      clearStoredIdentity();
+      set({ token: '', openid: '', user: null, isLoggedIn: false });
+      return '';
+    }
     const { token, isLoggedIn } = get();
     if (isLoggedIn && token) return token;
 
@@ -67,6 +81,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!data.token) throw new Error('服务端未返回 token');
 
       Taro.setStorageSync('auth_token', data.token);
+      Taro.removeStorageSync('guest_mode');
       if (data.user) {
         Taro.setStorageSync('landlord_info', data.user);
       }
@@ -88,14 +103,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    Taro.removeStorageSync('auth_token');
-    Taro.removeStorageSync('openid');
-    Taro.removeStorageSync('landlord_info');
+    clearStoredIdentity();
+    Taro.removeStorageSync('guest_mode');
     set({
       token: '',
       openid: '',
       user: null,
       isLoggedIn: false,
+    });
+  },
+
+  enterGuestMode: () => {
+    clearStoredIdentity();
+    Taro.setStorageSync('guest_mode', 1);
+    set({
+      token: '',
+      openid: '',
+      user: null,
+      isLoggedIn: false,
+      loginLoading: false,
+      loginError: '',
     });
   },
 }));

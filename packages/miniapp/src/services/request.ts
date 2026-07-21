@@ -67,16 +67,23 @@ const request = async <T = unknown>(
     }
 
     if (data.code === 401) {
-      if (allowRelogin && !useAuthStore.getState().loginLoading) {
+      const guestMode = !!Taro.getStorageSync('guest_mode');
+      // Never silently exchange wx.login for a landlord token while the user
+      // explicitly chose guest mode. That would expose the previous WeChat
+      // account's cloud data without a visible login action.
+      if (!guestMode && allowRelogin && !useAuthStore.getState().loginLoading) {
         const ok = await tryReLogin();
         if (ok) {
           return request<T>(options, false);
         }
       }
-      Taro.removeStorageSync('auth_token');
-      useAuthStore.getState().logout();
-      Taro.reLaunch({ url: '/pages/home/index' });
-      throw new Error('登录已过期，请重新登录');
+      if (!guestMode) {
+        Taro.removeStorageSync('auth_token');
+        useAuthStore.getState().logout();
+        Taro.reLaunch({ url: '/pages/home/index' });
+        throw new Error('登录已过期，请重新登录');
+      }
+      throw new Error('访客模式不能查看账号数据，请先登录');
     }
 
     return data;

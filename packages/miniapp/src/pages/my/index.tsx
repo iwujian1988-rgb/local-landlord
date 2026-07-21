@@ -149,7 +149,7 @@ export default function My() {
       success: (res) => {
         if (res.confirm) {
           useAuthStore.getState().logout();
-          Taro.reLaunch({ url: '/pages/home/index' });
+          Taro.reLaunch({ url: '/pages/onboarding/index' });
         }
       },
     });

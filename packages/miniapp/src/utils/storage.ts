@@ -28,3 +28,19 @@ export function getAppData(): AppData {
 export function setAppData(data: AppData): void {
   Taro.setStorageSync('appData', data);
 }
+
+/**
+ * Remove data that belongs to the previous authenticated user's working
+ * session. These keys must never leak into guest mode or another account.
+ * `has_onboarded` is intentionally preserved because it is device UX state,
+ * not landlord business data.
+ */
+export function clearUserSessionCaches(): void {
+  [
+    'appData',
+    'draft_property',
+    'draft_room_info',
+    'draft_tenant',
+    'tempRoomPhotos',
+  ].forEach((key) => Taro.removeStorageSync(key));
+}

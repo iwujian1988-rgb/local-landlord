@@ -104,6 +104,45 @@ describe('Tenant module (e2e)', () => {
       const bill = await getCurrentBill(rId);
       expect(bill.billStatus).toBe(1); // paid
       expect(Number(bill.paidAmount)).toBe(6000);
+
+      const recordsRes = await apiCall(app, 'get', `/api/rooms/${rId}/records`, auth);
+      const records = expectOk(recordsRes);
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'bill_paid',
+          title: '入住首期房租已收',
+          amount: 6000,
+        }),
+      ]));
+    });
+
+    it('TC-TENANT-003B: 入住只收部分首期款 → 账单为部分付款且记录实际金额', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'room-003b' });
+      await createTenant(app, auth, rId, {
+        name: '部分首期',
+        phone: '13800003334',
+        moveInDate: `${currentMonthStr()}-01`,
+        rentDay: 1,
+        payMonths: 1,
+        deposit: 2000,
+        initialPaymentMethod: 'wechat',
+        initialPaymentDate: `${currentMonthStr()}-01`,
+        initialPaymentAmount: 800,
+      });
+
+      const bill = await getCurrentBill(rId);
+      expect(bill.billStatus).toBe(3);
+      expect(Number(bill.paidAmount)).toBe(800);
+
+      const recordsRes = await apiCall(app, 'get', `/api/rooms/${rId}/records`, auth);
+      const records = expectOk(recordsRes);
+      expect(records).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'bill_paid',
+          title: '入住首期房租部分付款',
+          amount: 800,
+        }),
+      ]));
     });
 
     /**

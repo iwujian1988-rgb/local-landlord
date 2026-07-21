@@ -1,6 +1,6 @@
 import { View, Text, Input, Textarea, Picker, Image } from '@tarojs/components';
 import Taro, { useDidHide } from '@tarojs/taro';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import { uploadFile } from '../../services/upload';
 import { normalizeUploadUrlForStorage, resolveAsset } from '../../config';
@@ -32,6 +32,8 @@ export default function AddRoomInfo() {
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const saveInFlightRef = useRef(false);
+  const saveCompletedRef = useRef(false);
 
   useEffect(() => {
     if (routePropertyId) {
@@ -88,7 +90,7 @@ export default function AddRoomInfo() {
 
   // Check draft
   useEffect(() => {
-    if (roomId <= 0) {
+    if (roomId <= 0 && !saveCompletedRef.current) {
       const draft: any = Taro.getStorageSync('draft_room_info');
       if (draft) {
         setName(draft.name || '');
@@ -125,7 +127,7 @@ export default function AddRoomInfo() {
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (saving) return;
+    if (saveInFlightRef.current) return;
     setErrors({});
     if (!name.trim()) {
       setErrors({ name: '请输入房间名称' });
@@ -135,6 +137,7 @@ export default function AddRoomInfo() {
       setErrors({ rent: '请输入有效租金' });
       return;
     }
+    saveInFlightRef.current = true;
     setSaving(true);
 
     const roomData: any = {
@@ -162,6 +165,7 @@ export default function AddRoomInfo() {
         savedRoomId = createRes.data?.id || createRes.data?._id || 0;
       }
 
+      saveCompletedRef.current = true;
       Taro.removeStorageSync('draft_room_info');
       Taro.removeStorageSync('tempRoomPhotos');
       setSaving(false);
@@ -189,9 +193,10 @@ export default function AddRoomInfo() {
     } catch (err) {
       console.error('[AddRoomInfo] 保存房间失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });
+      saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [saving, isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, area, floor, orientation, selectedFacilities, note, images]);
+  }, [isEdit, roomId, name, rent, propertyId, status, availableType, availableDate, area, floor, orientation, selectedFacilities, note, images]);
 
   const handleAddImage = useCallback(async () => {
     if (uploading) return;

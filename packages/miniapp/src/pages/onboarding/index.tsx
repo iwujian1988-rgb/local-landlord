@@ -51,8 +51,10 @@ export default function Onboarding() {
   };
 
   const handleBrowse = () => {
+    // Guest mode must be an explicit anonymous boundary. In particular, do
+    // not leave a previous JWT or user-scoped drafts/images on this device.
+    useAuthStore.getState().enterGuestMode();
     Taro.setStorageSync('has_onboarded', 1);
-    Taro.setStorageSync('guest_mode', 1);
     Taro.reLaunch({ url: '/pages/home/index' });
   };
 

@@ -8,6 +8,7 @@ import { Property } from '../property/property.entity';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { RentRecord } from '../rent/rent-record.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { MoveOutDto } from './dto/move-out.dto';
@@ -29,6 +30,8 @@ export class TenantService {
     private readonly billItemRepository: Repository<BillItem>,
     @InjectRepository(FeeItem)
     private readonly feeItemRepository: Repository<FeeItem>,
+    @InjectRepository(RentRecord)
+    private readonly rentRecordRepository: Repository<RentRecord>,
   ) {}
 
   /** Verify that a room belongs to a property owned by the given landlord */
@@ -154,25 +157,28 @@ export class TenantService {
       totalAmount = rent * payMonths;
     }
 
-    // Paid if either method OR amount > 0 is recorded. Frontend sends both
-    // together, but defending against other API clients (admin tools, scripts)
-    // that might only set one. Previously: a tenant with amount=8000 but no
-    // method got a status=0 bill and showed as 已逾期 the next day.
-    const isPaid = !!(
-      tenant.initialPaymentMethod ||
-      (tenant.initialPaymentAmount != null && tenant.initialPaymentAmount > 0)
-    );
+    // Frontend normally sends method + actual amount together. Keep method-only
+    // clients backward compatible, while correctly representing a smaller
+    // recorded amount as partial instead of falsely marking the full bill paid.
+    const explicitAmount = Number(tenant.initialPaymentAmount) || 0;
+    const recordedAmount = explicitAmount > 0
+      ? Math.min(explicitAmount, totalAmount)
+      : (tenant.initialPaymentMethod ? totalAmount : 0);
+    const paymentStatus = recordedAmount >= totalAmount && totalAmount > 0
+      ? 1
+      : (recordedAmount > 0 ? 3 : 0);
+    const hasPayment = paymentStatus === 1 || paymentStatus === 3;
     const billData = {
       roomId: room.id,
       tenantId: tenant.id,
       period,
       periodEnd,
       totalAmount,
-      paidAmount: isPaid ? totalAmount : 0,
-      status: isPaid ? 1 : 0,
+      paidAmount: recordedAmount,
+      status: paymentStatus,
       photos: [] as string[],
-      sentAt: isPaid ? new Date() : (undefined as any),
-      paidAt: isPaid
+      sentAt: hasPayment ? new Date() : (undefined as any),
+      paidAt: hasPayment
         ? (tenant.initialPaymentDate ? new Date(tenant.initialPaymentDate) : new Date())
         : (undefined as any),
     };
@@ -187,6 +193,24 @@ export class TenantService {
       }),
     );
     await this.billItemRepository.save(billItems);
+
+    if (hasPayment) {
+      const methodLabels: Record<string, string> = {
+        cash: '现金', wechat: '微信', alipay: '支付宝', bank: '银行转账',
+      };
+      const methodLabel = tenant.initialPaymentMethod
+        ? (methodLabels[tenant.initialPaymentMethod] || tenant.initialPaymentMethod)
+        : '未填写方式';
+      const rentRecord = this.rentRecordRepository.create({
+        roomId: room.id,
+        billId: savedBill.id,
+        type: 1,
+        title: paymentStatus === 1 ? '入住首期房租已收' : '入住首期房租部分付款',
+        description: `${methodLabel} · ${tenant.initialPaymentDate || '入住时'}实收`,
+        amount: recordedAmount,
+      });
+      await this.rentRecordRepository.save(rentRecord);
+    }
 
     return savedBill;
   }

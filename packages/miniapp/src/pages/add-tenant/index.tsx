@@ -3,6 +3,7 @@ import Taro, { useDidHide } from '@tarojs/taro';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
+import { withInitialPayment } from '../../utils/tenant-form';
 import './index.scss';
 
 const rentDayLabels = Array.from({ length: 28 }, (_, i) => `${i + 1}号`);
@@ -79,6 +80,8 @@ export default function AddTenant() {
   const [paymentIdx, setPaymentIdx] = useState<number>(-1);
   const [loadedPayMonths, setLoadedPayMonths] = useState<number>(1);
   const inferredRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const saveCompletedRef = useRef(false);
 
   // P0-A: 入住实收
   const [initialReceived, setInitialReceived] = useState<boolean>(false);
@@ -158,16 +161,22 @@ export default function AddTenant() {
         if (draft.deposit) setDeposit(draft.deposit);
         if (draft.paymentIdx !== undefined) setPaymentIdx(draft.paymentIdx);
         if (draft.note) setNote(draft.note);
+        if (draft.initialReceived) setInitialReceived(true);
+        if (draft.initialAmount) setInitialAmount(draft.initialAmount);
+        if (draft.initialMethodIdx !== undefined) setInitialMethodIdx(draft.initialMethodIdx);
+        if (draft.initialDate) setInitialDate(draft.initialDate);
+        if (draft.moveInReading) setMoveInReading(draft.moveInReading);
         Taro.showToast({ title: '已恢复未完成的草稿', icon: 'none', duration: 2000 });
       }
     }
   }, []);
 
   useDidHide(() => {
-    if (tenantId <= 0) {
+    if (tenantId <= 0 && !saveCompletedRef.current) {
       const formData = {
         name, phone, moveInDate, contractEndDate,
         rentDay, deposit, note, paymentIdx,
+        initialReceived, initialAmount, initialMethodIdx, initialDate, moveInReading,
       };
       if (name || phone) {
         Taro.setStorageSync('draft_tenant', formData);
@@ -199,7 +208,7 @@ export default function AddTenant() {
   }, [initialAmount, currentRoomRent, paymentIdx, loadedPayMonths]);
 
   const handleSave = useCallback(async () => {
-    if (saving) return;
+    if (saveInFlightRef.current) return;
     setErrors({});
     if (!name.trim()) {
       setErrors({ name: '请输入租客姓名' });
@@ -214,6 +223,7 @@ export default function AddTenant() {
       return;
     }
 
+    saveInFlightRef.current = true;
     setSaving(true);
 
     // Resolve payMonths: preset → preset.payMonths; custom → keep loaded value (default 1)
@@ -221,7 +231,7 @@ export default function AddTenant() {
       ? PAYMENT_PRESETS[paymentIdx].payMonths
       : loadedPayMonths;
 
-    const tenantData: any = {
+    let tenantData: any = {
       name: name.trim(),
       phone: phone.trim(),
       moveInDate: moveInDate.trim(),
@@ -234,11 +244,13 @@ export default function AddTenant() {
     };
 
     // P0-A: 入住实收（仅新建租客时附带；编辑模式不重新触发账单生成）
-    if (!isEdit && initialReceived && initialAmount) {
-      tenantData.initialPaymentMethod = PAYMENT_METHOD_VALUES[initialMethodIdx];
-      tenantData.initialPaymentDate = initialDate || todayISO();
-      tenantData.initialPaymentAmount = Number(initialAmount) || 0;
-    }
+    tenantData = withInitialPayment(tenantData, {
+      isEdit,
+      initialReceived,
+      initialAmount,
+      initialMethod: PAYMENT_METHOD_VALUES[initialMethodIdx] || PAYMENT_METHOD_VALUES[0],
+      initialDate: initialDate || todayISO(),
+    });
 
     // P0-C: 入住水电读数
     if (moveInReading.trim()) {
@@ -257,6 +269,7 @@ export default function AddTenant() {
       } else {
         await post(`/rooms/${urlRoomId}/tenant`, tenantData);
       }
+      saveCompletedRef.current = true;
       Taro.removeStorageSync('draft_tenant');
       setSaving(false);
 
@@ -281,9 +294,12 @@ export default function AddTenant() {
     } catch (err) {
       console.error('[AddTenant] 保存租客失败:', err);
       Taro.showToast({ title: '保存失败', icon: 'none' });
+      saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [saving, isEdit, tenantId, name, phone, urlRoomId, rentDay, moveInDate, contractEndDate, deposit, note]);
+  }, [isEdit, tenantId, name, phone, urlRoomId, rentDay, moveInDate, contractEndDate,
+    deposit, note, paymentIdx, loadedPayMonths, initialReceived, initialAmount,
+    initialMethodIdx, initialDate, moveInReading]);
 
   return (
     <View className="page-add-tenant">

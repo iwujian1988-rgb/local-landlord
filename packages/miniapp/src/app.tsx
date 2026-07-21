@@ -16,8 +16,11 @@ function App({ children }: { children: ReactNode }) {
       }
     }
 
-    const savedToken = Taro.getStorageSync('auth_token');
-    if (savedToken) {
+    const guestMode = !!Taro.getStorageSync('guest_mode');
+    const savedToken = guestMode ? '' : Taro.getStorageSync('auth_token');
+    if (guestMode) {
+      useAuthStore.getState().enterGuestMode();
+    } else if (savedToken) {
       useAuthStore.setState({ token: savedToken, isLoggedIn: true });
     }
 
