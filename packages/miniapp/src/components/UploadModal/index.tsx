@@ -1,6 +1,6 @@
 import { View, Text, Input } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { uploadFile } from '../../services/upload';
 import { pickImages } from '../../utils/pick-image';
 import './index.scss';
@@ -11,17 +11,38 @@ export interface UploadFile {
   serverUrl?: string;
 }
 
+export interface DocumentTypeOption {
+  value: string;
+  label: string;
+}
+
+const EMPTY_DOCUMENT_TYPE_OPTIONS: DocumentTypeOption[] = [];
+
 interface UploadModalProps {
   visible: boolean;
   onClose: () => void;
-  onUpload: (file: UploadFile, note: string) => void;
+  onUpload: (file: UploadFile, note: string, documentType?: string) => void;
   entityType?: string;
+  documentTypeOptions?: DocumentTypeOption[];
+  defaultDocumentType?: string;
 }
 
-export default function UploadModal({ visible, onClose, onUpload }: UploadModalProps) {
+export default function UploadModal({
+  visible,
+  onClose,
+  onUpload,
+  documentTypeOptions = EMPTY_DOCUMENT_TYPE_OPTIONS,
+  defaultDocumentType,
+}: UploadModalProps) {
   const [selectedFile, setSelectedFile] = useState<UploadFile | null>(null);
   const [note, setNote] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [documentType, setDocumentType] = useState('');
+
+  useEffect(() => {
+    if (!visible) return;
+    setDocumentType(defaultDocumentType || documentTypeOptions[0]?.value || '');
+  }, [visible, defaultDocumentType, documentTypeOptions]);
 
   if (!visible) return null;
 
@@ -47,7 +68,7 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
       console.log('[UploadModal] start upload, tempFilePath:', selectedFile.tempFilePath, 'size:', selectedFile.size);
       const result = await uploadFile(selectedFile.tempFilePath);
       console.log('[UploadModal] upload success:', result);
-      onUpload({ ...selectedFile, serverUrl: result.url }, note);
+      onUpload({ ...selectedFile, serverUrl: result.url }, note, documentType || undefined);
       reset();
     } catch (err: any) {
       console.error('[UploadModal] upload failed:', err);
@@ -88,6 +109,23 @@ export default function UploadModal({ visible, onClose, onUpload }: UploadModalP
         </View>
 
         <Text className="upload-title">上传图片</Text>
+
+        {documentTypeOptions.length > 0 && (
+          <View className="upload-type-group">
+            <Text className="upload-type-label">资料类型</Text>
+            <View className="upload-type-options">
+              {documentTypeOptions.map((option) => (
+                <View
+                  key={option.value}
+                  className={`upload-type-option${documentType === option.value ? ' active' : ''}`}
+                  onClick={() => setDocumentType(option.value)}
+                >
+                  <Text className="upload-type-option-text">{option.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         <View className="upload-actions-row">
           <View className="upload-action" onClick={() => handleChooseImage(['camera'])}>

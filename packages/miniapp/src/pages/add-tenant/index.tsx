@@ -409,7 +409,6 @@ export default function AddTenant() {
       payMonths: resolvedPayMonths,
       deposit: deposit ? Number(deposit) : undefined,
       note: note.trim() || undefined,
-      status: 1,
       feeItems: feeItems.map(fee => ({
         ...fee,
         name: fee.name.trim(),

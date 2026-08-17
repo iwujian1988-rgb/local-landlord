@@ -149,7 +149,7 @@ export class ShareService {
         .map(q => ({
           type: TYPE_MAP[q.type] || 'wechat',
           imageUrl: q.imageUrl,
-          payeeName: q.payeeName || landlord.name || '',
+          payeeName: landlord.defaultPayeeName || q.payeeName || landlord.name || '',
         })),
       payeeName: landlord.defaultPayeeName || landlord.name || '',
       landlordName: landlord.name || '',
@@ -205,7 +205,7 @@ export class ShareService {
         .map(q => ({
           type: TYPE_MAP[q.type] || 'wechat',
           imageUrl: q.imageUrl,
-          payeeName: q.payeeName || landlord.name || '',
+          payeeName: landlord.defaultPayeeName || q.payeeName || landlord.name || '',
         })),
       payeeName: landlord.defaultPayeeName || landlord.name || '',
       landlordName: landlord.name || '',

@@ -46,6 +46,11 @@ export class UpdateTenantDto {
   note?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  moveInReading?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => TenantFeeRuleDto)

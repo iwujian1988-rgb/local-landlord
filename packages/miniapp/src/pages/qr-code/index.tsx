@@ -31,6 +31,7 @@ export default function QrCode() {
   const [payeeNote, setPayeeNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const saveInFlightRef = useRef(false);
 
   const loadData = useCallback(async () => {
@@ -73,15 +74,24 @@ export default function QrCode() {
     const picked = await pickImages({ count: 1, sourceType: ['album', 'camera'] });
     if (picked.length === 0) return;
     const filePath = picked[0].path;
+    setUploadingCount(count => count + 1);
     uploadFile(filePath)
       .then((result) => {
-        setCodes((prev) =>
-          prev.map((c) => (c.type === type ? { ...c, imageUrl: result.url } : c))
-        );
+        setCodes((prev) => {
+          const hasDefault = prev.some(code => code.imageUrl && code.isDefault);
+          return prev.map((code) => (
+            code.type === type
+              ? { ...code, imageUrl: result.url, isDefault: hasDefault ? code.isDefault : true }
+              : code
+          ));
+        });
         Taro.showToast({ title: '收款码已上传', icon: 'none', duration: 2000 });
       })
       .catch(() => {
         Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
+      })
+      .finally(() => {
+        setUploadingCount(count => Math.max(0, count - 1));
       });
   }, []);
 
@@ -113,6 +123,10 @@ export default function QrCode() {
 
   const handleSave = useCallback(async () => {
     if (saveInFlightRef.current) return;
+    if (uploadingCount > 0) {
+      Taro.showToast({ title: '图片还在上传，请稍等', icon: 'none' });
+      return;
+    }
     saveInFlightRef.current = true;
     setSaving(true);
     try {
@@ -125,9 +139,9 @@ export default function QrCode() {
         throw new Error(profileRes.message || '收款人信息保存失败');
       }
 
-      // 2. Persist each uploaded QR (only image + default flag — payeeName/note
-      //    belong to the landlord, not the QR)
-      const currentCodes = codes.filter(c => c.imageUrl);
+      // 2. Save each code through the stable create/update APIs. This keeps
+      //    multi-code saving compatible with already deployed Cloud Run versions.
+      const currentCodes = codes.filter((code): code is QRItem & { imageUrl: string } => Boolean(code.imageUrl));
       for (const code of currentCodes) {
         const payload = buildPaymentQrPayload({
           type: code.type,
@@ -163,7 +177,7 @@ export default function QrCode() {
       saveInFlightRef.current = false;
       setSaving(false);
     }
-  }, [codes, payeeName, payeeNote]);
+  }, [codes, payeeName, payeeNote, uploadingCount]);
 
   const handlePreview = useCallback(() => {
     Taro.navigateTo({ url: '/pages/payment/index' });
@@ -271,8 +285,8 @@ export default function QrCode() {
           <Text className="qr-action-btn-text secondary-text">预览付款页</Text>
         </View>
         <View
-          className={`qr-action-btn primary${saving ? ' disabled' : ''}`}
-          onClick={saving ? undefined : handleSave}
+          className={`qr-action-btn primary${saving || uploadingCount > 0 ? ' disabled' : ''}`}
+          onClick={saving || uploadingCount > 0 ? undefined : handleSave}
         >
           <Text className="qr-action-btn-text">{saving ? '保存中...' : '保存'}</Text>
         </View>

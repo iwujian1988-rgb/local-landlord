@@ -128,7 +128,10 @@ function callContainerCompat<T>(
       },
       fail: (err: any) => {
         const msg = err.errMsg || 'callContainer 请求失败';
-        if (shouldFallbackToHttps(msg)) {
+        // Let cloud identity login retry a cold-start failure before it falls
+        // back to code2Session. This prevents a single tap from issuing two
+        // different login flows concurrently.
+        if (options.url !== '/auth/cloud-login' && shouldFallbackToHttps(msg)) {
           directRequest<T>(options, header)
             .then(resolve)
             .catch((fallbackErr) => {

@@ -12,6 +12,15 @@ import { resolveAsset } from '../../config';
 import { useState, useCallback, useMemo } from 'react';
 import './index.scss';
 
+const DOCUMENT_TYPE_OPTIONS = [
+  { value: 'contract', label: '合同' },
+  { value: 'deposit', label: '押金收据' },
+  { value: 'receipt', label: '租金收据' },
+  { value: 'utility', label: '水电单' },
+  { value: 'maintenance', label: '维修单' },
+  { value: 'other', label: '其他' },
+];
+
 type FilterKey = 'all' | 'contract' | 'receipt' | 'deposit' | 'utility' | 'maintenance' | 'other';
 
 const filters: { key: FilterKey; label: string }[] = [
@@ -94,19 +103,20 @@ export default function Contracts() {
 
   useDidShow(() => { Taro.setNavigationBarTitle({ title: '合同收据' }); loadData(); });
 
-  const handleUpload = useCallback(async (file: UploadFile, note: string) => {
+  const handleUpload = useCallback(async (file: UploadFile, note: string, selectedType?: string) => {
     if (roomId <= 0) {
       Taro.showToast({ title: '没有找到对应房间，请返回重新进入', icon: 'none' });
       return;
     }
     try {
-      const result = await uploadFile(file.tempFilePath);
-      const uploadedUrl = result.url;
+      const uploadedUrl = file.serverUrl || (await uploadFile(file.tempFilePath)).url;
       // Honor the currently active filter when uploading — otherwise every
       // uploaded doc lands in 'other' (type=5) and is invisible under the
       // filter the landlord had selected.
-      const docType = FILTER_TO_DOC_TYPE[activeFilter] ?? 5;
-      const docTypeKey: string = activeFilter === 'all' ? 'other' : activeFilter;
+      const docTypeKey = (selectedType && selectedType in FILTER_TO_DOC_TYPE
+        ? selectedType
+        : activeFilter === 'all' ? 'other' : activeFilter) as FilterKey;
+      const docType = FILTER_TO_DOC_TYPE[docTypeKey];
       const newDoc: DocumentItem = {
         id: Date.now().toString(),
         type: docTypeKey,
@@ -235,6 +245,8 @@ export default function Contracts() {
         onClose={() => setShowUpload(false)}
         onUpload={handleUpload}
         entityType="contract"
+        documentTypeOptions={DOCUMENT_TYPE_OPTIONS}
+        defaultDocumentType={activeFilter === 'all' ? 'other' : activeFilter}
       />
 
       <ConfirmModal

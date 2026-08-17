@@ -1,23 +1,30 @@
 .page-records {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--page-bg);
 }
 
-/* Filter tabs - matches HTML .filter-tabs L422-449 */
 .records-filter {
-  display: flex;
+  width: 100%;
+  height: 96px;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.records-filter-row {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
   gap: 12px;
   padding: 12px 24px 16px;
-  margin-bottom: 6px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  white-space: nowrap;
-}
-
-.records-filter::-webkit-scrollbar {
-  display: none;
+  box-sizing: border-box;
 }
 
 .filter-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 14px 28px;
   border-radius: 999px;
   font-size: var(--font-sm);
@@ -45,27 +52,33 @@
 /* Scroll container */
 .records-scroll {
   flex: 1;
+  min-height: 0;
 }
 
 /* Record list */
 .record-list {
-  padding: 0 0 16px;
+  padding: 4px 24px 24px;
 }
 
 /* Record item - matches HTML .record-item L661-692 */
 .record-item {
   display: flex;
+  align-items: flex-start;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 18px 16px;
   position: relative;
+  background: #fff;
+  border-radius: 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 22px rgba(74, 64, 56, 0.05);
 }
 
 .record-item::before {
   content: '';
   position: absolute;
-  left: 34px;
-  top: 0;
-  bottom: 0;
+  left: 22px;
+  top: 32px;
+  bottom: -26px;
   width: 2px;
   background: rgba(74,64,56,0.06);
 }
@@ -98,21 +111,32 @@
 
 .record-content {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .record-time {
+  display: block;
   font-size: var(--font-xs);
   color: var(--text-hint);
+  line-height: 1.4;
 }
 
 .record-title {
+  display: block;
   font-size: var(--font-base);
   font-weight: 500;
   margin-top: 2px;
+  line-height: 1.5;
+  color: var(--text-primary);
 }
 
 .record-desc {
+  display: block;
   font-size: var(--font-sm);
   color: var(--text-secondary);
   margin-top: 2px;
+  line-height: 1.5;
+  word-break: break-all;
 }

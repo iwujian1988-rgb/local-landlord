@@ -16,8 +16,9 @@ import './index.scss';
 interface BillItem {
   name: string;
   amount: number;
-  type: 'fixed' | 'manual';
+  type: 'fixed' | 'manual' | 'utility';
   feeId?: number;
+  utilityReadingId?: number;
 }
 
 interface ApiBillData {
@@ -71,12 +72,26 @@ function formatPeriodRange(period: string, periodEnd: string | null): string {
   return `${period} ~ ${periodEnd}`;
 }
 
+function extractBillId(response: any): number {
+  return Number(
+    response?.data?.id
+    || response?.data?.data?.id
+    || response?.id
+    || 0,
+  );
+}
+
 export default function Bill() {
   const routerParams = Taro.getCurrentInstance().router?.params || {};
   const roomId = Number(routerParams.roomId) || 0;
   const tenantId = Number(routerParams.tenantId) || 0;
 
   const [data, setData] = useState<PageData>(emptyPageData);
+
+  const findCurrentBillId = useCallback(async (): Promise<number> => {
+    const res = await get<ApiBillData>(`/rooms/${roomId}/bills`);
+    return Number(res.data?.billId || 0);
+  }, [roomId]);
 
   const loadData = useCallback(async () => {
     if (!roomId) return;
@@ -160,26 +175,25 @@ export default function Bill() {
         await put(`/bills/${billId}/send`, { items: data.billItems });
       } else {
         // Fallback: cron hasn't generated for this cycle yet — create on demand
-        const res = await post<{ id: number }>(`/rooms/${roomId}/bills`, {
-          period: data.period,
-          tenantId,
-          items: data.billItems,
-          totalAmount,
-          photos: data.photos,
-        });
-        billId = res.data?.id || 0;
+        try {
+          const res = await post<{ id: number }>(`/rooms/${roomId}/bills`, {
+            period: data.period,
+            tenantId,
+            items: data.billItems,
+            totalAmount,
+            photos: data.photos,
+          });
+          billId = extractBillId(res);
+        } catch (createError) {
+          billId = await findCurrentBillId();
+          if (!billId) throw createError;
+        }
 
-        // If POST didn't return an id (e.g. bill already exists), look up via pending
+        // A bill may already have been created by the scheduler or by a
+        // previous tap. The room bill endpoint is canonical; the pending-rent
+        // endpoint is only an urgency list and may omit bills due later.
         if (!billId) {
-          const pendingRes = await get<any>('/rent/pending');
-          const allEntries = [
-            ...(pendingRes.data?.today || []),
-            ...(pendingRes.data?.approaching || []),
-            ...(pendingRes.data?.overdue || []),
-            ...(pendingRes.data?.upcoming || []),
-          ];
-          const match = allEntries.find((e: any) => e.roomId === roomId);
-          billId = match?.billId || 0;
+          billId = await findCurrentBillId();
         }
       }
 
@@ -199,7 +213,7 @@ export default function Bill() {
     } finally {
       setData(prev => ({ ...prev, submitting: false }));
     }
-  }, [roomId, tenantId, data.billId, data.period, data.billItems, data.photos, totalAmount, data.submitting]);
+  }, [roomId, tenantId, data.billId, data.period, data.billItems, data.photos, totalAmount, data.submitting, findCurrentBillId]);
 
   const handleCopyText = useCallback(() => {
     const month = new Date().getMonth() + 1;
@@ -224,15 +238,7 @@ export default function Bill() {
       let billId = data.billId || 0;
 
       if (!billId) {
-        const pendingRes = await get<any>('/rent/pending');
-        const allEntries = [
-          ...(pendingRes.data?.today || []),
-          ...(pendingRes.data?.approaching || []),
-          ...(pendingRes.data?.overdue || []),
-          ...(pendingRes.data?.upcoming || []),
-        ];
-        const match = allEntries.find((e: any) => e.roomId === roomId);
-        billId = match?.billId || 0;
+        billId = await findCurrentBillId();
       }
 
       // Last resort: create on demand
@@ -244,7 +250,10 @@ export default function Bill() {
           totalAmount,
           photos: data.photos,
         });
-        billId = createRes.data?.id || 0;
+        billId = extractBillId(createRes);
+        if (!billId) {
+          billId = await findCurrentBillId();
+        }
       }
 
       if (!billId) {
@@ -265,7 +274,7 @@ export default function Bill() {
     } finally {
       setData(prev => ({ ...prev, submitting: false }));
     }
-  }, [roomId, tenantId, data.billId, data.period, data.billItems, totalAmount, data.photos, data.submitting]);
+  }, [roomId, tenantId, data.billId, data.period, data.billItems, totalAmount, data.photos, data.submitting, findCurrentBillId]);
 
   return (
     <View className="page-bill">
@@ -284,6 +293,14 @@ export default function Bill() {
             <View className="elder-card">
               <Text className="elder-card-title">第一步：算一下这个月多少钱</Text>
               <Text className="elder-card-desc">房租已经填好了，水电有变动就改一下。</Text>
+
+              <View className="bill-utility-entry" onClick={() => Taro.navigateTo({ url: `/pages/utility-reading/index?roomId=${roomId}&period=${data.period}` })}>
+                <View>
+                  <Text className="bill-utility-entry-title">本月水电抄表</Text>
+                  <Text className="bill-utility-entry-desc">录入读数、金额和水表/电表照片</Text>
+                </View>
+                <Text className="bill-utility-entry-action">去录入</Text>
+              </View>
 
               <View className="bill-items">
                 {data.billItems.map((item, idx) => (
@@ -304,7 +321,17 @@ export default function Bill() {
                       </View>
                     ) : (
                       <View className="bill-row">
-                        <Text className="bill-label">{item.name}</Text>
+                        <View>
+                          <Text className="bill-label">{item.name}</Text>
+                          {item.type === 'utility' && (
+                            <Text
+                              className="bill-utility-source"
+                              onClick={() => Taro.navigateTo({ url: `/pages/utility-reading/index?roomId=${roomId}&period=${data.period}` })}
+                            >
+                              来自本月抄表，可修改
+                            </Text>
+                          )}
+                        </View>
                         <Text className="bill-value">{item.amount.toLocaleString()} 元</Text>
                       </View>
                     )}
@@ -320,12 +347,12 @@ export default function Bill() {
             </View>
 
             <View className="elder-card">
-              <Text className="elder-card-title">第二步：拍几张表的照片</Text>
-              <Text className="elder-card-desc">比如电表、水表。没有也可以不拍。</Text>
+              <Text className="elder-card-title">第二步：补充账单照片（可不拍）</Text>
+              <Text className="elder-card-desc">水表、电表照片请在“本月水电抄表”里上传；这里可补物业通知等其他凭证。</Text>
 
               <View className="bill-photo-btn" onClick={handlePhotoUpload}>
                 <Icon name="camera" size={48} color="currentColor" />
-                <Text className="bill-photo-btn-text">{data.uploading ? '上传中...' : '拍照 / 上传照片'}</Text>
+                <Text className="bill-photo-btn-text">{data.uploading ? '上传中...' : '补充账单照片'}</Text>
               </View>
 
               {data.photos.length > 0 && (

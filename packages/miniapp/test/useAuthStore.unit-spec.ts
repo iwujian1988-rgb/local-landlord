@@ -198,6 +198,28 @@ describe('login (USE_CLOUD=false) — wx.login → /auth/wechat/login', () => {
     expect(s.loginLoading).toBe(false);
     expect(s.loginError).toMatch(/timeout/);
   });
+  it('TC-AUTH-LOGIN-007: concurrent login requests share one token exchange', async () => {
+    (Taro.login as jest.Mock).mockResolvedValueOnce({ code: 'same-code' });
+    const requestCountBefore = mockRequest().mock.calls.length;
+    let resolveRequest: (value: unknown) => void = () => undefined;
+    mockRequest().mockImplementationOnce(() => new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+
+    const first = useAuthStore.getState().login();
+    const second = useAuthStore.getState().login();
+    await Promise.resolve();
+    expect(mockRequest()).toHaveBeenCalledTimes(requestCountBefore + 1);
+
+    resolveRequest({
+      statusCode: 200,
+      data: { code: 0, data: { token: 'single-token', user: { id: 8, name: 'test', phone: '' } } },
+    });
+    await Promise.all([first, second]);
+
+    expect(useAuthStore.getState().token).toBe('single-token');
+    expect(useAuthStore.getState().loginLoading).toBe(false);
+  });
 });
 
 /**

@@ -92,15 +92,17 @@ export default function Records() {
   return (
     <View className="page-records">
       <ScrollView className="records-filter" scrollX>
-        {filters.map((f) => (
-          <View
-            key={f.key}
-            className={`filter-tab ${activeFilter === f.key ? 'active' : ''}`}
-            onClick={() => setActiveFilter(f.key)}
-          >
-            <Text className="filter-tab-text">{f.label}</Text>
-          </View>
-        ))}
+        <View className="records-filter-row">
+          {filters.map((f) => (
+            <View
+              key={f.key}
+              className={`filter-tab ${activeFilter === f.key ? 'active' : ''}`}
+              onClick={() => setActiveFilter(f.key)}
+            >
+              <Text className="filter-tab-text">{f.label}</Text>
+            </View>
+          ))}
+        </View>
       </ScrollView>
 
       <ScrollView className="records-scroll" scrollY>

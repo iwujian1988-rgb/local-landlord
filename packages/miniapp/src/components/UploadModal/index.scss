@@ -35,6 +35,49 @@
   display: block;
 }
 
+.upload-type-group {
+  margin: -6px 0 26px;
+}
+
+.upload-type-label {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.upload-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.upload-type-option {
+  min-width: 142px;
+  padding: 16px 20px;
+  border: 2px solid rgba(181, 169, 154, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.upload-type-option.active {
+  border-color: var(--accent);
+  background: rgba(245, 143, 80, 0.14);
+}
+
+.upload-type-option-text {
+  font-size: 26px;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.upload-type-option.active .upload-type-option-text {
+  color: var(--accent-dk);
+}
+
 .upload-actions-row {
   display: flex;
   gap: 24px;

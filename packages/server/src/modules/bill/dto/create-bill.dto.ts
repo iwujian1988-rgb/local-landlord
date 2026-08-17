@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsArray, IsOptional, ValidateNested, IsNumber, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsOptional, ValidateNested, IsNumber, Min, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 class BillItemInput {
@@ -14,6 +14,10 @@ class BillItemInput {
   @Min(0)
   @Type(() => Number)
   amount: number;
+
+  @IsOptional()
+  @IsIn(['fixed', 'manual', 'utility'])
+  type?: 'fixed' | 'manual' | 'utility';
 }
 
 export class CreateBillDto {

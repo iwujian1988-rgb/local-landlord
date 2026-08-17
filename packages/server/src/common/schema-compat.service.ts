@@ -52,6 +52,9 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'bill', column: 'sent_at', definition: '`sent_at` datetime NULL' },
   { table: 'bill', column: 'paid_at', definition: '`paid_at` datetime NULL' },
 
+  // bill_item
+  { table: 'bill_item', column: 'utility_reading_id', definition: '`utility_reading_id` int NULL' },
+
   // payment_qr
   { table: 'payment_qr', column: 'is_default', definition: '`is_default` tinyint unsigned NOT NULL DEFAULT 0' },
   { table: 'payment_qr', column: 'payee_name', definition: '`payee_name` varchar(32) NOT NULL DEFAULT \'\'' },
@@ -69,6 +72,30 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'document', column: 'uploaded_at', definition: '`uploaded_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP' },
 ];
 
+const MYSQL_COMPAT_TABLES = [
+  `CREATE TABLE IF NOT EXISTS \`utility_reading\` (
+    \`id\` int NOT NULL AUTO_INCREMENT,
+    \`room_id\` int NOT NULL,
+    \`tenant_id\` int NOT NULL,
+    \`period\` varchar(7) NOT NULL,
+    \`utility_type\` tinyint unsigned NOT NULL,
+    \`charge_mode\` tinyint unsigned NOT NULL DEFAULT 0,
+    \`previous_reading\` decimal(12,2) NULL,
+    \`current_reading\` decimal(12,2) NULL,
+    \`usage\` decimal(12,2) NULL,
+    \`unit_price\` decimal(10,4) NULL,
+    \`amount\` decimal(10,2) NOT NULL DEFAULT 0,
+    \`photos\` json NULL,
+    \`note\` varchar(256) NULL,
+    \`bill_id\` int NULL,
+    \`created_at\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updated_at\` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (\`id\`),
+    UNIQUE KEY \`UQ_utility_reading_month\` (\`room_id\`, \`tenant_id\`, \`period\`, \`utility_type\`),
+    KEY \`IDX_utility_reading_room_period\` (\`room_id\`, \`period\`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+];
+
 @Injectable()
 export class SchemaCompatService implements OnApplicationBootstrap {
   private readonly logger = new Logger(SchemaCompatService.name);
@@ -77,6 +104,9 @@ export class SchemaCompatService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     if (this.dataSource.options.type !== 'mysql') return;
+    for (const statement of MYSQL_COMPAT_TABLES) {
+      await this.dataSource.query(statement);
+    }
     await this.ensureMysqlColumns();
   }
 

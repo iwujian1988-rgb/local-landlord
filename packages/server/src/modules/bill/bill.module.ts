@@ -9,9 +9,10 @@ import { Tenant } from '../tenant/tenant.entity';
 import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { FeeItem } from '../fee/fee-item.entity';
+import { UtilityReading } from '../utility-reading/utility-reading.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Bill, BillItem, RentRecord, Tenant, Room, Property, FeeItem])],
+  imports: [TypeOrmModule.forFeature([Bill, BillItem, RentRecord, Tenant, Room, Property, FeeItem, UtilityReading])],
   controllers: [BillController],
   providers: [BillService],
   exports: [BillService],

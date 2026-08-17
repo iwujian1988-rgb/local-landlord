@@ -102,6 +102,23 @@
 }
 
 /* Divider */
+.bill-utility-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 20px 0;
+  padding: 18px 20px;
+  border: 2px solid rgba(245, 143, 80, 0.28);
+  border-radius: 20px;
+  background: #fff7ef;
+}
+
+.bill-utility-entry-title { display: block; color: var(--text-primary); font-size: 28px; font-weight: 800; }
+.bill-utility-entry-desc { display: block; margin-top: 5px; color: var(--text-hint); font-size: 22px; }
+.bill-utility-entry-action { color: var(--accent-dk); font-size: 26px; font-weight: 800; white-space: nowrap; }
+.bill-utility-source { display: block; margin-top: 3px; color: var(--accent-dk); font-size: 20px; }
+
 .bill-divider {
   height: 2px;
   background: rgba(74, 64, 56, 0.06);

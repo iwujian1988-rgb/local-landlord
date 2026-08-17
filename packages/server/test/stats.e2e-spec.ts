@@ -169,6 +169,26 @@ describe('Stats module — overdue logic (e2e)', () => {
     expect(Number(data.monthlyCollected || 0)).toBeGreaterThanOrEqual(2000);
   });
 
+  it('TC-STATS-009A: current-month receivable remains visible before rent day', async () => {
+    const freshAuth = await loginAsLandlord(app, `dev_stats_later_${Date.now()}`);
+    const propId = await createProperty(app, freshAuth);
+    const roomId = await createRoom(app, freshAuth, propId, { rent: 500, name: 'later-rent-room' });
+    const today = new Date().getDate();
+    const rentDay = today <= 24 ? today + 4 : 28;
+    await createTenant(app, freshAuth, roomId, {
+      name: 'later-rent-tenant', phone: '13900000019', moveInDate: `${currentMonthStr()}-01`, rentDay,
+    });
+
+    const stats = expectOk(await apiCall(app, 'get', '/api/stats/rent?period=month', freshAuth));
+    expect(stats.totalExpected).toBe(500);
+    expect(stats.totalPending).toBe(500);
+
+    if (today <= 24) {
+      const pending = expectOk(await apiCall(app, 'get', '/api/rent/pending', freshAuth));
+      expect(pending.upcoming.some((item: any) => item.roomId === roomId && item.daysUntil > 3)).toBe(true);
+    }
+  });
+
   it('TC-STATS-010: /stats/rent 默认月度返回 200', async () => {
     const freshAuth = await loginAsLandlord(app, `dev_stats_rent_${Date.now()}`);
     const res = await apiCall(app, 'get', '/api/stats/rent?period=month', freshAuth);

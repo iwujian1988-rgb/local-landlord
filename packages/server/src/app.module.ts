@@ -19,6 +19,7 @@ import { StatsModule } from './modules/stats/stats.module';
 import { SystemModule } from './modules/system/system.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { UtilityReadingModule } from './modules/utility-reading/utility-reading.module';
 import { ShareModule } from './modules/share/share.module';
 import { HealthController } from './modules/health/health.controller';
 import { SchemaCompatService } from './common/schema-compat.service';
@@ -89,6 +90,7 @@ import { SchemaCompatService } from './common/schema-compat.service';
     SystemModule,
     UploadModule,
     SubscriptionModule,
+    UtilityReadingModule,
     ShareModule,
   ],
   controllers: [HealthController],

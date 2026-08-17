@@ -43,6 +43,12 @@ interface PendingResponse {
   upcoming: PendingEntry[];
 }
 
+interface RentStatsSummary {
+  totalExpected: number;
+  totalCollected: number;
+  totalPending: number;
+}
+
 type Bucket = 'overdue' | 'today' | 'approaching' | 'upcoming';
 
 interface DisplayItem {
@@ -72,6 +78,15 @@ function buildDisplayItems(data: PendingResponse): DisplayItem[] {
     items.push({ entry: e, bucket: 'approaching', label: `${e.daysUntil}天后`, desc: `还有${e.daysUntil}天` });
   }
   for (const e of data.upcoming) {
+    if (e.daysUntil > 0) {
+      items.push({
+        entry: e,
+        bucket: 'upcoming',
+        label: `${e.daysUntil} 天后`,
+        desc: `本月${e.rentDay === 0 ? '月底' : `${e.rentDay}号`}收租`,
+      });
+      continue;
+    }
     const nextMonth = e.nextDueMonth || '';
     const payMonthsLabel = e.payMonths > 1 ? ` · 每${e.payMonths}个月收` : '';
     items.push({ entry: e, bucket: 'upcoming', label: `下次${nextMonth}`, desc: `下次${nextMonth}收租${payMonthsLabel}` });
@@ -85,6 +100,11 @@ export default function RentList() {
   const [activeItems, setActiveItems] = useState<DisplayItem[]>([]);
   const [upcomingItems, setUpcomingItems] = useState<DisplayItem[]>([]);
   const [completedItems, setCompletedItems] = useState<PendingEntry[]>([]);
+  const [summary, setSummary] = useState<RentStatsSummary>({
+    totalExpected: 0,
+    totalCollected: 0,
+    totalPending: 0,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
@@ -93,8 +113,12 @@ export default function RentList() {
     setLoading(true);
     setError(false);
     try {
-      const res = await get<PendingResponse>('/rent/pending');
+      const [res, statsRes] = await Promise.all([
+        get<PendingResponse>('/rent/pending'),
+        get<RentStatsSummary>('/stats/rent', { period: 'month' }),
+      ]);
       const data = res.data || { today: [], approaching: [], overdue: [], completed: [], upcoming: [] };
+      setSummary(statsRes.data || { totalExpected: 0, totalCollected: 0, totalPending: 0 });
       const allItems = buildDisplayItems(data);
       setActiveItems(allItems.filter(i => i.bucket !== 'upcoming'));
       setUpcomingItems(allItems.filter(i => i.bucket === 'upcoming'));
@@ -216,14 +240,11 @@ export default function RentList() {
     });
   }, [overdueItems, batchLoading]);
 
-  // Summary numbers
-  const totalPending = activeItems.reduce((s, i) => {
-    const total = i.entry.totalAmount ?? i.entry.rent ?? 0;
-    const paid = i.entry.paidAmount || 0;
-    return s + Math.max(total - paid, 0);
-  }, 0);
-  const totalCollected = completedItems.reduce((s, e) => s + (e.totalAmount ?? e.rent ?? 0), 0)
-    + activeItems.reduce((s, i) => s + (i.entry.paidAmount || 0), 0);
+  // The pending list is urgency-based. The summary must use the same
+  // full-month accounting source as the "收租统计" page.
+  const totalExpected = Number(summary.totalExpected) || 0;
+  const totalCollected = Number(summary.totalCollected) || 0;
+  const totalPending = Number(summary.totalPending) || 0;
 
   return (
     <View className="page-rent-list">
@@ -237,7 +258,7 @@ export default function RentList() {
         <View className="rent-summary-card">
           <View className="rent-summary-row">
             <View className="rent-summary-item">
-              <Text className="rent-summary-number">{(totalPending + totalCollected).toLocaleString()}</Text>
+              <Text className="rent-summary-number">{totalExpected.toLocaleString()}</Text>
               <Text className="rent-summary-label">本月应收</Text>
             </View>
             <View className="rent-summary-divider" />
@@ -350,7 +371,7 @@ export default function RentList() {
           </>
         )}
 
-        {!loading && activeItems.length === 0 && completedItems.length === 0 && (
+        {!loading && activeItems.length === 0 && completedItems.length === 0 && totalExpected === 0 && (
           <EmptyState title="本月没有待收租" description="添加房间和租客后，到日子会在这里提醒你" actionText="去添加房间" onAction={() => Taro.switchTab({ url: '/pages/rooms/index' })} />
         )}
 

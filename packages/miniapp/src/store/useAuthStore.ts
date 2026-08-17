@@ -4,6 +4,9 @@ import { USE_CLOUD } from '../config';
 import { directPost, post } from '../services/request';
 import { clearUserSessionCaches } from '../utils/storage';
 
+const CLOUD_LOGIN_RETRY_DELAY_MS = 1500;
+let activeLoginPromise: Promise<void> | null = null;
+
 interface AuthState {
   token: string;
   openid: string;
@@ -50,6 +53,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async () => {
+    if (activeLoginPromise) return activeLoginPromise;
+
+    let resolveActiveLogin!: () => void;
+    let rejectActiveLogin!: (reason?: unknown) => void;
+    const currentLoginPromise = new Promise<void>((resolve, reject) => {
+      resolveActiveLogin = resolve;
+      rejectActiveLogin = reject;
+    });
+    // The caller of this async action observes the original error. This catch
+    // prevents the internal shared promise from becoming an unhandled reject.
+    currentLoginPromise.catch(() => undefined);
+    activeLoginPromise = currentLoginPromise;
+
     set({ loginLoading: true, loginError: '' });
     try {
       let data: any;
@@ -57,12 +73,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (USE_CLOUD) {
         // Cloud hosting: callContainer auto-injects X-WX-OPENID
         try {
-          const res = await post<any>('/auth/cloud-login', {});
-          data = unwrapLoginData(res);
-          if (res?.code !== 0 || !data?.token) {
-            throw new Error(res?.message || 'cloud-login did not return token');
-          }
-        } catch (cloudErr: any) {
+          data = await loginByCloudIdentity();
+        } catch {
           data = await loginByWechatCode();
         }
       } else {
@@ -92,13 +104,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoggedIn: true,
         loginLoading: false,
       });
+      resolveActiveLogin();
     } catch (err: any) {
       set({
         loginLoading: false,
         loginError: err.message || '登录失败',
         isLoggedIn: false,
       });
+      rejectActiveLogin(err);
       throw err;
+    } finally {
+      if (activeLoginPromise === currentLoginPromise) {
+        activeLoginPromise = null;
+      }
     }
   },
 
@@ -132,6 +150,38 @@ function unwrapLoginData(res: any) {
   if (res?.data?.token) return res.data;
   if (res?.data?.data?.token) return res.data.data;
   return res?.data || res;
+}
+
+async function loginByCloudIdentity() {
+  try {
+    return await requestCloudIdentity();
+  } catch (error) {
+    if (!isCloudColdStartError(error)) throw error;
+    await delay(CLOUD_LOGIN_RETRY_DELAY_MS);
+    return requestCloudIdentity();
+  }
+}
+
+async function requestCloudIdentity() {
+  const res = await post<any>('/auth/cloud-login', {});
+  const data = unwrapLoginData(res);
+  if (res?.code !== 0 || !data?.token) {
+    throw new Error(res?.message || 'cloud-login did not return token');
+  }
+  return data;
+}
+
+function isCloudColdStartError(error: unknown): boolean {
+  const message = String((error as any)?.errMsg || (error as any)?.message || error || '').toLowerCase();
+  return message.includes('102002')
+    || message.includes('timeout')
+    || message.includes('请求超时')
+    || message.includes('service unavailable')
+    || message.includes('503');
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function loginByWechatCode() {

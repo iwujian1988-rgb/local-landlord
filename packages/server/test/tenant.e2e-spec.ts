@@ -251,6 +251,25 @@ describe('Tenant module (e2e)', () => {
       ]));
     });
 
+    it('TC-TENANT-004B2A: accepts the exact fee-item shape sent by the miniapp', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: 'room-miniapp-fee-shape' });
+      const response = await apiCall(app, 'post', `/api/rooms/${rId}/tenant`, auth, {
+        name: 'Miniapp 费用结构租客', phone: '13800004457', moveInDate: `${currentMonthStr()}-01`,
+        rentDay: 1, payMonths: 3, deposit: 1000,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 3, initialMonths: 3 },
+          { name: '网费', type: 'fixed', amount: 50, enabled: true, isRent: false, cycleMode: 'monthly', collectionTiming: 'arrears', billingMonths: 1, initialMonths: 1 },
+          { name: '水电费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'monthly', collectionTiming: 'advance', billingMonths: 1, initialMonths: 1 },
+        ],
+      });
+      expectOk(response);
+      const bill = await getCurrentBill(rId);
+      expect(bill.billItems).toEqual([
+        expect.objectContaining({ name: '房租', amount: 3000 }),
+        expect.objectContaining({ name: '水电费', amount: 0 }),
+      ]);
+    });
+
     it('TC-TENANT-004B3: 只收到押金时不得把首期费用误标为已付', async () => {
       const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: 'room-deposit-only' });
       await createTenant(app, auth, rId, {
@@ -420,6 +439,24 @@ describe('Tenant module (e2e)', () => {
       });
       const data = expectOk(res);
       expect(data.note).toBe('updated-note');
+    });
+
+    it('TC-TENANT-012A: 编辑租客可更新数值字段和入住水电读数', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 500, name: 'room-012a' });
+      const tid = await createTenant(app, auth, rId, {
+        name: '编辑回归',
+        phone: '13800012223',
+      });
+      const res = await apiCall(app, 'put', `/api/tenants/${tid}`, auth, {
+        rentDay: 16,
+        payMonths: 1,
+        deposit: 500,
+        moveInReading: '电 123，水 45',
+      });
+      const data = expectOk(res);
+      expect(data.rentDay).toBe(16);
+      expect(Number(data.deposit)).toBe(500);
+      expect(data.moveInReading).toBe('电 123，水 45');
     });
   });
 

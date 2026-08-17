@@ -15,6 +15,7 @@ const appConfig: AppConfig = {
     'pages/rent-list/index',
     'pages/rent-stats/index',
     'pages/bill/index',
+    'pages/utility-reading/index',
     'pages/single-charge/index',
     'pages/payment/index',
     'pages/qr-code/index',

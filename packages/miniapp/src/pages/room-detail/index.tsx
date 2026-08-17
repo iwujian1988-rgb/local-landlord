@@ -457,6 +457,11 @@ export default function RoomDetail() {
               action: () => Taro.navigateTo({ url: `/pages/records/index?roomId=${roomId}` }),
             },
             {
+              label: '水电抄表',
+              icon: (<Icon name="camera" size={28} color="var(--accent-hover)" />),
+              action: () => Taro.navigateTo({ url: `/pages/utility-reading/index?roomId=${roomId}` }),
+            },
+            {
               label: data.tenant ? '编辑租客' : '登记租客',
               icon: (<Icon name="user-plus" size={28} color="var(--accent-hover)" />),
               action: () => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}` }),

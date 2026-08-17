@@ -262,8 +262,12 @@ export class RentService {
         todayList.push(entry);
       } else if (daysUntil >= 1 && daysUntil <= 3) {
         approachingList.push(entry);
+      } else if (daysUntil > 3) {
+        // It is not urgent yet, but it is still this month's receivable.
+        // Keep it visible instead of making the rent homepage report zero
+        // while the statistics page already reports an outstanding balance.
+        upcomingList.push(entry);
       }
-      // daysUntil > 3: not yet due, don't show
     }
 
     return {

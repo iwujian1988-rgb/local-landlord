@@ -13,6 +13,8 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { UtilityReading } from '../utility-reading/utility-reading.entity';
+import { isUtilityFeeName, utilityName } from '../utility-reading/utility-reading.helpers';
 
 @Injectable()
 export class BillService {
@@ -72,7 +74,8 @@ export class BillService {
         throw new BadRequestException('该周期已存在账单');
       }
 
-      const totalAmount = dto.items.reduce((sum, item) => sum + Number(item.amount), 0);
+      const items = await this.withUtilityItems(manager, roomId, tenant.id, dto.period, dto.items);
+      const totalAmount = items.reduce((sum, item) => sum + Number(item.amount), 0);
 
       // periodEnd = period + payMonths - 1 months. For payMonths=1, periodEnd = period.
       const payMonths = tenant.payMonths ?? 1;
@@ -91,14 +94,19 @@ export class BillService {
       });
       const savedBill = await manager.save(newBill);
 
-      const billItems = dto.items.map(item =>
+      const billItems = items.map(item =>
         manager.create(BillItem, {
           billId: savedBill.id,
           feeName: item.feeName,
           amount: item.amount,
+          utilityReadingId: item.utilityReadingId ?? null,
         }),
       );
       await manager.save(billItems);
+      const linkedReadingIds = items.map(item => item.utilityReadingId).filter((id): id is number => !!id);
+      if (linkedReadingIds.length > 0) {
+        await manager.update(UtilityReading, { id: In(linkedReadingIds) }, { billId: savedBill.id });
+      }
 
       const bill = await manager.findOne(Bill, {
         where: { id: savedBill.id },
@@ -117,6 +125,37 @@ export class BillService {
   static computePeriodEnd(periodStart: string, payMonths: number): string {
     const months = Math.max(1, payMonths);
     return dayjs(periodStart + '-01').add(months - 1, 'month').format('YYYY-MM');
+  }
+
+  private async withUtilityItems(
+    manager: EntityManager,
+    roomId: number,
+    tenantId: number,
+    period: string,
+    items: { feeName?: string; name?: string; amount: number; type?: 'fixed' | 'manual' | 'utility' }[],
+  ): Promise<{ feeName: string; amount: number; utilityReadingId?: number; type?: 'fixed' | 'manual' | 'utility' }[]> {
+    const readings = await manager.find(UtilityReading, { where: { roomId, tenantId, period } });
+    if (readings.length === 0) {
+      return items.map(item => ({
+        feeName: item.feeName || item.name || '',
+        amount: Number(item.amount) || 0,
+        type: item.type,
+      }));
+    }
+    const regularItems = items
+      // A fixed monthly charge may legitimately be named 水费/电费. Only a
+      // manual utility line is replaced by this month's meter record.
+      .filter(item => item.type !== 'utility' && !(item.type === 'manual' && isUtilityFeeName(item.feeName || item.name || '')))
+      .map(item => ({ feeName: item.feeName || item.name || '', amount: Number(item.amount) || 0, type: item.type }));
+    const utilityItems = readings
+      .filter(reading => reading.chargeMode !== 0)
+      .map(reading => ({
+        feeName: utilityName(reading.utilityType),
+        amount: Number(reading.amount) || 0,
+        utilityReadingId: reading.id,
+        type: 'utility' as const,
+      }));
+    return [...regularItems, ...utilityItems];
   }
 
   /** Get bill detail (with bill_items) */
@@ -196,7 +235,7 @@ export class BillService {
   /** Send bill (mark sent_at). Optionally update items + recompute total in the same tx. */
   async sendBill(
     id: number,
-    items?: { feeName?: string; name?: string; amount: number }[],
+    items?: { feeName?: string; name?: string; amount: number; utilityReadingId?: number }[],
   ): Promise<Bill> {
     return this.entityManager.transaction(async (manager) => {
       const bill = await manager.findOne(Bill, {
@@ -224,6 +263,7 @@ export class BillService {
             billId: id,
             feeName: item.feeName || item.name || '',
             amount: Number(item.amount) || 0,
+            utilityReadingId: item.utilityReadingId || null,
           }),
         );
         await manager.save(newItems);
@@ -291,21 +331,28 @@ export class BillService {
       ? currentBillWithItems.items.map(item => ({
           name: item.feeName,
           amount: Number(item.amount) || 0,
-          type: 'fixed',
+          type: item.utilityReadingId ? 'utility' : 'fixed',
           feeId: undefined,
+          utilityReadingId: item.utilityReadingId || undefined,
         }))
-      : feeItems.flatMap(fee => {
+      : (await this.withUtilityItems(this.entityManager, roomId, tenant?.id || 0, monthStr, feeItems.flatMap(fee => {
           const dueMonths = tenant
             ? feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr)
             : 1;
           if (!fee.enabled || dueMonths === 0) return [];
+          if (fee.type === 1 && isUtilityFeeName(fee.name)) return [];
           return [{
-            name: fee.name,
+            feeName: fee.name,
             amount: feeRuleAmountForMonths(fee, dueMonths),
-            type: fee.type === 0 ? 'fixed' : 'manual',
-            feeId: undefined,
+            type: fee.type === 1 ? 'manual' as const : 'fixed' as const,
           }];
-        });
+        }))).map(item => ({
+          name: item.feeName,
+          amount: item.amount,
+          type: item.type || (item.utilityReadingId ? 'utility' : 'fixed'),
+          feeId: undefined,
+          utilityReadingId: item.utilityReadingId,
+        }));
 
     return {
       roomName: room.name,

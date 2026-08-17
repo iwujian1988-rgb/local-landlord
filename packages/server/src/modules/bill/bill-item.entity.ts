@@ -15,6 +15,10 @@ export class BillItem {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   amount: number;
 
+  /** Links water/electric bill lines to their auditable monthly meter record. */
+  @Column({ name: 'utility_reading_id', type: 'integer', nullable: true })
+  utilityReadingId: number | null;
+
   @ManyToOne(() => Bill, bill => bill.items)
   @JoinColumn({ name: 'bill_id' })
   bill: Bill;
