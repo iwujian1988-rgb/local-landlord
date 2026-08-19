@@ -5,7 +5,33 @@ import { H5_BASE_URL } from '../config';
 export interface ShareLinkResult {
   token: string;
   shareUrl: string;
+  miniPath?: string;
   expiresAt: string;
+}
+
+async function generateShareResult(
+  billId?: number,
+  singleChargeId?: number,
+): Promise<ShareLinkResult | null> {
+  if (!billId && !singleChargeId) {
+    Taro.showToast({ title: '缺少账单 ID', icon: 'none' });
+    return null;
+  }
+  try {
+    const res = await post<ShareLinkResult>('/share/generate', { billId, singleChargeId });
+    if (res.code !== 0 || !res.data?.token) {
+      Taro.showToast({ title: res.message || '生成账单失败', icon: 'none' });
+      return null;
+    }
+    return {
+      ...res.data,
+      shareUrl: ensureAbsoluteShareUrl(res.data.shareUrl, res.data.token),
+    };
+  } catch (err: any) {
+    console.error('[share] generate failed:', err);
+    Taro.showToast({ title: err?.message || '生成账单失败，请稍后重试', icon: 'none' });
+    return null;
+  }
 }
 
 function isPrivateLocalUrl(value: string): boolean {
@@ -37,25 +63,17 @@ export async function generateAndCopyShareLink(
   billId?: number,
   singleChargeId?: number,
 ): Promise<ShareLinkResult | null> {
-  if (!billId && !singleChargeId) {
-    Taro.showToast({ title: '缺少账单 ID', icon: 'none' });
-    return null;
-  }
+  const result = await generateShareResult(billId, singleChargeId);
+  if (!result) return null;
   try {
-    const res = await post<ShareLinkResult>('/share/generate', { billId, singleChargeId });
-    if (res.code !== 0 || !res.data?.token) {
-      Taro.showToast({ title: res.message || '生成链接失败', icon: 'none' });
-      return null;
-    }
-    const shareUrl = ensureAbsoluteShareUrl(res.data.shareUrl, res.data.token);
     await new Promise<void>((resolve, reject) => {
       Taro.setClipboardData({
-        data: shareUrl,
+        data: result.shareUrl,
         success: () => resolve(),
         fail: () => reject(),
       });
     });
-    return { ...res.data, shareUrl };
+    return result;
   } catch (err: any) {
     console.error('[share] generate failed:', err);
     Taro.showToast({ title: err?.message || '生成链接失败，请稍后重试', icon: 'none' });
@@ -66,38 +84,31 @@ export async function generateAndCopyShareLink(
 /**
  * Open the share-webview container (for in-WeChat preview by the landlord).
  */
-export function openShareWebview(token: string) {
-  Taro.navigateTo({ url: `/pages/share-webview/index?token=${encodeURIComponent(token)}` });
+export function openShareWebview(token: string, shareUrl?: string) {
+  const params = [`token=${encodeURIComponent(token)}`];
+  if (shareUrl && /^https:\/\//i.test(shareUrl) && !isPrivateLocalUrl(shareUrl)) {
+    params.push(`url=${encodeURIComponent(shareUrl)}`);
+  }
+  Taro.navigateTo({ url: `/pages/share-webview/index?${params.join('&')}` });
+}
+
+export function openTenantBill(token: string) {
+  Taro.navigateTo({ url: `/pages/tenant-bill/index?token=${encodeURIComponent(token)}` });
 }
 
 /**
  * Unified entry point for sharing a bill with a tenant.
  *
- * 1. Calls POST /share/generate to obtain an H5 token + shareUrl
- * 2. Copies shareUrl to clipboard as a fallback
- * 3. Shows a modal guiding the landlord to forward the link in WeChat
+ * Generates a capability token and opens the native tenant bill page.
+ * The native page exposes a standard mini-program share button.
  *
  * Returns the ShareLinkResult on success, or null if generation failed.
  */
 export async function forwardBillShare(billId: number): Promise<ShareLinkResult | null> {
-  const result = await generateAndCopyShareLink(billId);
+  const result = await generateShareResult(billId);
   if (!result) return null;
-
-  return new Promise<ShareLinkResult | null>((resolve) => {
-    Taro.showModal({
-      title: '付款链接已复制',
-      content: '下一步：打开租客的微信聊天，长按输入框粘贴并发送。租客不用登录，打开链接就能看账单和收款码。',
-      confirmText: '预览',
-      cancelText: '去微信发送',
-      success: (res) => {
-        if (res.confirm) {
-          openShareWebview(result.token);
-        }
-        resolve(result);
-      },
-      fail: () => resolve(result),
-    });
-  });
+  openTenantBill(result.token);
+  return result;
 }
 
 /**
@@ -105,22 +116,8 @@ export async function forwardBillShare(billId: number): Promise<ShareLinkResult 
  * Modal copy differs slightly so landlord knows it's a one-off charge.
  */
 export async function forwardSingleChargeShare(singleChargeId: number): Promise<ShareLinkResult | null> {
-  const result = await generateAndCopyShareLink(undefined, singleChargeId);
+  const result = await generateShareResult(undefined, singleChargeId);
   if (!result) return null;
-
-  return new Promise<ShareLinkResult | null>((resolve) => {
-    Taro.showModal({
-      title: '付款链接已复制',
-      content: '下一步：打开租客的微信聊天，长按输入框粘贴并发送。租客不用登录，打开链接就能看到金额和收款码。',
-      confirmText: '预览',
-      cancelText: '去微信发送',
-      success: (res) => {
-        if (res.confirm) {
-          openShareWebview(result.token);
-        }
-        resolve(result);
-      },
-      fail: () => resolve(result),
-    });
-  });
+  openTenantBill(result.token);
+  return result;
 }

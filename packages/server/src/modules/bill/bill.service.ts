@@ -14,7 +14,7 @@ import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fe
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { UtilityReading } from '../utility-reading/utility-reading.entity';
-import { isUtilityFeeName, utilityName } from '../utility-reading/utility-reading.helpers';
+import { isUtilityFeeName, utilityName, utilityTypesForFeeRules } from '../utility-reading/utility-reading.helpers';
 
 @Injectable()
 export class BillService {
@@ -289,6 +289,7 @@ export class BillService {
     paidAmount: number;
     period: string;
     periodEnd: string | null;
+    utilityTypes: number[];
     billItems: any[];
   }> {
     const room = await this.roomRepository.findOne({ where: { id: roomId } });
@@ -362,6 +363,7 @@ export class BillService {
       paidAmount: Number(currentBillWithItems?.paidAmount) || 0,
       period: currentBillWithItems?.period || monthStr,
       periodEnd: currentBillWithItems?.periodEnd || null,
+      utilityTypes: utilityTypesForFeeRules(feeItems),
       billItems,
     };
   }

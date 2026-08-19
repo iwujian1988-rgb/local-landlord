@@ -104,6 +104,8 @@ export class SchemaCompatService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap() {
     if (this.dataSource.options.type !== 'mysql') return;
+    const database = this.dataSource.options.database;
+    if (!database || typeof database !== 'string') return;
     for (const statement of MYSQL_COMPAT_TABLES) {
       await this.dataSource.query(statement);
     }

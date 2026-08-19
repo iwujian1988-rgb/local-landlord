@@ -28,7 +28,8 @@ interface UtilityForm {
 }
 
 const monthText = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
-const stepNumber: Record<Step, number> = { 'water-choice': 1, 'water-form': 1, 'electric-choice': 2, 'electric-form': 2, summary: 3 };
+const choiceStepFor = (type: UtilityType): Step => type === 0 ? 'water-choice' : 'electric-choice';
+const formStepFor = (type: UtilityType): Step => type === 0 ? 'water-form' : 'electric-form';
 
 function emptyForm(utilityType: UtilityType, name: string): UtilityForm {
   return { utilityType, name, mode: 'none', amount: '', previousReading: '', currentReading: '', unitPrice: '', photos: [], note: '', firstReading: true };
@@ -38,10 +39,10 @@ export default function UtilityReadingPage() {
   const params = Taro.getCurrentInstance().router?.params || {};
   const roomId = Number(params.roomId) || 0;
   const [period] = useState(params.period || monthText(new Date()));
-  const [forms, setForms] = useState<UtilityForm[]>([emptyForm(0, '水费'), emptyForm(1, '电费')]);
+  const [forms, setForms] = useState<UtilityForm[]>([]);
   const [step, setStep] = useState<Step>('water-choice');
   const [roomName, setRoomName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingType, setUploadingType] = useState<UtilityType | null>(null);
@@ -74,8 +75,11 @@ export default function UtilityReadingPage() {
           firstReading: item.isFirstReading,
         } as UtilityForm;
       });
+      if (nextForms.length === 0) throw new Error('当前租约未设置水费或电费');
       setForms(nextForms);
-      if (nextForms.some(form => form.mode !== 'none')) setStep('summary');
+      const feeTitle = nextForms.length === 2 ? '水电费' : nextForms[0].name;
+      Taro.setNavigationBarTitle({ title: `本月${feeTitle}` });
+      setStep(nextForms.some(form => form.mode !== 'none') ? 'summary' : choiceStepFor(nextForms[0].utilityType));
     } catch (err) {
       console.error('[UtilityReading] load failed:', err);
       setError(true);
@@ -85,9 +89,23 @@ export default function UtilityReadingPage() {
   }, [roomId, period]);
 
   useDidShow(() => {
-    Taro.setNavigationBarTitle({ title: '本月水电费' });
     loadData();
   });
+
+  const nextTypeAfter = useCallback((utilityType: UtilityType): UtilityType | null => {
+    const index = forms.findIndex(form => form.utilityType === utilityType);
+    return index >= 0 && index < forms.length - 1 ? forms[index + 1].utilityType : null;
+  }, [forms]);
+
+  const previousTypeBefore = useCallback((utilityType: UtilityType): UtilityType | null => {
+    const index = forms.findIndex(form => form.utilityType === utilityType);
+    return index > 0 ? forms[index - 1].utilityType : null;
+  }, [forms]);
+
+  const moveAfterType = useCallback((utilityType: UtilityType) => {
+    const nextType = nextTypeAfter(utilityType);
+    setStep(nextType == null ? 'summary' : choiceStepFor(nextType));
+  }, [nextTypeAfter]);
 
   const amountFor = useCallback((form: UtilityForm) => {
     if (form.mode === 'manual') return Number(form.amount) || 0;
@@ -100,9 +118,9 @@ export default function UtilityReadingPage() {
 
   const chooseMode = useCallback((utilityType: UtilityType, mode: Mode) => {
     updateForm(utilityType, { mode });
-    if (mode === 'none') setStep(utilityType === 0 ? 'electric-choice' : 'summary');
-    else setStep(utilityType === 0 ? 'water-form' : 'electric-form');
-  }, [updateForm]);
+    if (mode === 'none') moveAfterType(utilityType);
+    else setStep(formStepFor(utilityType));
+  }, [moveAfterType, updateForm]);
 
   const validateAndNext = useCallback((utilityType: UtilityType) => {
     const form = formFor(utilityType);
@@ -120,8 +138,8 @@ export default function UtilityReadingPage() {
         return;
       }
     }
-    setStep(utilityType === 0 ? 'electric-choice' : 'summary');
-  }, [formFor]);
+    moveAfterType(utilityType);
+  }, [formFor, moveAfterType]);
 
   const handlePhoto = useCallback(async (type: UtilityType, sourceType: 'camera' | 'album') => {
     if (uploadingType !== null) return;
@@ -166,9 +184,11 @@ export default function UtilityReadingPage() {
 
   const renderChoice = (utilityType: UtilityType) => {
     const label = utilityType === 0 ? '水费' : '电费';
+    const previousType = previousTypeBefore(utilityType);
+    const stepNumber = forms.findIndex(form => form.utilityType === utilityType) + 1;
     return <View className="utility-question-card">
-      {utilityType === 1 && <Text className="utility-back" onClick={() => setStep('water-choice')}>‹ 上一步</Text>}
-      <Text className="utility-question-kicker">第 {stepNumber[step]} 步，共 3 步</Text>
+      {previousType != null && <Text className="utility-back" onClick={() => setStep(choiceStepFor(previousType))}>‹ 上一步</Text>}
+      <Text className="utility-question-kicker">第 {stepNumber} 步，共 {forms.length + 1} 步</Text>
       <Text className="utility-question-title">这个月收{label}吗？</Text>
       <Text className="utility-question-desc">选一个最符合的情况就行。</Text>
       <View className="utility-choice-list">
@@ -183,9 +203,11 @@ export default function UtilityReadingPage() {
     const form = formFor(utilityType);
     const meterLabel = utilityType === 0 ? '水表' : '电表';
     const usage = Math.max(0, (Number(form.currentReading) || 0) - (Number(form.previousReading) || 0));
+    const nextType = nextTypeAfter(utilityType);
+    const stepNumber = forms.findIndex(item => item.utilityType === utilityType) + 1;
     return <View className="utility-question-card">
-      <Text className="utility-back" onClick={() => setStep(utilityType === 0 ? 'water-choice' : 'electric-choice')}>‹ 换一种填写方式</Text>
-      <Text className="utility-question-kicker">第 {stepNumber[step]} 步，共 3 步</Text>
+      <Text className="utility-back" onClick={() => setStep(choiceStepFor(utilityType))}>‹ 换一种填写方式</Text>
+      <Text className="utility-question-kicker">第 {stepNumber} 步，共 {forms.length + 1} 步</Text>
       <Text className="utility-question-title">{form.mode === 'manual' ? `这个月${form.name}收多少？` : `看一下${meterLabel}，填这 3 个数`}</Text>
       {form.mode === 'manual' ? <>
         <Text className="utility-question-desc">只填本月一共要收的钱。</Text>
@@ -203,22 +225,22 @@ export default function UtilityReadingPage() {
         <View className="utility-photo-button" onClick={() => handlePhoto(utilityType, 'album')}><Icon name="file-text" size={28} color="var(--accent-dk)" /><Text>从相册选</Text></View>
       </View>
       {!!form.photos.length && <View className="utility-photo-list">{form.photos.map((photo, index) => <View className="utility-photo" key={photo}><Image src={resolveAsset(photo)} mode="aspectFill" /><Text onClick={() => updateForm(utilityType, { photos: form.photos.filter((_, photoIndex) => photoIndex !== index) })}>删除</Text></View>)}</View>}
-      <View className="utility-next" onClick={() => validateAndNext(utilityType)}><Text>{utilityType === 0 ? '下一步，填电费' : '下一步，看看合计'}</Text></View>
+      <View className="utility-next" onClick={() => validateAndNext(utilityType)}><Text>{nextType == null ? '下一步，看看合计' : `下一步，填${nextType === 0 ? '水费' : '电费'}`}</Text></View>
     </View>;
   };
 
   const renderSummary = () => <View className="utility-question-card">
-    <Text className="utility-question-kicker">第 3 步，共 3 步</Text>
-    <Text className="utility-question-title">这月水电一共 {formatAmount(total)} 元</Text>
+    <Text className="utility-question-kicker">第 {forms.length + 1} 步，共 {forms.length + 1} 步</Text>
+    <Text className="utility-question-title">这月{forms.map(form => form.name).join('和')}一共 {formatAmount(total)} 元</Text>
     <Text className="utility-question-desc">确认后会自动放进本月账单。</Text>
     {forms.map(form => <View key={form.utilityType} className="utility-summary-row"><View><Text className="utility-summary-name">{form.name}</Text><Text className="utility-summary-detail">{form.mode === 'none' ? '本月不收' : form.mode === 'metered' ? '按表计算' : '直接填写'}</Text></View><View className="utility-summary-right"><Text>{formatAmount(amountFor(form))} 元</Text><Text onClick={() => setStep(form.utilityType === 0 ? 'water-choice' : 'electric-choice')}>修改</Text></View></View>)}
-    <View className="utility-total"><Text>本月水电合计</Text><Text>{formatAmount(total)} 元</Text></View>
+    <View className="utility-total"><Text>本月费用合计</Text><Text>{formatAmount(total)} 元</Text></View>
     <View className={`utility-save${saving || uploadingType !== null ? ' disabled' : ''}`} onClick={saving || uploadingType !== null ? undefined : handleSave}><Text>{saving ? '保存中…' : '确认记到账单'}</Text></View>
   </View>;
 
   return <View className="page-utility-reading"><ScrollView className="utility-scroll" scrollY>
     {loading && <Loading />}
     {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
-    {!loading && !error && <><View className="utility-hero"><Text className="utility-period">{period}</Text><Text className="utility-title">{roomName} · 本月水电费</Text></View>{step === 'water-choice' && renderChoice(0)}{step === 'water-form' && renderForm(0)}{step === 'electric-choice' && renderChoice(1)}{step === 'electric-form' && renderForm(1)}{step === 'summary' && renderSummary()}<View style={{ height: '48px' }} /></>}
+    {!loading && !error && <><View className="utility-hero"><Text className="utility-period">{period}</Text><Text className="utility-title">{roomName} · 本月{forms.length === 2 ? '水电费' : forms[0]?.name || '费用'}</Text></View>{step === 'water-choice' && renderChoice(0)}{step === 'water-form' && renderForm(0)}{step === 'electric-choice' && renderChoice(1)}{step === 'electric-form' && renderForm(1)}{step === 'summary' && renderSummary()}<View style={{ height: '48px' }} /></>}
   </ScrollView></View>;
 }

@@ -3,9 +3,11 @@ import Taro, { useDidHide } from '@tarojs/taro';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
+import Loading from '../../components/Loading';
+import ErrorState from '../../components/ErrorState';
 import { withInitialPayment, withOptionalTenantDates } from '../../utils/tenant-form';
 import { firstFormError, validateTenantForm } from '../../utils/form-validation';
-import { calculateInitialFeeTotal, FeeFormItem, normalizeFeeItems } from '../../utils/fee-form';
+import { applyBillingMonthsDefault, calculateInitialFeeTotal, calculateMoveInGrandTotal, describeInitialFee, FeeFormItem, normalizeFeeItems } from '../../utils/fee-form';
 import { validateFeeForm } from '../../utils/form-validation';
 import { getNextRentCollectionText, getNextTenantWizardIndex, getPreviousTenantWizardIndex, getRentInitialMonthOptions, getTenantWizardStepIds } from '../../utils/tenant-wizard';
 import './index.scss';
@@ -79,6 +81,8 @@ export default function AddTenant() {
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isEdit, setIsEdit] = useState(false);
+  const [editLoading, setEditLoading] = useState(tenantId > 0);
+  const [editLoadError, setEditLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [currentRoomName, setCurrentRoomName] = useState('');
   const [currentRoomRent, setCurrentRoomRent] = useState(0);
@@ -146,47 +150,55 @@ export default function AddTenant() {
   useEffect(() => {
     if (urlRoomId > 0) {
       loadRoom();
-      loadFeeItems();
+      if (tenantId <= 0) loadFeeItems();
     }
-  }, [urlRoomId, loadFeeItems, loadRoom]);
+  }, [urlRoomId, tenantId, loadFeeItems, loadRoom]);
 
   // Pre-fill for edit mode
-  useEffect(() => {
-    if (tenantId > 0) {
-      get<any>(`/tenants/${tenantId}`).then((res) => {
-        if (res.code === 0 && res.data) {
-          const found = res.data;
-          Taro.setNavigationBarTitle({ title: '编辑租客' });
-          setIsEdit(true);
-          setName(found.name || '');
-          setPhone(found.phone || '');
-          setMoveInDate(found.moveInDate || '');
-          setContractEndDate(found.contractEndDate || '');
-          setDeposit(found.deposit ? String(found.deposit) : '');
-          setLoadedPayMonths(Number(found.payMonths) || 1);
-          setNote(found.note || '');
-          const day = found.rentDay;
-          if (day !== undefined) {
-            setRentDay(day);
-          }
-          // P0-A: 回填入住实收
-          if (found.initialPaymentMethod) {
-            setInitialReceived(true);
-            const mIdx = PAYMENT_METHOD_VALUES.indexOf(found.initialPaymentMethod);
-            setInitialMethodIdx(mIdx >= 0 ? mIdx : 0);
-            setInitialDate(found.initialPaymentDate || todayISO());
-            setInitialAmount(found.initialPaymentAmount != null ? String(found.initialPaymentAmount) : '');
-            setInitialDepositAmount(found.initialDepositAmount != null ? String(found.initialDepositAmount) : '');
-          }
-          // P0-C: 回填入住水电读数
-          if (found.moveInReading) {
-            setMoveInReading(found.moveInReading);
-          }
-          if (Array.isArray(found.feeItems)) setFeeItems(normalizeFeeItems(found.feeItems, Number(found.payMonths) || 1));
-        }
-      }).catch(() => {});
+  const loadTenantForEdit = useCallback(async () => {
+    if (tenantId <= 0) return;
+    setEditLoading(true);
+    setEditLoadError(false);
+    try {
+      const res = await get<any>(`/tenants/${tenantId}`);
+      if (res.code !== 0 || !res.data) throw new Error('租客资料为空');
+      const found = res.data;
+      const payMonths = Number(found.payMonths) || 1;
+      const restoredFees = normalizeFeeItems(found.feeItems, payMonths);
+      Taro.setNavigationBarTitle({ title: '编辑租客' });
+      setIsEdit(true);
+      setName(found.name || '');
+      setPhone(found.phone || '');
+      setMoveInDate(found.moveInDate || '');
+      setContractEndDate(found.contractEndDate || '');
+      setDeposit(found.deposit != null ? String(found.deposit) : '');
+      setLoadedPayMonths(payMonths);
+      setNote(found.note || '');
+      setRentDay(found.rentDay !== undefined ? Number(found.rentDay) : 1);
+      setInitialReceived(!!found.initialPaymentMethod);
+      if (found.initialPaymentMethod) {
+        const mIdx = PAYMENT_METHOD_VALUES.indexOf(found.initialPaymentMethod);
+        setInitialMethodIdx(mIdx >= 0 ? mIdx : 0);
+        setInitialDate(found.initialPaymentDate || todayISO());
+        setInitialAmount(found.initialPaymentAmount != null ? String(found.initialPaymentAmount) : '');
+        setInitialDepositAmount(found.initialDepositAmount != null ? String(found.initialDepositAmount) : '');
+      }
+      setMoveInReading(found.moveInReading || '');
+      feeDraftRestoredRef.current = true;
+      setFeeItems(restoredFees);
+      setShowExtraFees(restoredFees.some(fee => !fee.isRent));
+      setWizardIndex(getTenantWizardStepIds(true).length - 1);
+    } catch (error) {
+      console.error('[AddTenant] 加载租客资料失败:', error);
+      setEditLoadError(true);
+    } finally {
+      setEditLoading(false);
     }
   }, [tenantId]);
+
+  useEffect(() => {
+    loadTenantForEdit();
+  }, [loadTenantForEdit]);
 
   // Infer payment method once both rent and deposit are known (edit mode)
   useEffect(() => {
@@ -485,6 +497,7 @@ export default function AddTenant() {
   const fixedExtraFees = extraFees.filter(fee => fee.type === 'fixed');
   const manualExtraFees = extraFees.filter(fee => fee.type === 'manual');
   const previewTotal = calculateInitialFeeTotal(feeItems);
+  const previewGrandTotal = calculateMoveInGrandTotal(deposit, feeItems);
   const previewRentTotal = rentFee
     ? calculateInitialFeeTotal([rentFee])
     : Math.round((currentRoomRent || 0) * previewPayMonths * 100) / 100;
@@ -560,6 +573,13 @@ export default function AddTenant() {
     setWizardIndex(index => getPreviousTenantWizardIndex(index, wizardStepIds, isEdit, initialReceived));
     Taro.pageScrollTo({ scrollTop: 0, duration: 200 });
   };
+
+  if (tenantId > 0 && editLoading) {
+    return <View className="page-add-tenant"><Loading /></View>;
+  }
+  if (tenantId > 0 && editLoadError) {
+    return <View className="page-add-tenant"><ErrorState description="租客资料加载失败，请重试" onRetry={loadTenantForEdit} /></View>;
+  }
 
   return (
     <View className="page-add-tenant">
@@ -803,7 +823,7 @@ export default function AddTenant() {
                   <View className="elder-fee-summary-row" key={`${fee.name}-${index}`}>
                     <View onClick={() => { setFeeEditorIndex(index); setFeeEditorStage(fee.type === 'manual' ? 3 : (fee.name ? 1 : 0)); }}>
                       <Text className="selected-fee-name">{fee.name || '未命名费用'}</Text>
-                      <Text className="rent-fee-note">{fee.type === 'manual' ? '收租时再填金额' : fee.collectionTiming === 'arrears' ? `${fee.amount || 0} 元/月，入住后再收` : `${fee.amount || 0} 元/月，入住先收 ${fee.initialMonths || 1} 个月`}</Text>
+                      <Text className="rent-fee-note">{fee.type === 'manual' ? '收租时再填金额' : describeInitialFee(fee)}</Text>
                     </View>
                     <Text className="selected-fee-remove" onClick={() => removeFee(index)}>移除</Text>
                   </View>
@@ -813,9 +833,10 @@ export default function AddTenant() {
             {extraFees.length > 0 && <View className="fee-preview compact">
               <Text className="fee-preview-title">入住费用合计</Text>
               <View className="fee-preview-row"><Text>房租</Text><Text>{previewRentTotal} 元</Text></View>
-              {fixedExtraFees.map((fee, index) => <View className="fee-preview-row" key={`${fee.name}-preview-${index}`}><Text>{fee.name || '其他费用'}</Text><Text>{fee.collectionTiming === 'arrears' ? '本次不收' : `${calculateInitialFeeTotal([fee])} 元`}</Text></View>)}
+              {fixedExtraFees.map((fee, index) => <View className="fee-preview-row" key={`${fee.name}-preview-${index}`}><Text>{fee.name || '其他费用'}</Text><Text>{describeInitialFee(fee)}</Text></View>)}
               {manualExtraFees.map((fee, index) => <View className="fee-preview-row muted" key={`${fee.name}-manual-${index}`}><Text>{fee.name || '其他费用'}</Text><Text>以后填写</Text></View>)}
-              <View className="fee-preview-total"><Text>不含押金</Text><Text>{previewTotal} 元</Text></View>
+              <View className="fee-preview-row"><Text>押金</Text><Text>{Number(deposit) || 0} 元</Text></View>
+              <View className="fee-preview-total"><Text>本次应收合计</Text><Text>{previewGrandTotal} 元</Text></View>
             </View>}
           </>
         ) : activeFeeEditor && (
@@ -831,7 +852,7 @@ export default function AddTenant() {
             </View>}
             {feeEditorStage === 2 && <View>
               <Text className="elder-question-title">平时多久收一次？</Text>
-              <View className="elder-choice-stack">{MONTH_OPTIONS.map(months => <View key={`billing-${months}`} className={`elder-choice-row${activeFeeEditor.billingMonths === months ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { billingMonths: months })}><Text className="elder-choice-title">{months === 1 ? '每月收一次' : `每 ${months} 个月收一次`}</Text></View>)}</View>
+              <View className="elder-choice-stack">{MONTH_OPTIONS.map(months => <View key={`billing-${months}`} className={`elder-choice-row${activeFeeEditor.billingMonths === months ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, applyBillingMonthsDefault(activeFeeEditor, months))}><Text className="elder-choice-title">{months === 1 ? '每月收一次' : `每 ${months} 个月收一次`}</Text></View>)}</View>
             </View>}
             {feeEditorStage === 3 && activeFeeEditor.type === 'fixed' && <View>
               <Text className="elder-question-title">这项费用什么时候收？</Text>
@@ -846,7 +867,7 @@ export default function AddTenant() {
                 </View>
               </View>
               {activeFeeEditor.collectionTiming !== 'arrears' && <View className="fee-initial-month-picker">
-                <Text className="fee-initial-month-label">先收几个月？</Text>
+                <Text className="fee-initial-month-label">入住这次先收几个月？</Text>
                 <View className="rent-advance-options">{MONTH_OPTIONS.map(months => <View key={`initial-${months}`} className={`rent-advance-option${activeFeeEditor.initialMonths === months ? ' active' : ''}`} onClick={() => updateFee(feeEditorIndex, { initialMonths: months })}><Text>{months} 个月</Text></View>)}</View>
               </View>}
             </View>}
@@ -885,7 +906,7 @@ export default function AddTenant() {
               <View className="fee-preview">
                 <View className="fee-preview-row"><Text>应收押金</Text><Text>{Number(deposit) || 0} 元</Text></View>
                 <View className="fee-preview-row"><Text>房租和其他费用</Text><Text>{previewTotal} 元</Text></View>
-                <View className="fee-preview-total"><Text>本次合计</Text><Text>{Math.round(((Number(deposit) || 0) + previewTotal) * 100) / 100} 元</Text></View>
+                <View className="fee-preview-total"><Text>本次合计</Text><Text>{previewGrandTotal} 元</Text></View>
               </View>
               <View className="form-sub-row">
                 <Text className="form-sub-label">实收押金</Text>
@@ -1004,12 +1025,31 @@ export default function AddTenant() {
             <View className="wizard-review-row"><Text>收租日</Text><Text>{rentDayToLabel(rentDay)}</Text></View>
             <View className="wizard-review-row"><Text>押付方式</Text><Text>{paymentIdx >= 0 ? PAYMENT_LABELS[paymentIdx] : '未选择'}</Text></View>
             <View className="wizard-review-row"><Text>押金</Text><Text>{deposit ? `${deposit} 元` : '未填写'}</Text></View>
-            <View className="wizard-review-row"><Text>其他费用</Text><Text>{extraFees.length ? extraFees.map(fee => fee.name || '其他').join('、') : '无'}</Text></View>
+            <View className="wizard-review-row"><Text>入住房租</Text><Text>{rentFee ? describeInitialFee(rentFee) : '未设置'}</Text></View>
+            <View className="wizard-review-row wizard-review-fees">
+              <Text>其他费用</Text>
+              <View className="wizard-review-fee-details">
+                {extraFees.length ? extraFees.map((fee, index) => (
+                  <View className="wizard-review-fee-line" key={`${fee.name}-review-${index}`}>
+                    <Text>{fee.name || '其他'}</Text>
+                    <Text>{describeInitialFee(fee)}</Text>
+                  </View>
+                )) : <Text>无</Text>}
+              </View>
+            </View>
             {!isEdit && <View className="wizard-review-row"><Text>入住收款</Text><Text>{initialReceived ? `押金 ${initialDepositAmount || 0} 元，费用 ${initialAmount || 0} 元` : '尚未收到'}</Text></View>}
           </View>
+          {isEdit && <View className="edit-review-actions">
+            <View onClick={() => setWizardIndex(wizardStepIds.indexOf(0))}><Text>修改基本资料</Text></View>
+            <View onClick={() => setWizardIndex(wizardStepIds.indexOf(3))}><Text>修改收租方式</Text></View>
+            <View onClick={() => setWizardIndex(wizardStepIds.indexOf(5))}><Text>修改收费项目</Text></View>
+          </View>}
           <View className="wizard-review-total">
-            <Text>入住应收费用（不含押金）</Text>
-            <Text>{previewTotal} 元</Text>
+            <View className="wizard-review-total-copy">
+              <Text className="wizard-review-total-label">本次应收合计</Text>
+              <Text className="wizard-review-total-hint">押金 {Number(deposit) || 0} 元 + 房租及费用 {previewTotal} 元</Text>
+            </View>
+            <Text className="wizard-review-total-value">{previewGrandTotal} 元</Text>
           </View>
         </View>
       )}

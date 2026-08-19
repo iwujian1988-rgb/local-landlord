@@ -7,8 +7,10 @@ import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
+import { FeeItem } from '../fee/fee-item.entity';
+import { resolveFeeRules } from '../fee/fee-rules';
 import { SaveUtilityReadingItemDto, SaveUtilityReadingsDto } from './dto/save-utility-readings.dto';
-import { isUtilityFeeName, toCentsAmount, toFourDecimal, utilityName, UTILITY_TYPE } from './utility-reading.helpers';
+import { isUtilityFeeName, toCentsAmount, toFourDecimal, utilityName, utilityTypesForFeeRules } from './utility-reading.helpers';
 
 @Injectable()
 export class UtilityReadingService {
@@ -21,6 +23,8 @@ export class UtilityReadingService {
     private readonly propertyRepository: Repository<Property>,
     @InjectRepository(Tenant)
     private readonly tenantRepository: Repository<Tenant>,
+    @InjectRepository(FeeItem)
+    private readonly feeItemRepository: Repository<FeeItem>,
     @InjectEntityManager()
     private readonly entityManager: EntityManager,
   ) {}
@@ -38,8 +42,10 @@ export class UtilityReadingService {
     }
     const tenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
     if (!tenant) throw new BadRequestException('该房间暂无在租租客，不能录入水电');
+    const utilityTypes = await this.getAllowedUtilityTypes(roomId, tenant);
+    if (utilityTypes.length === 0) throw new BadRequestException('当前租约未设置水费或电费');
     const readings = await this.utilityRepository.find({ where: { roomId, tenantId: tenant.id, period } });
-    const records = await Promise.all([UTILITY_TYPE.water, UTILITY_TYPE.electricity].map(async utilityType => {
+    const records = await Promise.all(utilityTypes.map(async utilityType => {
       const existing = readings.find(record => record.utilityType === utilityType);
       const latest = await this.utilityRepository.createQueryBuilder('reading')
         .where('reading.room_id = :roomId', { roomId })
@@ -64,6 +70,7 @@ export class UtilityReadingService {
       tenantId: tenant.id,
       tenantName: tenant.name,
       period,
+      utilityTypes,
       bill: bill ? { id: bill.id, status: bill.status, sentAt: bill.sentAt } : null,
       records,
     };
@@ -77,6 +84,14 @@ export class UtilityReadingService {
     return this.entityManager.transaction(async manager => {
       const tenant = await manager.findOne(Tenant, { where: { roomId, status: 1 } });
       if (!tenant) throw new BadRequestException('该房间暂无在租租客，不能录入水电');
+      const room = await manager.findOne(Room, { where: { id: roomId } });
+      if (!room) throw new NotFoundException('房间不存在');
+      const legacyFeeItems = await manager.find(FeeItem, { where: { roomId }, order: { sortOrder: 'ASC' } });
+      const allowedTypes = utilityTypesForFeeRules(resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0));
+      if (allowedTypes.length === 0) throw new BadRequestException('当前租约未设置水费或电费');
+      if (dto.readings.some(reading => !allowedTypes.includes(reading.utilityType))) {
+        throw new BadRequestException('提交的水电项目不属于当前租约');
+      }
       const bill = await manager.findOne(Bill, { where: { roomId, tenantId: tenant.id, period: dto.period } });
       if (bill && [1, 3, 4].includes(bill.status)) {
         throw new BadRequestException('该月账单已收款或已作废，不能再修改水电记录');
@@ -103,6 +118,13 @@ export class UtilityReadingService {
       }
       return Promise.all(saved.map(record => this.toResponse(record)));
     });
+  }
+
+  private async getAllowedUtilityTypes(roomId: number, tenant: Tenant): Promise<number[]> {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('房间不存在');
+    const legacyFeeItems = await this.feeItemRepository.find({ where: { roomId }, order: { sortOrder: 'ASC' } });
+    return utilityTypesForFeeRules(resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0));
   }
 
   private async normalizeReading(

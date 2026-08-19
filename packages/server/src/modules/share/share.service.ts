@@ -19,9 +19,12 @@ export interface ShareBillPayload {
   roomName: string;
   tenantName: string;
   period: string;
+  periodEnd?: string | null;
   items: { name: string; amount: number }[];
   totalAmount: number;
   paidAmount: number;
+  outstandingAmount: number;
+  isPaid: boolean;
   qrCodes: { type: string; imageUrl: string; payeeName: string }[];
   payeeName: string;
   landlordName: string;
@@ -114,6 +117,7 @@ export class ShareService {
       relations: ['items', 'tenant', 'room'],
     });
     if (!bill) throw new NotFoundException('账单不存在');
+    if (bill.status === 4) throw new ForbiddenException('账单已取消，请勿付款');
 
     const room = bill.room;
     if (!room) throw new NotFoundException('房间信息缺失');
@@ -134,16 +138,30 @@ export class ShareService {
 
     const TYPE_MAP: Record<number, string> = { 0: 'wechat', 1: 'alipay', 2: 'bank' };
 
+    const items = (bill.items || []).map(it => ({
+      name: it.feeName,
+      amount: this.money(it.amount),
+    }));
+    const storedTotal = this.money(bill.totalAmount);
+    const itemTotal = this.money(items.reduce((sum, item) => sum + item.amount, 0));
+    const totalAmount = items.length > 0 ? itemTotal : storedTotal;
+    if (items.length > 0 && Math.abs(storedTotal - itemTotal) > 0.009) {
+      this.logger.error(`账单 ${bill.id} 金额不一致: total=${storedTotal}, items=${itemTotal}`);
+    }
+    const rawPaid = bill.status === 1 ? totalAmount : this.money(bill.paidAmount);
+    const paidAmount = this.money(Math.min(totalAmount, rawPaid));
+    const outstandingAmount = this.money(Math.max(0, totalAmount - paidAmount));
+
     return {
       roomName: room.name,
       tenantName: bill.tenant?.name || '',
       period: bill.period,
-      items: (bill.items || []).map(it => ({
-        name: it.feeName,
-        amount: Number(it.amount),
-      })),
-      totalAmount: Number(bill.totalAmount),
-      paidAmount: Number(bill.paidAmount) || 0,
+      periodEnd: bill.periodEnd,
+      items: items.length > 0 ? items : [{ name: '应收费用', amount: storedTotal }],
+      totalAmount,
+      paidAmount,
+      outstandingAmount,
+      isPaid: outstandingAmount <= 0,
       qrCodes: qrCodes
         .filter(q => q.imageUrl)
         .map(q => ({
@@ -188,7 +206,7 @@ export class ShareService {
     });
 
     const TYPE_MAP: Record<number, string> = { 0: 'wechat', 1: 'alipay', 2: 'bank' };
-    const amount = Number(charge.amount) || 0;
+    const amount = this.money(charge.amount);
     const isPaid = charge.status === 1;
 
     return {
@@ -200,6 +218,8 @@ export class ShareService {
       items: [{ name: charge.feeType, amount }],
       totalAmount: amount,
       paidAmount: isPaid ? amount : 0,
+      outstandingAmount: isPaid ? 0 : amount,
+      isPaid,
       qrCodes: qrCodes
         .filter(q => q.imageUrl)
         .map(q => ({
@@ -211,5 +231,11 @@ export class ShareService {
       landlordName: landlord.name || '',
       paymentNote: charge.note || landlord.paymentNote || '',
     };
+  }
+
+  private money(value: unknown): number {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) return 0;
+    return Math.round(amount * 100) / 100;
   }
 }

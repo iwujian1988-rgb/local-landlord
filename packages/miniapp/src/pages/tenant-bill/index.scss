@@ -1,0 +1,71 @@
+.tenant-bill-page {
+  min-height: 100vh;
+  background: #F8F3EC;
+  color: #342D28;
+}
+
+.tenant-bill-scroll { height: 100vh; }
+
+.tenant-bill-hero {
+  padding: 34px 36px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tenant-bill-room { font-size: 42px; font-weight: 800; }
+.tenant-bill-period { margin-top: 8px; font-size: 28px; color: #786B61; }
+.tenant-bill-tenant { margin-top: 8px; font-size: 25px; color: #9A8D82; }
+
+.tenant-amount-card,
+.tenant-card {
+  margin: 0 28px 24px;
+  padding: 34px;
+  border-radius: 34px;
+  background: #FFFDF9;
+  box-shadow: 0 10px 34px rgba(82, 66, 52, 0.07);
+  box-sizing: border-box;
+}
+
+.tenant-amount-card {
+  text-align: center;
+  background: linear-gradient(145deg, #FF9657, #F36D4A);
+  color: #FFF;
+}
+
+.tenant-amount-card.paid { background: linear-gradient(145deg, #7DBA78, #5CA66B); }
+.tenant-amount-label { display: block; font-size: 28px; font-weight: 700; opacity: .95; }
+.tenant-amount-line { margin-top: 8px; display: flex; align-items: baseline; justify-content: center; }
+.tenant-amount-number { font-size: 76px; font-weight: 900; line-height: 1.2; }
+.tenant-amount-unit { margin-left: 8px; font-size: 28px; font-weight: 700; }
+.tenant-paid-tip { display: block; margin-top: 12px; font-size: 24px; opacity: .9; }
+
+.tenant-card-title { display: block; margin-bottom: 22px; font-size: 34px; font-weight: 800; }
+.tenant-card-help { display: block; margin: -12px 0 24px; color: #8F8176; font-size: 25px; }
+.tenant-item-row { display: flex; justify-content: space-between; padding: 15px 0; color: #6F6258; font-size: 29px; }
+.tenant-item-row text:last-child { color: #342D28; font-weight: 700; }
+.tenant-item-total { margin-top: 14px; padding-top: 24px; border-top: 2px solid #EEE5DC; display: flex; justify-content: space-between; font-size: 32px; font-weight: 800; }
+
+.tenant-qr-item { padding: 26px 0 32px; border-bottom: 2px solid #F0E8DF; text-align: center; }
+.tenant-qr-item:last-of-type { border-bottom: 0; }
+.tenant-qr-label { display: block; margin-bottom: 18px; font-size: 30px; font-weight: 800; }
+.tenant-qr-image { display: block; width: 420px; height: 420px; margin: 0 auto; border-radius: 20px; background: #FFF; }
+.tenant-qr-payee { display: block; margin-top: 16px; color: #6F6258; font-size: 26px; }
+.tenant-safe-tip { display: block; margin-top: 22px; color: #B16B45; font-size: 24px; text-align: center; }
+.tenant-empty-qr, .tenant-note-card { color: #6F6258; font-size: 27px; }
+.tenant-note-text { line-height: 1.7; }
+
+.tenant-share-button {
+  margin: 12px 28px 24px;
+  height: 100px;
+  line-height: 100px;
+  border: 0;
+  border-radius: 50px;
+  background: #FF8D4D;
+  color: #332B25;
+  font-size: 34px;
+  font-weight: 800;
+}
+.tenant-share-button::after { border: 0; }
+.tenant-footer { display: block; padding: 0 40px; color: #A4978B; font-size: 22px; text-align: center; }
+.tenant-bottom-space { height: 70px; }

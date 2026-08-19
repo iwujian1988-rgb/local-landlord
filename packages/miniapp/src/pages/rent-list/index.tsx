@@ -8,7 +8,7 @@ import ErrorState from '../../components/ErrorState';
 import { useCallback, useState } from 'react';
 import { get, put } from '../../services/request';
 import { requestNotification } from '../../services/notification';
-import { forwardBillShare, generateAndCopyShareLink } from '../../services/share';
+import { forwardBillShare } from '../../services/share';
 import { RENT_LIST_TAB_INDEX } from '../../constants/app';
 import './index.scss';
 
@@ -203,36 +203,26 @@ export default function RentList() {
     if (batchLoading) return;
     Taro.showModal({
       title: '批量发送提醒',
-      content: `将为 ${overdueItems.length} 笔逾期款项生成账单链接并复制汇总文字到剪贴板，方便你逐个发给租客。`,
-      confirmText: '开始生成',
+      content: `将把 ${overdueItems.length} 笔逾期款项整理成提醒清单。付款账单请在每位租客旁点“催一下”后转发。`,
+      confirmText: '复制清单',
       cancelText: '取消',
       success: async (res) => {
         if (!res.confirm) return;
         setBatchLoading(true);
         const lines: string[] = [];
-        let successCount = 0;
-        let failCount = 0;
         const limit = overdueItems.slice(0, 10);
         for (const item of limit) {
-          if (item.entry.billId) {
-            const result = await generateAndCopyShareLink(item.entry.billId);
-            if (result) {
-              lines.push(`${item.entry.roomName} · ${item.entry.tenantName}：${result.shareUrl}`);
-              successCount++;
-            } else {
-              failCount++;
-            }
-          }
+          const remaining = Math.max(0, item.entry.totalAmount - (item.entry.paidAmount || 0));
+          lines.push(`${item.entry.roomName} · ${item.entry.tenantName}：待收 ${remaining} 元`);
         }
         const extraCount = Math.max(0, overdueItems.length - limit.length);
         const summary = lines.join('\n')
-          + (extraCount > 0 ? `\n…等 ${extraCount} 笔` : '')
-          + (failCount > 0 ? `\n（${failCount} 笔生成失败）` : '');
+          + (extraCount > 0 ? `\n…等 ${extraCount} 笔` : '');
         Taro.setClipboardData({ data: summary, success: () => {} });
         setBatchLoading(false);
         Taro.showModal({
-          title: '汇总已复制到剪贴板',
-          content: `成功 ${successCount} 笔${failCount > 0 ? `，失败 ${failCount} 笔` : ''}。粘贴到微信群发或逐个发给租客。`,
+          title: '提醒清单已复制',
+          content: '需要发送付款账单时，请点对应租客的“催一下”，再点“转发给租客”。',
           confirmText: '我知道了',
           showCancel: false,
         });

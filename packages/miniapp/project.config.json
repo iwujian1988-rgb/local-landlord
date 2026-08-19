@@ -23,7 +23,7 @@
     "uploadWithSourceMap": true,
     "compileHotReLoad": false,
     "lazyloadPlaceholderEnable": false,
-    "useMultiFrameRuntime": true,
+    "useMultiFrameRuntime": false,
     "useApiHook": true,
     "useApiHostProcess": true,
     "babelSetting": {
@@ -51,5 +51,5 @@
     "include": []
   },
   "editorSetting": {},
-  "libVersion": "3.16.1"
+  "libVersion": "3.16.0"
 }

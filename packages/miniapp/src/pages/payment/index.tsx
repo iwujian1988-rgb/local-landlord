@@ -155,8 +155,8 @@ export default function Payment() {
     });
   }, [roomName, period, items, totalAmount, payeeName]);
 
-  // Generate H5 share link (with QR codes) and copy to clipboard
-  const handleShareH5 = useCallback(async () => {
+  // Open the native public mini-program bill, then use its share button.
+  const handleOpenTenantBill = useCallback(async () => {
     if (shareLoading) return;
     if (!billId && !singleChargeId) {
       Taro.showToast({ title: '请先生成账单', icon: 'none' });
@@ -245,10 +245,10 @@ export default function Payment() {
           <View className="payment-primary-cta">
             <View
               className={`payment-btn primary full${shareLoading ? ' loading' : ''}`}
-              onClick={handleShareH5}
+              onClick={handleOpenTenantBill}
             >
               <Icon name="send" size={28} color="currentColor" />
-              <Text className="payment-btn-text">{shareLoading ? '生成中...' : '复制付款链接'}</Text>
+              <Text className="payment-btn-text">{shareLoading ? '生成中...' : '打开租客账单'}</Text>
             </View>
           </View>
         )}

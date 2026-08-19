@@ -179,16 +179,18 @@ export default function Contracts() {
 
   return (
     <View className="page-contracts">
-      <ScrollView className="contracts-filter" scrollX>
-        {filters.map((f) => (
-          <View
-            key={f.key}
-            className={`filter-tab ${activeFilter === f.key ? 'active' : ''}`}
-            onClick={() => setActiveFilter(f.key)}
-          >
-            <Text className="filter-tab-text">{f.label}</Text>
-          </View>
-        ))}
+      <ScrollView className="contracts-filter" scrollX showScrollbar={false}>
+        <View className="contracts-filter-track">
+          {filters.map((f) => (
+            <View
+              key={f.key}
+              className={`contracts-filter-tab ${activeFilter === f.key ? 'active' : ''}`}
+              onClick={() => setActiveFilter(f.key)}
+            >
+              <Text className="contracts-filter-tab-text">{f.label}</Text>
+            </View>
+          ))}
+        </View>
       </ScrollView>
 
       <ScrollView className="contracts-scroll" scrollY>

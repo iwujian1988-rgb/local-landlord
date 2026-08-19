@@ -8,6 +8,7 @@ import './index.scss';
 export default function ShareWebview() {
   const params = Taro.getCurrentInstance().router?.params || {};
   const token = params.token || '';
+  const shareUrl = params.url || '';
   const [loaded, setLoaded] = useState(false);
 
   useDidShow(() => {
@@ -16,8 +17,9 @@ export default function ShareWebview() {
 
   const url = useMemo(() => {
     if (!token) return '';
+    if (/^https:\/\//i.test(shareUrl)) return shareUrl;
     return `${H5_BASE_URL}/?token=${encodeURIComponent(token)}`;
-  }, [token]);
+  }, [shareUrl, token]);
 
   if (!url) {
     return null;

@@ -29,6 +29,7 @@ interface ApiBillData {
   paidAmount: number;
   period: string;
   periodEnd: string | null;
+  utilityTypes: number[];
   billItems: BillItem[];
 }
 
@@ -40,6 +41,7 @@ interface PageData {
   paidAmount: number;
   period: string;
   periodEnd: string | null;
+  utilityTypes: number[];
   billItems: BillItem[];
   photos: string[];
   loading: boolean;
@@ -57,6 +59,7 @@ const emptyPageData: PageData = {
   paidAmount: 0,
   period: '',
   periodEnd: null,
+  utilityTypes: [],
   billItems: [],
   photos: [],
   loading: false,
@@ -109,6 +112,7 @@ export default function Bill() {
           paidAmount: Number(res.data.paidAmount || 0),
           period: res.data.period || '',
           periodEnd: res.data.periodEnd || null,
+          utilityTypes: Array.isArray(res.data.utilityTypes) ? res.data.utilityTypes : [],
           billItems: res.data.billItems || [],
         }));
         Taro.setNavigationBarTitle({ title: `通知${tName}交租` });
@@ -292,15 +296,15 @@ export default function Bill() {
             )}
             <View className="elder-card">
               <Text className="elder-card-title">第一步：算一下这个月多少钱</Text>
-              <Text className="elder-card-desc">房租已经填好了，水电有变动就改一下。</Text>
+              <Text className="elder-card-desc">房租和固定费用已经填好了，有浮动费用再补充。</Text>
 
-              <View className="bill-utility-entry" onClick={() => Taro.navigateTo({ url: `/pages/utility-reading/index?roomId=${roomId}&period=${data.period}` })}>
+              {data.utilityTypes.length > 0 && <View className="bill-utility-entry" onClick={() => Taro.navigateTo({ url: `/pages/utility-reading/index?roomId=${roomId}&period=${data.period}` })}>
                 <View>
-                  <Text className="bill-utility-entry-title">本月水电抄表</Text>
-                  <Text className="bill-utility-entry-desc">录入读数、金额和水表/电表照片</Text>
+                  <Text className="bill-utility-entry-title">本月{data.utilityTypes.length === 2 ? '水电费' : data.utilityTypes[0] === 0 ? '水费' : '电费'}</Text>
+                  <Text className="bill-utility-entry-desc">填写金额，也可以按表读数计算</Text>
                 </View>
                 <Text className="bill-utility-entry-action">去录入</Text>
-              </View>
+              </View>}
 
               <View className="bill-items">
                 {data.billItems.map((item, idx) => (
@@ -348,7 +352,7 @@ export default function Bill() {
 
             <View className="elder-card">
               <Text className="elder-card-title">第二步：补充账单照片（可不拍）</Text>
-              <Text className="elder-card-desc">水表、电表照片请在“本月水电抄表”里上传；这里可补物业通知等其他凭证。</Text>
+              <Text className="elder-card-desc">{data.utilityTypes.length > 0 ? '水表、电表照片请在费用录入中上传；这里可补物业通知等其他凭证。' : '这里可补物业通知等账单凭证。'}</Text>
 
               <View className="bill-photo-btn" onClick={handlePhotoUpload}>
                 <Icon name="camera" size={48} color="currentColor" />
@@ -369,10 +373,10 @@ export default function Bill() {
 
             <View className="elder-card">
               <Text className="elder-card-title">第三步：发给租客</Text>
-              <Text className="elder-card-desc">先复制付款链接，再到租客的微信聊天里粘贴发送。发送前可以预览。</Text>
+              <Text className="elder-card-desc">打开租客账单，点“转发给租客”即可。租客无需登录。</Text>
 
               <View className="bill-action-btn primary" onClick={handleSendBill}>
-                <Text className="bill-action-text">复制付款链接</Text>
+                <Text className="bill-action-text">打开租客账单</Text>
               </View>
 
               <View className="bill-action-btn secondary" onClick={handleCopyText}>

@@ -27,6 +27,10 @@ describe('Utility readings and bill synchronization (e2e)', () => {
       phone: '13911110000',
       moveInDate: `${period}-01`,
       payMonths: 1,
+      feeItems: [
+        { name: '房租', type: 'fixed', amount: 2000, enabled: true, isRent: true, cycleMode: 'rent' },
+        { name: '水电费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'monthly' },
+      ],
     });
     const currentBill = expectOk(await apiCall(app, 'get', `/api/rooms/${roomId}/bills`, auth));
     billId = Number(currentBill.billId);
@@ -68,6 +72,7 @@ describe('Utility readings and bill synchronization (e2e)', () => {
     });
 
     const monthly = expectOk(await apiCall(app, 'get', `/api/rooms/${roomId}/utility-readings?period=${period}`, auth));
+    expect(monthly.utilityTypes).toEqual([0, 1]);
     expect(monthly.records).toHaveLength(2);
     expect(monthly.records.find((item: any) => item.utilityType === 0).reading.previousReading).toBe(120);
 
@@ -78,6 +83,47 @@ describe('Utility readings and bill synchronization (e2e)', () => {
       expect.objectContaining({ feeName: '水费', amount: 41.25 }),
       expect.objectContaining({ feeName: '电费', amount: 88.8 }),
     ]));
+  });
+
+  it('does not expose the utility flow when the tenancy has no utility fee rule', async () => {
+    const propertyId = await createProperty(app, auth);
+    const noUtilityRoomId = await createRoom(app, auth, propertyId, { name: 'no-utility-room', rent: 1800 });
+    await createTenant(app, auth, noUtilityRoomId, {
+      name: 'no-utility-tenant',
+      phone: '13911110001',
+      moveInDate: `${period}-01`,
+      payMonths: 1,
+    });
+
+    const bill = expectOk(await apiCall(app, 'get', `/api/rooms/${noUtilityRoomId}/bills`, auth));
+    expect(bill.utilityTypes).toEqual([]);
+    const readings = await apiCall(app, 'get', `/api/rooms/${noUtilityRoomId}/utility-readings?period=${period}`, auth);
+    expect(readings.status).toBe(400);
+  });
+
+  it('returns only water and rejects electricity when the tenancy only charges water', async () => {
+    const propertyId = await createProperty(app, auth);
+    const waterRoomId = await createRoom(app, auth, propertyId, { name: 'water-only-room', rent: 1600 });
+    await createTenant(app, auth, waterRoomId, {
+      name: 'water-only-tenant',
+      phone: '13911110002',
+      moveInDate: `${period}-01`,
+      payMonths: 1,
+      feeItems: [
+        { name: '房租', type: 'fixed', amount: 1600, enabled: true, isRent: true, cycleMode: 'rent' },
+        { name: '水费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'monthly' },
+      ],
+    });
+
+    const monthly = expectOk(await apiCall(app, 'get', `/api/rooms/${waterRoomId}/utility-readings?period=${period}`, auth));
+    expect(monthly.utilityTypes).toEqual([0]);
+    expect(monthly.records.map((item: any) => item.utilityType)).toEqual([0]);
+
+    const rejected = await apiCall(app, 'put', `/api/rooms/${waterRoomId}/utility-readings`, auth, {
+      period,
+      readings: [{ utilityType: 1, mode: 'manual', amount: 88 }],
+    });
+    expect(rejected.status).toBe(400);
   });
 
   it('does not allow readings to alter a partially paid bill', async () => {

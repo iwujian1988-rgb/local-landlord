@@ -10,6 +10,25 @@ export function isUtilityFeeName(name: string): boolean {
   return normalized === '水费' || normalized === '电费' || normalized === '水电费' || normalized === '水电';
 }
 
+export function utilityTypesForFeeRules(
+  rules: Array<{ name?: string; type?: number | string; enabled?: number | boolean }> | null | undefined,
+): number[] {
+  const result = new Set<number>();
+  for (const rule of rules || []) {
+    const enabled = rule.enabled !== 0 && rule.enabled !== false;
+    const manual = rule.type === 1 || rule.type === 'manual';
+    if (!enabled || !manual) continue;
+    const name = String(rule.name || '').replace(/\s/g, '');
+    if (name === '水费') result.add(UTILITY_TYPE.water);
+    if (name === '电费') result.add(UTILITY_TYPE.electricity);
+    if (name === '水电费' || name === '水电') {
+      result.add(UTILITY_TYPE.water);
+      result.add(UTILITY_TYPE.electricity);
+    }
+  }
+  return [...result].sort((a, b) => a - b);
+}
+
 export function toCentsAmount(value: number): number {
   return Math.round(value * 100) / 100;
 }

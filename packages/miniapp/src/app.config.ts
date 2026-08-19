@@ -27,6 +27,7 @@ const appConfig: AppConfig = {
     'pages/terms/index',
     'pages/account/index',
     'pages/share-webview/index',
+    'pages/tenant-bill/index',
   ],
   tabBar: {
     color: '#8B7E74',

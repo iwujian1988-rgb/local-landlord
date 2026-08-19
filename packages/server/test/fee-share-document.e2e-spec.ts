@@ -145,6 +145,7 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
       expect(res.body?.code).toBe(0);
       expect(res.body?.data?.shareUrl).toMatch(/^https?:\/\//);
       expect(res.body?.data?.shareUrl).toContain('/h5/?token=');
+      expect(res.body?.data?.miniPath).toContain('pages/tenant-bill/index?token=');
       shareToken = res.body?.data?.token || res.body?.data?.shareToken || '';
       // Token might be in different field — capture whatever's there
       if (!shareToken && res.body?.data) {
@@ -159,6 +160,31 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
       const res = await apiCall(app, 'get', `/api/share/bill/${shareToken}`, null);
       // Share endpoint is unauthenticated (tenant opens via H5 link)
       expect(res.body?.code).toBe(0);
+      const data = res.body?.data;
+      expect(data.items).toEqual([{ name: '房租', amount: 2000 }]);
+      expect(data.totalAmount).toBe(2000);
+      expect(data.paidAmount).toBe(0);
+      expect(data.outstandingAmount).toBe(2000);
+      expect(data.isPaid).toBe(false);
+    });
+
+    it('TC-SHARE-002B: 部分付款后租客页只显示剩余应付', async () => {
+      await apiCall(app, 'put', `/api/bills/${billId}/confirm`, auth, { actualAmount: 500 });
+      const res = await apiCall(app, 'get', `/api/share/bill/${shareToken}`, null);
+      expect(res.body?.code).toBe(0);
+      expect(res.body?.data?.totalAmount).toBe(2000);
+      expect(res.body?.data?.paidAmount).toBe(500);
+      expect(res.body?.data?.outstandingAmount).toBe(1500);
+      expect(res.body?.data?.isPaid).toBe(false);
+    });
+
+    it('TC-SHARE-002C: 付清后租客页待付归零', async () => {
+      await apiCall(app, 'put', `/api/bills/${billId}/confirm`, auth, { actualAmount: 1500 });
+      const res = await apiCall(app, 'get', `/api/share/bill/${shareToken}`, null);
+      expect(res.body?.code).toBe(0);
+      expect(res.body?.data?.paidAmount).toBe(2000);
+      expect(res.body?.data?.outstandingAmount).toBe(0);
+      expect(res.body?.data?.isPaid).toBe(true);
     });
 
     it('TC-SHARE-003: 无效 token → 404', async () => {

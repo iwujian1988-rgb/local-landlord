@@ -61,7 +61,8 @@ export class ShareController {
       await this.billService.verifyBillOwnership(dto.billId, user.id);
       const { token, expiresAt } = await this.shareService.generateForBill(dto.billId);
       const shareUrl = this.buildShareUrl(req, token);
-      return { token, shareUrl, expiresAt };
+      const miniPath = `pages/tenant-bill/index?token=${encodeURIComponent(token)}`;
+      return { token, shareUrl, miniPath, expiresAt };
     }
 
     if (dto.singleChargeId) {
@@ -69,7 +70,8 @@ export class ShareController {
       await this.rentService.verifySingleChargeOwnership(dto.singleChargeId, user.id);
       const { token, expiresAt } = await this.shareService.generateForSingleCharge(dto.singleChargeId);
       const shareUrl = this.buildShareUrl(req, token);
-      return { token, shareUrl, expiresAt };
+      const miniPath = `pages/tenant-bill/index?token=${encodeURIComponent(token)}`;
+      return { token, shareUrl, miniPath, expiresAt };
     }
 
     throw new BadRequestException('缺少 billId 或 singleChargeId');

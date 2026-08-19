@@ -5,7 +5,8 @@ import { resolveAsset } from '../../config';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { get } from '../../services/request';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { countRooms, filterRooms, getRoomDisplayStatus, RoomFilter } from '../../utils/room-filter';
 import roomPlaceholder from '../../assets/rooms/room-placeholder.png';
 import './index.scss';
 
@@ -36,6 +37,7 @@ export default function Rooms() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [roomFilter, setRoomFilter] = useState<RoomFilter>('all');
 
   const loadData = async () => {
     setLoading(true);
@@ -83,7 +85,13 @@ export default function Rooms() {
     Taro.navigateTo({ url: '/pages/add-property/index' });
   };
 
-  const getRoomDisplayStatus = (room: Room) => room.displayStatus || (room.status === 1 ? 'rented' : 'vacant');
+  const roomCounts = useMemo(() => countRooms(rooms), [rooms]);
+  const visibleRooms = useMemo(() => filterRooms(rooms, roomFilter), [rooms, roomFilter]);
+  const filters: Array<{ key: RoomFilter; label: string }> = [
+    { key: 'all', label: '全部' },
+    { key: 'vacant', label: '未出租' },
+    { key: 'rented', label: '已出租' },
+  ];
   const statusText = (room: Room) => {
     const displayStatus = getRoomDisplayStatus(room);
     if (displayStatus === 'overdue') return room.overdueDays && room.overdueDays > 0 ? `欠租${room.overdueDays}天` : '欠租';
@@ -109,7 +117,21 @@ export default function Rooms() {
               <EmptyState title="还没有房间" description="添加房源后可以创建房间" actionText="去添加房源" onAction={goToAddProperty} />
             ) : (
               <>
-                {rooms.map((room) => (
+                <View className="room-filter-bar">
+                  {filters.map(item => (
+                    <View
+                      key={item.key}
+                      className={`room-filter-tab${roomFilter === item.key ? ' active' : ''}`}
+                      onClick={() => setRoomFilter(item.key)}
+                    >
+                      <Text>{item.label}</Text>
+                      <Text className="room-filter-count">{roomCounts[item.key]}</Text>
+                    </View>
+                  ))}
+                </View>
+                {visibleRooms.length === 0 ? (
+                  <EmptyState title={`没有${roomFilter === 'vacant' ? '未出租' : '已出租'}的房间`} description="可以切换上方分类查看其他房间" />
+                ) : visibleRooms.map((room) => (
                   <View
                     key={room.id}
                     className="room-card"

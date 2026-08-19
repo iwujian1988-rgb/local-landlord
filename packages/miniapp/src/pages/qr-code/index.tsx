@@ -1,5 +1,5 @@
 import { View, Text, Input, ScrollView, Image } from '@tarojs/components';
-import Taro, { useDidShow } from '@tarojs/taro';
+import Taro, { useLoad } from '@tarojs/taro';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
@@ -65,35 +65,59 @@ export default function QrCode() {
     }
   }, []);
 
-  useDidShow(() => {
+  // Only load persisted data when the page is first opened. Returning from
+  // chooseMedia also triggers page-show in WeChat; reloading there would wipe
+  // the first locally uploaded (but not yet saved) QR before the user selects
+  // the second one.
+  useLoad(() => {
     Taro.setNavigationBarTitle({ title: '我的收款码' });
     loadData();
   });
 
-  const handleUpload = useCallback(async (type: string) => {
+  const handleUpload = useCallback(async (type: QRItem['type']) => {
     const picked = await pickImages({ count: 1, sourceType: ['album', 'camera'] });
     if (picked.length === 0) return;
     const filePath = picked[0].path;
+    const currentCode = codes.find(code => code.type === type);
+    const hasDefault = codes.some(code => code.imageUrl && code.isDefault);
+    const shouldBeDefault = Boolean(currentCode?.isDefault) || !hasDefault;
     setUploadingCount(count => count + 1);
-    uploadFile(filePath)
-      .then((result) => {
-        setCodes((prev) => {
-          const hasDefault = prev.some(code => code.imageUrl && code.isDefault);
-          return prev.map((code) => (
-            code.type === type
-              ? { ...code, imageUrl: result.url, isDefault: hasDefault ? code.isDefault : true }
-              : code
-          ));
-        });
-        Taro.showToast({ title: '收款码已上传', icon: 'none', duration: 2000 });
-      })
-      .catch(() => {
-        Taro.showToast({ title: '上传失败了，再试一次', icon: 'none' });
-      })
-      .finally(() => {
-        setUploadingCount(count => Math.max(0, count - 1));
-      });
-  }, []);
+    try {
+      const result = await uploadFile(filePath);
+      const storedUrl = normalizeUploadUrlForStorage(result.url);
+      const payload = buildPaymentQrPayload({
+        type,
+        label: currentCode?.label || type,
+        imageUrl: storedUrl,
+        isDefault: shouldBeDefault,
+      }, Boolean(currentCode?.id));
+      const saveRes = currentCode?.id
+        ? await put<any>(`/payment-qr/${currentCode.id}`, payload)
+        : await post<any>('/payment-qr', payload);
+      if (saveRes.code !== 0) {
+        throw new Error(saveRes.message || '收款码保存失败');
+      }
+
+      const savedId = saveRes.data?.id || currentCode?.id;
+      setCodes((prev) => prev.map((code) => {
+        if (code.type === type) {
+          return {
+            ...code,
+            id: savedId,
+            imageUrl: storedUrl,
+            isDefault: shouldBeDefault,
+          };
+        }
+        return shouldBeDefault ? { ...code, isDefault: false } : code;
+      }));
+      Taro.showToast({ title: '已上传并保存', icon: 'success', duration: 1500 });
+    } catch (err: any) {
+      console.error('[QrCode] 上传并保存失败:', err);
+      Taro.showToast({ title: err?.message || '上传失败了，再试一次', icon: 'none' });
+    } finally {
+      setUploadingCount(count => Math.max(0, count - 1));
+    }
+  }, [codes]);
 
   const handleDelete = useCallback(async (type: string, id?: string) => {
     try {
@@ -198,7 +222,7 @@ export default function QrCode() {
 
         <View className="qr-section-head">
           <Text className="qr-section-title">收款码图片</Text>
-          <Text className="qr-section-desc">选择一种常用收款方式上传即可</Text>
+          <Text className="qr-section-desc">微信、支付宝可以同时上传，默认收款码只选一个</Text>
         </View>
 
         <View className="qr-list">

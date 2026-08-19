@@ -61,3 +61,31 @@ export function calculateInitialFeeTotal(fees: FeeFormItem[]): number {
   }, 0);
   return Math.round(total * 100) / 100;
 }
+
+export function calculateMoveInGrandTotal(deposit: string | number, fees: FeeFormItem[]): number {
+  const total = (Number(deposit) || 0) + calculateInitialFeeTotal(fees);
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * 房东选择“每几个月收一次”时，入住首收默认采用同一周期。
+ * 后续仍可在“入住怎么收”步骤单独改成后收或其他月数。
+ */
+export function applyBillingMonthsDefault(fee: FeeFormItem, months: number): FeeFormItem {
+  const normalizedMonths = normalizeMonths(months, 1);
+  return {
+    ...fee,
+    billingMonths: normalizedMonths,
+    initialMonths: normalizedMonths,
+  };
+}
+
+export function describeInitialFee(fee: FeeFormItem): string {
+  if (fee.type === 'manual') return '以后按实际金额填写';
+  if (fee.collectionTiming === 'arrears') return '入住后再收，本次不收';
+
+  const amount = Number(fee.amount) || 0;
+  const months = normalizeMonths(fee.initialMonths, fee.billingMonths || 1);
+  const total = Math.round(amount * months * 100) / 100;
+  return `${amount} 元 × ${months} 个月 = ${total} 元`;
+}

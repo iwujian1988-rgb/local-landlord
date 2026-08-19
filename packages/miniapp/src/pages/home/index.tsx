@@ -238,8 +238,8 @@ export default function Home() {
           {hasPendingActions && (
             <View className="action-hero">
               {data.pendingCount > 0 && (
-                <View className="action-item action-rent" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
-                  <View className="action-item-left">
+                <View className="home-action-card action-rent" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
+                  <View className="home-action-card-left">
                     <Text className="action-badge">{data.pendingHouseholds}笔</Text>
                     <Text className="action-title">待收租</Text>
                     <Text className="action-desc">{data.pendingDesc}</Text>
@@ -251,7 +251,7 @@ export default function Home() {
               )}
 
               {data.expiringContracts.length > 0 && (
-                <View className="action-item action-contract">
+                <View className="home-action-card action-contract">
                   {data.expiringContracts.slice(0, 3).map((c: any, idx: number) => (
                     <View
                       key={idx}

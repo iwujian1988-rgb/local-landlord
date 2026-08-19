@@ -7,7 +7,7 @@
  * and the success → modal → preview link.
  */
 import Taro from '@tarojs/taro';
-import { ensureAbsoluteShareUrl, generateAndCopyShareLink, openShareWebview, forwardBillShare } from '../src/services/share';
+import { ensureAbsoluteShareUrl, generateAndCopyShareLink, openShareWebview, openTenantBill, forwardBillShare } from '../src/services/share';
 
 const mockRequest = () => (Taro.request as jest.Mock);
 
@@ -126,6 +126,14 @@ describe('openShareWebview', () => {
       url: `/pages/share-webview/index?token=abc123-_.`,
     });
   });
+
+  it('TC-SHARE-WV-003: 服务端自定义域名随预览参数传入，不依赖前端写死域名', () => {
+    const shareUrl = 'https://rent.example.com/h5/?token=tk';
+    openShareWebview('tk', shareUrl);
+    expect(Taro.navigateTo).toHaveBeenCalledWith({
+      url: `/pages/share-webview/index?token=tk&url=${encodeURIComponent(shareUrl)}`,
+    });
+  });
 });
 
 describe('forwardBillShare', () => {
@@ -138,43 +146,24 @@ describe('forwardBillShare', () => {
     expect(Taro.showModal).not.toHaveBeenCalled();
   });
 
-  it('TC-SHARE-FWD-002: 成功 + 用户点确认 → openShareWebview + 返回 result', async () => {
+  it('TC-SHARE-FWD-002: 成功 → 打开原生租客账单，不复制 H5 链接', async () => {
     mockRequest().mockResolvedValueOnce({
       statusCode: 200,
       data: { code: 0, data: { token: 'tk', shareUrl: 'u', expiresAt: '2099' } },
     });
-    (Taro.setClipboardData as jest.Mock).mockImplementation((o: any) => o.success());
-    (Taro.showModal as jest.Mock).mockImplementation((o: any) => o.success({ confirm: true }));
-
     const out = await forwardBillShare(1);
     expect(out?.token).toBe('tk');
     expect(Taro.navigateTo).toHaveBeenCalledWith({
-      url: `/pages/share-webview/index?token=tk`,
+      url: '/pages/tenant-bill/index?token=tk',
     });
+    expect(Taro.setClipboardData).not.toHaveBeenCalled();
+    expect(Taro.showModal).not.toHaveBeenCalled();
   });
 
-  it('TC-SHARE-FWD-003: 成功 + 用户点取消 → 不跳 webview，仍返回 result', async () => {
-    mockRequest().mockResolvedValueOnce({
-      statusCode: 200,
-      data: { code: 0, data: { token: 'tk', shareUrl: 'u', expiresAt: '2099' } },
+  it('TC-SHARE-FWD-003: 原生账单 token 中的特殊字符会编码', () => {
+    openTenantBill('a b/中文');
+    expect(Taro.navigateTo).toHaveBeenCalledWith({
+      url: `/pages/tenant-bill/index?token=${encodeURIComponent('a b/中文')}`,
     });
-    (Taro.setClipboardData as jest.Mock).mockImplementation((o: any) => o.success());
-    (Taro.showModal as jest.Mock).mockImplementation((o: any) => o.success({ confirm: false }));
-
-    const out = await forwardBillShare(1);
-    expect(out?.token).toBe('tk');
-    expect(Taro.navigateTo).not.toHaveBeenCalled();
-  });
-
-  it('TC-SHARE-FWD-004: showModal 自身 fail → 仍返回 result', async () => {
-    mockRequest().mockResolvedValueOnce({
-      statusCode: 200,
-      data: { code: 0, data: { token: 'tk', shareUrl: 'u', expiresAt: '2099' } },
-    });
-    (Taro.setClipboardData as jest.Mock).mockImplementation((o: any) => o.success());
-    (Taro.showModal as jest.Mock).mockImplementation((o: any) => o.fail());
-
-    const out = await forwardBillShare(1);
-    expect(out?.token).toBe('tk');
   });
 });
