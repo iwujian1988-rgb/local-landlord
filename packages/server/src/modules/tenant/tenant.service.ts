@@ -13,6 +13,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { MoveOutDto } from './dto/move-out.dto';
 import { FeeRule, feeRuleInitialAmount, feeRuleInitialMonths, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from '../fee/fee-rules';
+import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
 
 @Injectable()
 export class TenantService {
@@ -242,7 +243,10 @@ export class TenantService {
     const { feeItems, ...tenantFields } = dto;
     Object.assign(tenant, tenantFields);
     if (feeItems !== undefined) tenant.feeRules = normalizeFeeRules(feeItems);
-    return this.tenantRepository.save(tenant);
+    return retryMalformedMysqlPacket(
+      () => this.tenantRepository.save(tenant),
+      () => this.logger.warn(`Retrying idempotent tenant update ${id} after malformed MySQL packet`),
+    );
   }
 
   /**

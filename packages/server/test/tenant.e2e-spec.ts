@@ -458,6 +458,44 @@ describe('Tenant module (e2e)', () => {
       expect(Number(data.deposit)).toBe(500);
       expect(data.moveInReading).toBe('电 123，水 45');
     });
+
+    it('TC-TENANT-012B: 编辑完整历史资料并新增水电费规则', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: 'room-012b' });
+      const tid = await createTenant(app, auth, rId, {
+        name: '完整编辑前',
+        phone: '13800012224',
+        moveInDate: '2026-08-19',
+        rentDay: 19,
+        payMonths: 3,
+        deposit: 1000,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 3, initialMonths: 3 },
+          { name: '物业费', type: 'fixed', amount: 200, enabled: true, isRent: false, cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 3, initialMonths: 3 },
+        ],
+      });
+
+      const res = await apiCall(app, 'put', `/api/tenants/${tid}`, auth, {
+        name: '完整编辑后',
+        phone: '13800012224',
+        moveInDate: '2026-08-19',
+        contractEndDate: '2027-08-19',
+        rentDay: 19,
+        payMonths: 3,
+        deposit: 1000,
+        feeItems: [
+          { name: '房租', type: 'fixed', amount: 1000, enabled: true, isRent: true, cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 3, initialMonths: 3 },
+          { name: '物业费', type: 'fixed', amount: 200, enabled: true, isRent: false, cycleMode: 'rent', collectionTiming: 'advance', billingMonths: 3, initialMonths: 3 },
+          { name: '水电费', type: 'manual', amount: 0, enabled: true, isRent: false, cycleMode: 'monthly', collectionTiming: 'advance', billingMonths: 1, initialMonths: 1 },
+        ],
+      });
+      const data = expectOk(res);
+      expect(data.name).toBe('完整编辑后');
+
+      const detail = expectOk(await apiCall(app, 'get', `/api/tenants/${tid}`, auth));
+      expect(detail.feeItems).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: '水电费', type: 'manual', amount: 0 }),
+      ]));
+    });
   });
 
   // ============ 退租 ============

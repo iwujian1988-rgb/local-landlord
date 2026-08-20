@@ -13,6 +13,7 @@ import { get, put, del } from '../../services/request';
 import { buildCheckoutPayload } from '../../utils/checkout-payload';
 import { isValidDateOnly } from '../../utils/form-validation';
 import './index.scss';
+import { buildTenantFormUrl } from '../../utils/tenant-navigation';
 
 interface RoomData {
   id: number;
@@ -303,7 +304,7 @@ export default function RoomDetail() {
                 <View className="tenant-contact-info">
                   <View className="tenant-name-row">
                     <Text className="tenant-contact-name">{data.tenant.name}</Text>
-                    <Text className="edit-link" onClick={() => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}&tenantId=${data.tenantId}` })}>编辑</Text>
+                    <Text className="edit-link" onClick={() => Taro.navigateTo({ url: buildTenantFormUrl(roomId, data.tenantId) })}>编辑</Text>
                   </View>
                   <Text className="tenant-contact-rent">{rentDayText}</Text>
                 </View>
@@ -319,7 +320,7 @@ export default function RoomDetail() {
                   <Icon name="phone" size={28} />
                   <Text className="tenant-action-label">{data.tenant.phone || '未填写'}</Text>
                 </View>
-                <View className="tenant-action-btn" onClick={() => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}&tenantId=${data.tenantId}` })}>
+                <View className="tenant-action-btn" onClick={() => Taro.navigateTo({ url: buildTenantFormUrl(roomId, data.tenantId) })}>
                   <Icon name="pencil" size={28} />
                   <Text className="tenant-action-label">编辑信息</Text>
                 </View>
@@ -464,7 +465,7 @@ export default function RoomDetail() {
             {
               label: data.tenant ? '编辑租客' : '登记租客',
               icon: (<Icon name="user-plus" size={28} color="var(--accent-hover)" />),
-              action: () => Taro.navigateTo({ url: `/pages/add-tenant/index?roomId=${roomId}` }),
+              action: () => Taro.navigateTo({ url: buildTenantFormUrl(roomId, data.tenantId) }),
             },
             {
               label: data.showMoreActions ? '收起' : '更多',

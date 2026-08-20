@@ -62,6 +62,13 @@ import { SchemaCompatService } from './common/schema-compat.service';
             // synchronize=true is risky in prod (auto-ALTERs tables). Disable for prod, use migrations.
             synchronize: !isProd,
             logging: !isProd,
+            // Cloud hosting keeps instances and DB proxy connections alive on
+            // different schedules. TCP keepalive reduces stale pooled sockets;
+            // idempotent writes additionally perform one targeted packet retry.
+            extra: {
+              enableKeepAlive: true,
+              keepAliveInitialDelay: 10_000,
+            },
           };
         }
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeeItem } from './fee-item.entity';
@@ -8,9 +8,12 @@ import { CreateFeeItemDto } from './dto/create-fee-item.dto';
 import { UpdateFeeItemDto } from './dto/update-fee-item.dto';
 import { Tenant } from '../tenant/tenant.entity';
 import { feeEntitiesToRules, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from './fee-rules';
+import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
 
 @Injectable()
 export class FeeService {
+  private readonly logger = new Logger(FeeService.name);
+
   constructor(
     @InjectRepository(FeeItem)
     private readonly feeItemRepository: Repository<FeeItem>,
@@ -57,7 +60,10 @@ export class FeeService {
     const tenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
     if (tenant) {
       tenant.feeRules = rules;
-      await this.tenantRepository.save(tenant);
+      await retryMalformedMysqlPacket(
+        () => this.tenantRepository.save(tenant),
+        () => this.logger.warn(`Retrying idempotent fee-rule update for room ${roomId} after malformed MySQL packet`),
+      );
       return feeRulesToResponse(rules);
     }
 
