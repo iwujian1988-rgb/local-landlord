@@ -8,7 +8,13 @@
  *
  * This is the same pattern used in request.unit-spec.ts for
  * shouldFallbackToHttps.
- */
+*/
+
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+const HOME_SOURCE = readFileSync(resolve(__dirname, '../src/pages/home/index.tsx'), 'utf8');
+const TENANT_BILL_SOURCE = readFileSync(resolve(__dirname, '../src/pages/tenant-bill/index.tsx'), 'utf8');
 
 // Mirror of getGreeting from pages/home/index.tsx:20
 const getGreeting = () => {
@@ -95,4 +101,21 @@ describe('home page — cleanProfileName', () => {
       expect(cleanProfileName(input)).toBe(expected);
     });
   }
+});
+
+describe('home page — one-time receipt confirmation', () => {
+  it('TC-HOME-RECEIPT-001: 微信分享动作会通知后端，不以打开预览代替真实发送', () => {
+    expect(TENANT_BILL_SOURCE).toContain("post('/share/mark-sent', { token })");
+    expect(TENANT_BILL_SOURCE).toContain('useShareAppMessage');
+  });
+
+  it('TC-HOME-RECEIPT-002: 普通租金和单独收费分别走各自确认接口', () => {
+    expect(HOME_SOURCE).toContain('`/bills/${currentReceipt.id}/confirm`');
+    expect(HOME_SOURCE).toContain('`/single-charges/${currentReceipt.id}/confirm`');
+  });
+
+  it('TC-HOME-RECEIPT-003: “还没收到”会关闭本次提示', () => {
+    expect(HOME_SOURCE).toContain("post('/share/receipt-prompt/dismiss'");
+    expect(HOME_SOURCE).toContain('本次不再提醒');
+  });
 });

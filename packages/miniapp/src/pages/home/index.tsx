@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Image } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { useState, useCallback } from 'react';
-import { get } from '../../services/request';
+import { get, post, put } from '../../services/request';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useGuideStore } from '../../store/useGuideStore';
 // requestNotification removed — see useDidShow comment below.
@@ -44,6 +44,16 @@ interface VacantRoom {
   propertyName: string;
 }
 
+interface ReceiptConfirmation {
+  kind: 'bill' | 'single_charge';
+  id: number;
+  roomName: string;
+  tenantName: string;
+  label: string;
+  amount: number;
+  sharedAt: string;
+}
+
 interface PageData {
   greeting: string;
   pendingCount: number;
@@ -57,6 +67,8 @@ interface PageData {
   expiringContracts: any[];
   discoveryAlerts: any[];
   vacantRooms: VacantRoom[];
+  receiptConfirmations: ReceiptConfirmation[];
+  receiptConfirmationCount: number;
 }
 
 interface DiscoveryAlert {
@@ -68,7 +80,7 @@ const emptyData: PageData = {
   greeting: '', pendingCount: 0, pendingDesc: '', pendingHouseholds: 0,
   monthlyCollected: 0, showRoomGuide: false, showTenantGuide: false,
   showQrGuide: false, profileName: '', expiringContracts: [], discoveryAlerts: [],
-  vacantRooms: [],
+  vacantRooms: [], receiptConfirmations: [], receiptConfirmationCount: 0,
 };
 
 export default function Home() {
@@ -76,6 +88,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
 
   const handleLogin = async () => {
@@ -129,6 +142,8 @@ export default function Home() {
         expiringContracts: s.expiringContracts || [],
         discoveryAlerts: s.discoveryAlerts || [],
         vacantRooms: s.vacantRooms || [],
+        receiptConfirmations: Array.isArray(s.receiptConfirmations) ? s.receiptConfirmations : [],
+        receiptConfirmationCount: Number(s.receiptConfirmationCount || 0),
       });
       useGuideStore.getState().setFromStats({
         showRoomGuide: s.showRoomGuide,
@@ -162,7 +177,56 @@ export default function Home() {
     // requests are tied to user-initiated actions (confirm/save buttons).
   });
 
-  const hasPendingActions = data.pendingCount > 0 || data.expiringContracts.length > 0;
+  const currentReceipt = data.receiptConfirmations[0];
+  const hasPendingActions = !!currentReceipt || data.pendingCount > 0 || data.expiringContracts.length > 0;
+
+  const hideReceiptCardsForVisit = useCallback(() => {
+    setData(prev => ({
+      ...prev,
+      // Do not turn the home page into a questionnaire. At most one prompt is
+      // shown per visit; other eligible records can appear on a later visit.
+      receiptConfirmations: [],
+      receiptConfirmationCount: Math.max(0, prev.receiptConfirmationCount - 1),
+    }));
+  }, []);
+
+  const handleReceiptConfirmed = useCallback(async () => {
+    if (!currentReceipt || receiptLoading) return;
+    setReceiptLoading(true);
+    try {
+      if (currentReceipt.kind === 'bill') {
+        await put(`/bills/${currentReceipt.id}/confirm`, { actualAmount: currentReceipt.amount });
+      } else {
+        await put(`/single-charges/${currentReceipt.id}/confirm`, {});
+      }
+      await loadData();
+      hideReceiptCardsForVisit();
+      Taro.showToast({ title: '已记为收到', icon: 'success' });
+    } catch (err) {
+      console.error('[Home] 确认收款失败:', err);
+      Taro.showToast({ title: '确认失败，请重试', icon: 'none' });
+    } finally {
+      setReceiptLoading(false);
+    }
+  }, [currentReceipt, receiptLoading, loadData, hideReceiptCardsForVisit]);
+
+  const handleReceiptNotYet = useCallback(async () => {
+    if (!currentReceipt || receiptLoading) return;
+    setReceiptLoading(true);
+    try {
+      await post('/share/receipt-prompt/dismiss', {
+        kind: currentReceipt.kind,
+        id: currentReceipt.id,
+      });
+      hideReceiptCardsForVisit();
+      Taro.showToast({ title: '本次不再提醒', icon: 'none' });
+    } catch (err) {
+      console.error('[Home] 关闭收款提醒失败:', err);
+      Taro.showToast({ title: '操作失败，请重试', icon: 'none' });
+    } finally {
+      setReceiptLoading(false);
+    }
+  }, [currentReceipt, receiptLoading, hideReceiptCardsForVisit]);
 
   const handleDiscoveryAlert = useCallback((alert?: DiscoveryAlert) => {
     if (!alert) return;
@@ -237,6 +301,37 @@ export default function Home() {
 
           {hasPendingActions && (
             <View className="action-hero">
+              {currentReceipt && (
+                <View className="receipt-check-card">
+                  <Text className="receipt-check-kicker">刚刚发出的账单</Text>
+                  <Text className="receipt-check-question">这笔钱收到了吗？</Text>
+                  <Text className="receipt-check-person">
+                    {currentReceipt.roomName}{currentReceipt.tenantName ? ` · ${currentReceipt.tenantName}` : ''}
+                  </Text>
+                  <View className="receipt-check-money-row">
+                    <Text className="receipt-check-label">{currentReceipt.label}</Text>
+                    <Text className="receipt-check-money">{currentReceipt.amount.toLocaleString()} 元</Text>
+                  </View>
+                  <View className="receipt-check-actions">
+                    <View
+                      className={`receipt-check-btn secondary${receiptLoading ? ' disabled' : ''}`}
+                      onClick={receiptLoading ? undefined : handleReceiptNotYet}
+                    >
+                      <Text>还没收到</Text>
+                    </View>
+                    <View
+                      className={`receipt-check-btn primary${receiptLoading ? ' disabled' : ''}`}
+                      onClick={receiptLoading ? undefined : handleReceiptConfirmed}
+                    >
+                      <Text>{receiptLoading ? '处理中…' : '已经收到'}</Text>
+                    </View>
+                  </View>
+                  {data.receiptConfirmationCount > 1 && (
+                    <Text className="receipt-check-more">其余 {data.receiptConfirmationCount - 1} 笔将在以后进入首页时提醒</Text>
+                  )}
+                </View>
+              )}
+
               {data.pendingCount > 0 && (
                 <View className="home-action-card action-rent" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
                   <View className="home-action-card-left">

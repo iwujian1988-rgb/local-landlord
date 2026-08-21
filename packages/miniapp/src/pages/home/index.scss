@@ -123,6 +123,101 @@
   gap: 20px;
 }
 
+/* A one-time question after the landlord sends a payment page. */
+.receipt-check-card {
+  border-radius: 40px;
+  padding: 38px 36px 32px;
+  background: #fff;
+  border: 2px solid rgba(239, 122, 62, 0.2);
+  box-shadow: 0 18px 46px rgba(94, 72, 49, 0.09);
+}
+
+.receipt-check-kicker {
+  display: block;
+  color: var(--accent);
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.receipt-check-question {
+  display: block;
+  color: var(--text-primary);
+  font-size: 42px;
+  line-height: 1.25;
+  font-weight: 850;
+}
+
+.receipt-check-person {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 27px;
+}
+
+.receipt-check-money-row {
+  margin-top: 28px;
+  padding: 22px 0;
+  border-top: 2px solid rgba(94, 72, 49, 0.07);
+  border-bottom: 2px solid rgba(94, 72, 49, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.receipt-check-label {
+  color: var(--text-secondary);
+  font-size: 27px;
+}
+
+.receipt-check-money {
+  color: var(--text-primary);
+  font-size: 34px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.receipt-check-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 26px;
+}
+
+.receipt-check-btn {
+  min-height: 92px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 29px;
+  font-weight: 800;
+
+  &:active { transform: scale(0.98); }
+  &.disabled { opacity: .55; }
+}
+
+.receipt-check-btn.secondary {
+  flex: 1;
+  color: var(--text-secondary);
+  background: var(--cream);
+  border: 2px solid rgba(94, 72, 49, 0.08);
+}
+
+.receipt-check-btn.primary {
+  flex: 1.25;
+  color: #fff;
+  background: var(--accent);
+}
+
+.receipt-check-more {
+  display: block;
+  margin-top: 18px;
+  color: var(--text-hint);
+  font-size: 23px;
+  line-height: 1.45;
+}
+
 .home-action-card {
   border-radius: 48px;
   padding: 40px;
