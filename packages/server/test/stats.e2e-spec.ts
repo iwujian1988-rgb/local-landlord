@@ -269,4 +269,58 @@ describe('Stats module — overdue logic (e2e)', () => {
     expect(stats.totalCollected).toBe(3000);
     expect(stats.totalPending).toBe(0);
   });
+
+  it('TC-STATS-015: 普通账单分享后首页只提醒一次，暂未收到后隐藏，再分享可重新提醒', async () => {
+    const freshAuth = await loginAsLandlord(app, `dev_receipt_bill_${Date.now()}`);
+    const propId = await createProperty(app, freshAuth);
+    const roomId = await createRoom(app, freshAuth, propId, { rent: 1800, name: '首页确认房' });
+    const tenantId = await createTenant(app, freshAuth, roomId, {
+      name: '首页确认租客', moveInDate: `${currentMonthStr()}-01`,
+    });
+    const billId = await createBill(app, freshAuth, roomId, {
+      tenantId, period: '2099-12', totalAmount: 1800,
+      items: [{ feeName: '房租', amount: 1800 }],
+    });
+
+    let home = expectOk(await apiCall(app, 'get', '/api/stats/home', freshAuth));
+    expect(home.receiptConfirmations.some((x: any) => x.kind === 'bill' && x.id === billId)).toBe(false);
+
+    const share = expectOk(await apiCall(app, 'post', '/api/share/generate', freshAuth, { billId }));
+    expectOk(await apiCall(app, 'post', '/api/share/mark-sent', freshAuth, { token: share.token }));
+    home = expectOk(await apiCall(app, 'get', '/api/stats/home', freshAuth));
+    expect(home.receiptConfirmations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'bill', id: billId, amount: 1800 }),
+    ]));
+
+    expectOk(await apiCall(app, 'post', '/api/share/receipt-prompt/dismiss', freshAuth, { kind: 'bill', id: billId }));
+    home = expectOk(await apiCall(app, 'get', '/api/stats/home', freshAuth));
+    expect(home.receiptConfirmations.some((x: any) => x.kind === 'bill' && x.id === billId)).toBe(false);
+
+    expectOk(await apiCall(app, 'post', '/api/share/mark-sent', freshAuth, { token: share.token }));
+    home = expectOk(await apiCall(app, 'get', '/api/stats/home', freshAuth));
+    expect(home.receiptConfirmations.some((x: any) => x.kind === 'bill' && x.id === billId)).toBe(true);
+  });
+
+  it('TC-STATS-016: 单独收费分享后首页可确认，确认后立即不再提醒', async () => {
+    const freshAuth = await loginAsLandlord(app, `dev_receipt_single_${Date.now()}`);
+    const propId = await createProperty(app, freshAuth);
+    const roomId = await createRoom(app, freshAuth, propId, { rent: 1600, name: '单收费确认房' });
+    await createTenant(app, freshAuth, roomId, {
+      name: '单收费租客', moveInDate: `${currentMonthStr()}-01`,
+    });
+    const charge = expectOk(await apiCall(app, 'post', `/api/rooms/${roomId}/single-charge`, freshAuth, {
+      feeType: '维修费', amount: 88,
+    }));
+    const share = expectOk(await apiCall(app, 'post', '/api/share/generate', freshAuth, { singleChargeId: charge.id }));
+    expectOk(await apiCall(app, 'post', '/api/share/mark-sent', freshAuth, { token: share.token }));
+
+    let home = expectOk(await apiCall(app, 'get', '/api/stats/home', freshAuth));
+    expect(home.receiptConfirmations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'single_charge', id: charge.id, label: '维修费', amount: 88 }),
+    ]));
+
+    expectOk(await apiCall(app, 'put', `/api/single-charges/${charge.id}/confirm`, freshAuth, {}));
+    home = expectOk(await apiCall(app, 'get', '/api/stats/home', freshAuth));
+    expect(home.receiptConfirmations.some((x: any) => x.kind === 'single_charge' && x.id === charge.id)).toBe(false);
+  });
 });

@@ -2,7 +2,7 @@ import { Controller, Post, Get, Body, Param, UseGuards, BadRequestException, Req
 import type { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { ShareService } from './share.service';
-import { GenerateShareDto } from './share.dto';
+import { GenerateShareDto, MarkShareSentDto, ReceiptPromptDto } from './share.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -75,6 +75,35 @@ export class ShareController {
     }
 
     throw new BadRequestException('缺少 billId 或 singleChargeId');
+  }
+
+  /** Called when the landlord actually opens WeChat's share panel. */
+  @Post('mark-sent')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1)
+  async markSent(@CurrentUser() user: any, @Body() dto: MarkShareSentDto) {
+    const target = this.shareService.getShareTarget(dto.token);
+    if (target.kind === 'bill') {
+      await this.billService.verifyBillOwnership(target.id, user.id);
+    } else {
+      await this.rentService.verifySingleChargeOwnership(target.id, user.id);
+    }
+    await this.shareService.markSent(target);
+    return target;
+  }
+
+  /** “还没收到”只关闭本次提醒；下次重新发送会再次出现。 */
+  @Post('receipt-prompt/dismiss')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1)
+  async dismissReceiptPrompt(@CurrentUser() user: any, @Body() dto: ReceiptPromptDto) {
+    if (dto.kind === 'bill') {
+      await this.billService.verifyBillOwnership(dto.id, user.id);
+    } else {
+      await this.rentService.verifySingleChargeOwnership(dto.id, user.id);
+    }
+    await this.shareService.dismissReceiptPrompt(dto);
+    return { dismissed: true };
   }
 
   /** Public: H5 page resolves the token to bill data */

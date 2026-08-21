@@ -51,6 +51,8 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'bill', column: 'photos', definition: '`photos` json NULL' },
   { table: 'bill', column: 'sent_at', definition: '`sent_at` datetime NULL' },
   { table: 'bill', column: 'paid_at', definition: '`paid_at` datetime NULL' },
+  { table: 'bill', column: 'last_shared_at', definition: '`last_shared_at` datetime NULL' },
+  { table: 'bill', column: 'receipt_prompt_dismissed_at', definition: '`receipt_prompt_dismissed_at` datetime NULL' },
 
   // bill_item
   { table: 'bill_item', column: 'utility_reading_id', definition: '`utility_reading_id` int NULL' },
@@ -62,6 +64,8 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
 
   // single_charge
   { table: 'single_charge', column: 'paid_at', definition: '`paid_at` datetime NULL' },
+  { table: 'single_charge', column: 'last_shared_at', definition: '`last_shared_at` datetime NULL' },
+  { table: 'single_charge', column: 'receipt_prompt_dismissed_at', definition: '`receipt_prompt_dismissed_at` datetime NULL' },
 
   // document
   { table: 'document', column: 'room_id', definition: '`room_id` int NOT NULL DEFAULT 0' },

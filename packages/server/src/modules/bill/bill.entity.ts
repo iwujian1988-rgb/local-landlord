@@ -43,6 +43,14 @@ export class Bill {
   @Column({ name: 'sent_at', type: 'datetime', nullable: true })
   sentAt: Date | null;
 
+  // 最近一次在小程序中点“微信发送”的时间。只有真正触发分享后，首页才询问是否收款。
+  @Column({ name: 'last_shared_at', type: 'datetime', nullable: true })
+  lastSharedAt: Date | null;
+
+  // 房东选择“还没收到”后隐藏本次提示；再次分享时会清空并重新提示一次。
+  @Column({ name: 'receipt_prompt_dismissed_at', type: 'datetime', nullable: true })
+  receiptPromptDismissedAt: Date | null;
+
   @Column({ name: 'paid_at', type: 'datetime', nullable: true })
   paidAt: Date;
 

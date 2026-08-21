@@ -31,6 +31,8 @@ export interface ShareBillPayload {
   paymentNote: string;
 }
 
+export type ShareTarget = { kind: 'bill' | 'single_charge'; id: number };
+
 @Injectable()
 export class ShareService {
   private readonly logger = new Logger(ShareService.name);
@@ -89,6 +91,46 @@ export class ShareService {
 
     const expiresAt = Math.floor(Date.now() / 1000) + SHARE_TOKEN_TTL_SECONDS;
     return { token, expiresAt: new Date(expiresAt * 1000).toISOString() };
+  }
+
+  /** Verify a share token and return its underlying financial record. */
+  getShareTarget(token: string): ShareTarget {
+    let payload: { bid?: number; sid?: number; kind?: string };
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new ForbiddenException('分享凭证已失效，请重新发送');
+    }
+    if (payload.kind === SHARE_TOKEN_KIND && payload.bid) {
+      return { kind: 'bill', id: Number(payload.bid) };
+    }
+    if (payload.kind === SHARE_TOKEN_KIND_SINGLE && payload.sid) {
+      return { kind: 'single_charge', id: Number(payload.sid) };
+    }
+    throw new BadRequestException('无效的分享凭证');
+  }
+
+  /** Record a real share-button action and allow exactly one new home reminder. */
+  async markSent(target: ShareTarget): Promise<void> {
+    const update = {
+      lastSharedAt: new Date(),
+      receiptPromptDismissedAt: null,
+    };
+    if (target.kind === 'bill') {
+      await this.billRepository.update(target.id, update);
+    } else {
+      await this.singleChargeRepository.update(target.id, update);
+    }
+  }
+
+  /** Hide this share event's reminder. A later share clears this field again. */
+  async dismissReceiptPrompt(target: ShareTarget): Promise<void> {
+    const update = { receiptPromptDismissedAt: new Date() };
+    if (target.kind === 'bill') {
+      await this.billRepository.update(target.id, update);
+    } else {
+      await this.singleChargeRepository.update(target.id, update);
+    }
   }
 
   /**

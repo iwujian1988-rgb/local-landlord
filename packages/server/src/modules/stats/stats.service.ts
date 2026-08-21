@@ -33,6 +33,16 @@ export interface VacantRoom {
   propertyName: string;
 }
 
+export interface ReceiptConfirmation {
+  kind: 'bill' | 'single_charge';
+  id: number;
+  roomName: string;
+  tenantName: string;
+  label: string;
+  amount: number;
+  sharedAt: Date;
+}
+
 export interface HomeStats {
   greeting: string;
   profileName: string;
@@ -47,6 +57,8 @@ export interface HomeStats {
   vacantRooms: VacantRoom[];
   expiringContracts: ExpiringContract[];
   discoveryAlerts: DiscoveryAlert[];
+  receiptConfirmations: ReceiptConfirmation[];
+  receiptConfirmationCount: number;
 }
 
 @Injectable()
@@ -518,6 +530,53 @@ export class StatsService {
       : [];
     const activeTenantByRoom = new Map(activeTenants.map(tenant => [tenant.roomId, tenant]));
 
+    // One-time “did you receive it?” reminders. A real share enables one
+    // prompt; confirming or choosing “还没收到” removes it. Re-sharing enables
+    // one new prompt again.
+    const receiptConfirmations: ReceiptConfirmation[] = [];
+    if (allRoomIds.length > 0) {
+      const sharedBills = await this.billRepository
+        .createQueryBuilder('bill')
+        .leftJoinAndSelect('bill.room', 'room')
+        .leftJoinAndSelect('bill.tenant', 'tenant')
+        .where('bill.room_id IN (:...roomIds)', { roomIds: allRoomIds })
+        .andWhere('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
+        .andWhere('bill.last_shared_at IS NOT NULL')
+        .andWhere('bill.receipt_prompt_dismissed_at IS NULL')
+        .getMany();
+      for (const bill of sharedBills) {
+        const amount = Math.max(0, Number(bill.totalAmount) - (Number(bill.paidAmount) || 0));
+        if (amount <= 0 || !bill.lastSharedAt) continue;
+        receiptConfirmations.push({
+          kind: 'bill', id: bill.id,
+          roomName: bill.room?.name || `房间${bill.roomId}`,
+          tenantName: bill.tenant?.name || '',
+          label: `${bill.period}房租`, amount, sharedAt: bill.lastSharedAt,
+        });
+      }
+
+      const sharedSingles = await this.singleChargeRepository
+        .createQueryBuilder('charge')
+        .leftJoinAndSelect('charge.room', 'room')
+        .leftJoinAndSelect('charge.tenant', 'tenant')
+        .where('charge.room_id IN (:...roomIds)', { roomIds: allRoomIds })
+        .andWhere('charge.status = 0')
+        .andWhere('charge.last_shared_at IS NOT NULL')
+        .andWhere('charge.receipt_prompt_dismissed_at IS NULL')
+        .getMany();
+      for (const charge of sharedSingles) {
+        const amount = Number(charge.amount) || 0;
+        if (amount <= 0 || !charge.lastSharedAt) continue;
+        receiptConfirmations.push({
+          kind: 'single_charge', id: charge.id,
+          roomName: charge.room?.name || `房间${charge.roomId}`,
+          tenantName: charge.tenant?.name || '',
+          label: charge.feeType, amount, sharedAt: charge.lastSharedAt,
+        });
+      }
+      receiptConfirmations.sort((a, b) => b.sharedAt.getTime() - a.sharedAt.getTime());
+    }
+
     // Compute pending info by iterating rented rooms
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -747,6 +806,8 @@ export class StatsService {
       vacantRooms: vacantRoomList,
       expiringContracts,
       discoveryAlerts: discoveryAlerts.slice(0, 5),
+      receiptConfirmations: receiptConfirmations.slice(0, 5),
+      receiptConfirmationCount: receiptConfirmations.length,
     };
   }
 }

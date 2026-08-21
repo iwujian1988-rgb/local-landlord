@@ -30,6 +30,12 @@ export class SingleCharge {
   @Column({ name: 'paid_at', type: 'datetime', nullable: true })
   paidAt: Date;
 
+  @Column({ name: 'last_shared_at', type: 'datetime', nullable: true })
+  lastSharedAt: Date | null;
+
+  @Column({ name: 'receipt_prompt_dismissed_at', type: 'datetime', nullable: true })
+  receiptPromptDismissedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
