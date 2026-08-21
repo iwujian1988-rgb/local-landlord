@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { RentService } from './rent.service';
 import { CreateSingleChargeDto } from './dto/create-single-charge.dto';
 import { RemindTenantDto } from './dto/remind-tenant.dto';
@@ -13,6 +13,14 @@ export class RentController {
   @Get('rent/pending')
   async getPendingRent(@CurrentUser() user: any) {
     return this.rentService.getPendingRent(user.id);
+  }
+
+  @Get('rent/bills')
+  async getAllBills(
+    @CurrentUser() user: any,
+    @Query('period') period?: string,
+  ) {
+    return this.rentService.getAllBills(user.id, period);
   }
 
   @Post('rooms/:roomId/single-charge')

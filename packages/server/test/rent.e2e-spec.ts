@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, loginAsLandlord } from './helpers/app';
+import { createTestApp, loginAsLandlord, createProperty, createRoom, createTenant, createBill, currentMonthStr } from './helpers/app';
 
 describe('Rent (e2e)', () => {
   let app: INestApplication;
@@ -65,6 +65,41 @@ describe('Rent (e2e)', () => {
 
   it('TC-RENT-005: 无认证访问被拒绝', async () => {
     const res = await request(app.getHttpServer()).get('/api/rent/pending');
+    expect(res.status).toBe(401);
+  });
+
+  it('TC-RENT-006: 获取本月全部账单（含未确认单独收款）', async () => {
+    const pid = await createProperty(app, auth);
+    const roomId = await createRoom(app, auth, pid, { name: 'rent-bills-房间' });
+    await createTenant(app, auth, roomId);
+    await createBill(app, auth, roomId, { period: currentMonthStr(), totalAmount: 2000 });
+    const charge = await request(app.getHttpServer())
+      .post(`/api/rooms/${roomId}/single-charge`).set(auth())
+      .send({ feeType: '维修费', amount: 200, note: '修水管' });
+    expect(charge.body.code).toBe(0);
+
+    const res = await request(app.getHttpServer()).get('/api/rent/bills').set(auth());
+    expect(res.body.code).toBe(0);
+    expect(res.body.data.period).toBe(currentMonthStr());
+    expect(Array.isArray(res.body.data.bills)).toBe(true);
+    expect(Array.isArray(res.body.data.singleCharges)).toBe(true);
+
+    // 本月创建的账单必须列出（无论状态）——这是"全部账单"接口的本职。
+    const bill = res.body.data.bills.find((b: any) => b.roomId === roomId);
+    expect(bill).toBeDefined();
+    expect(Number(bill.totalAmount)).toBe(2000);
+    expect(bill.roomName).toBe('rent-bills-房间');
+
+    // 未确认的单独收款必须出现 —— 统计页把它算进"待收"而旧界面无处可看，
+    // 本接口就是为消除这个盲区。
+    const pending = res.body.data.singleCharges.filter((s: any) => s.status === 0);
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+    expect(Number(pending[0].amount)).toBe(200);
+    expect(pending[0].feeType).toBe('维修费');
+  });
+
+  it('TC-RENT-007: 全部账单接口无认证被拒绝', async () => {
+    const res = await request(app.getHttpServer()).get('/api/rent/bills');
     expect(res.status).toBe(401);
   });
 });

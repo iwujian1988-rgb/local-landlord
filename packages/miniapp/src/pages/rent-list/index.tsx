@@ -49,6 +49,54 @@ interface RentStatsSummary {
   totalPending: number;
 }
 
+interface BillRow {
+  billId: number;
+  roomId: number;
+  roomName: string;
+  propertyName: string;
+  tenantId: number | null;
+  tenantName: string;
+  period: string;
+  periodEnd: string | null;
+  totalAmount: number;
+  paidAmount: number;
+  status: number;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+interface SingleChargeRow {
+  id: number;
+  roomId: number;
+  roomName: string;
+  propertyName: string;
+  tenantName: string;
+  feeType: string;
+  amount: number;
+  note: string;
+  status: number;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+interface AllBillsResponse {
+  period: string;
+  bills: BillRow[];
+  singleCharges: SingleChargeRow[];
+}
+
+const BILL_STATUS_TEXT: Record<number, string> = {
+  0: '待收', 1: '已收', 2: '逾期', 3: '部分付款', 4: '已取消',
+};
+const BILL_STATUS_TAG: Record<number, string> = {
+  0: 'tag-accent', 1: 'tag-green', 2: 'tag-red', 3: 'tag-accent', 4: 'tag-default',
+};
+
+function billPeriodLabel(bill: BillRow): string {
+  if (!bill.periodEnd || bill.periodEnd === bill.period) return bill.period;
+  return `${bill.period} ~ ${bill.periodEnd}`;
+}
+
 type Bucket = 'overdue' | 'today' | 'approaching' | 'upcoming';
 
 interface DisplayItem {
@@ -96,10 +144,11 @@ function buildDisplayItems(data: PendingResponse): DisplayItem[] {
 
 export default function RentList() {
   const [confirmVisible, setConfirmVisible] = useState(false);
-  const [confirmItem, setConfirmItem] = useState<DisplayItem | null>(null);
+  const [confirmItem, setConfirmItem] = useState<PendingEntry | null>(null);
   const [activeItems, setActiveItems] = useState<DisplayItem[]>([]);
   const [upcomingItems, setUpcomingItems] = useState<DisplayItem[]>([]);
-  const [completedItems, setCompletedItems] = useState<PendingEntry[]>([]);
+  const [allBills, setAllBills] = useState<BillRow[]>([]);
+  const [singleCharges, setSingleCharges] = useState<SingleChargeRow[]>([]);
   const [summary, setSummary] = useState<RentStatsSummary>({
     totalExpected: 0,
     totalCollected: 0,
@@ -108,21 +157,24 @@ export default function RentList() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [singleConfirmId, setSingleConfirmId] = useState(0);
 
   const loadData = useCallback(async (): Promise<DisplayItem[]> => {
     setLoading(true);
     setError(false);
     try {
-      const [res, statsRes] = await Promise.all([
+      const [res, statsRes, billsRes] = await Promise.all([
         get<PendingResponse>('/rent/pending'),
         get<RentStatsSummary>('/stats/rent', { period: 'month' }),
+        get<AllBillsResponse>('/rent/bills'),
       ]);
       const data = res.data || { today: [], approaching: [], overdue: [], completed: [], upcoming: [] };
       setSummary(statsRes.data || { totalExpected: 0, totalCollected: 0, totalPending: 0 });
+      setAllBills(billsRes.data?.bills || []);
+      setSingleCharges(billsRes.data?.singleCharges || []);
       const allItems = buildDisplayItems(data);
       setActiveItems(allItems.filter(i => i.bucket !== 'upcoming'));
       setUpcomingItems(allItems.filter(i => i.bucket === 'upcoming'));
-      setCompletedItems(data.completed || []);
 
       // Sync tab badge with remaining pending count (excludes upcoming — those aren't due yet)
       const remaining = (data.today?.length || 0) + (data.approaching?.length || 0) + (data.overdue?.length || 0);
@@ -159,15 +211,15 @@ export default function RentList() {
       if (pushBillId > 0) {
         const match = allItems.find(i => i.entry.billId === pushBillId);
         if (match) {
-          setConfirmItem(match);
+          setConfirmItem(match.entry);
           setConfirmVisible(true);
         }
       }
     });
   });
 
-  const handleConfirm = useCallback((item: DisplayItem) => {
-    setConfirmItem(item);
+  const handleConfirm = useCallback((entry: PendingEntry) => {
+    setConfirmItem(entry);
     setConfirmVisible(true);
   }, []);
 
@@ -175,15 +227,15 @@ export default function RentList() {
     // requestSubscribeMessage MUST run inside the user TAP gesture's sync call
     // stack. Call it before any await.
     requestNotification();
-    if (!confirmItem?.entry.billId) return;
+    if (!confirmItem?.billId) return;
     setConfirmVisible(false);
 
     try {
-      await put(`/bills/${confirmItem.entry.billId}/confirm`, {
+      await put(`/bills/${confirmItem.billId}/confirm`, {
         actualAmount,
       });
       // Compare against remaining balance to detect true partial payment
-      const remaining = confirmItem.entry.totalAmount - (confirmItem.entry.paidAmount || 0);
+      const remaining = confirmItem.totalAmount - (confirmItem.paidAmount || 0);
       const isPartial = actualAmount != null && actualAmount < remaining;
       Taro.showToast({
         title: isPartial ? '已记录部分付款' : '已标记收到',
@@ -196,6 +248,21 @@ export default function RentList() {
       Taro.showToast({ title: '操作失败', icon: 'none' });
     }
   }, [confirmItem, loadData]);
+
+  const handleSingleConfirm = useCallback((id: number) => {
+    if (singleConfirmId) return;
+    setSingleConfirmId(id);
+    put(`/single-charges/${id}/confirm`, {})
+      .then(() => {
+        Taro.showToast({ title: '已记为收到', icon: 'success', duration: 1500 });
+        loadData();
+      })
+      .catch((err) => {
+        console.error('[RentList] 确认单独收款失败:', err);
+        Taro.showToast({ title: '操作失败，请重试', icon: 'none' });
+      })
+      .finally(() => setSingleConfirmId(0));
+  }, [singleConfirmId, loadData]);
 
   const overdueItems = activeItems.filter(i => i.bucket === 'overdue');
 
@@ -316,7 +383,7 @@ export default function RentList() {
                 )}
                 <View
                   className={`rent-btn primary${item.bucket === 'overdue' && item.entry.overdueDays <= 1 ? ' full' : ''}`}
-                  onClick={() => handleConfirm(item)}
+                  onClick={() => handleConfirm(item.entry)}
                 >
                   <Text className="rent-btn-text">{buttonLabel}</Text>
                 </View>
@@ -336,6 +403,100 @@ export default function RentList() {
               </Text>
             </View>
           </View>
+        )}
+
+        {allBills.length > 0 && (
+          <>
+            <View className="rent-section-header">
+              <Text className="rent-section-title">本月全部账单</Text>
+              <Text className="rent-section-count">{allBills.length}笔</Text>
+            </View>
+            {allBills.map((bill) => {
+              const payable = bill.status === 0 || bill.status === 2 || bill.status === 3;
+              return (
+                <View
+                  key={bill.billId}
+                  className="rent-item-card"
+                  onClick={() => {
+                    if (!payable) return;
+                    handleConfirm({
+                      roomId: bill.roomId,
+                      roomName: bill.roomName,
+                      propertyName: bill.propertyName,
+                      propertyId: 0,
+                      rent: 0,
+                      tenantName: bill.tenantName,
+                      tenantId: bill.tenantId,
+                      contractEndDate: '',
+                      rentDay: 0,
+                      payMonths: 1,
+                      billId: bill.billId,
+                      billStatus: bill.status,
+                      billPeriod: bill.period,
+                      billPeriodEnd: bill.periodEnd,
+                      totalAmount: bill.totalAmount,
+                      paidAmount: bill.paidAmount,
+                      overdueDays: 0,
+                      daysUntil: 0,
+                      hasOverdue: false,
+                      nextDueMonth: null,
+                    });
+                  }}
+                >
+                  <View className="rent-item-top">
+                    <View className="rent-item-info">
+                      <Text className="rent-item-name">{bill.roomName} · {bill.tenantName || '原租客'}</Text>
+                      <Text className={`rent-item-amount${bill.status === 1 ? ' green' : ''}`}>
+                        {bill.totalAmount.toLocaleString()} 元
+                      </Text>
+                      <Text className="rent-item-period">{billPeriodLabel(bill)}</Text>
+                    </View>
+                    <View className={`rent-tag ${BILL_STATUS_TAG[bill.status] || 'tag-default'}`}>
+                      <Text className="rent-tag-text">{BILL_STATUS_TEXT[bill.status] || '未知'}</Text>
+                    </View>
+                  </View>
+                  {bill.status === 3 && bill.paidAmount > 0 && (
+                    <Text className="rent-item-desc overdue-text">已收 {bill.paidAmount.toLocaleString()} / {bill.totalAmount.toLocaleString()} 元</Text>
+                  )}
+                </View>
+              );
+            })}
+          </>
+        )}
+
+        {singleCharges.length > 0 && (
+          <>
+            <View className="rent-section-header">
+              <Text className="rent-section-title">单独收款（水电维修等）</Text>
+              <Text className="rent-section-count">{singleCharges.length}笔</Text>
+            </View>
+            {singleCharges.map((s) => (
+              <View key={s.id} className="rent-item-card">
+                <View className="rent-item-top">
+                  <View className="rent-item-info">
+                    <Text className="rent-item-name">{s.roomName} · {s.tenantName || '原租客'} · {s.feeType}</Text>
+                    <Text className={`rent-item-amount${s.status === 1 ? ' green' : ''}`}>
+                      {s.amount.toLocaleString()} 元
+                    </Text>
+                    {s.note ? <Text className="rent-item-period">{s.note}</Text> : null}
+                  </View>
+                  <View className={`rent-tag ${s.status === 1 ? 'tag-green' : 'tag-accent'}`}>
+                    <Text className="rent-tag-text">{s.status === 1 ? '已收' : '待收'}</Text>
+                  </View>
+                </View>
+                {s.status === 0 && (
+                  <View className="rent-item-actions">
+                    <View
+                      className="rent-btn primary full"
+                      onClick={() => handleSingleConfirm(s.id)}
+                    >
+                      <Text className="rent-btn-text">{singleConfirmId === s.id ? '确认中...' : '已收到'}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ))}
+          </>
         )}
 
         {upcomingItems.length > 0 && (
@@ -361,7 +522,7 @@ export default function RentList() {
           </>
         )}
 
-        {!loading && activeItems.length === 0 && completedItems.length === 0 && totalExpected === 0 && (
+        {!loading && activeItems.length === 0 && allBills.length === 0 && singleCharges.length === 0 && totalExpected === 0 && (
           <EmptyState title="本月没有待收租" description="添加房间和租客后，到日子会在这里提醒你" actionText="去添加房间" onAction={() => Taro.switchTab({ url: '/pages/rooms/index' })} />
         )}
 
@@ -410,8 +571,8 @@ export default function RentList() {
       <ConfirmModal
         visible={confirmVisible}
         title="确认已收款"
-        amount={confirmItem?.entry.totalAmount || 0}
-        paidAmount={confirmItem?.entry.paidAmount || 0}
+        amount={confirmItem?.totalAmount || 0}
+        paidAmount={confirmItem?.paidAmount || 0}
         editableAmount
         confirmText="确认已收"
         onConfirm={handleConfirmSubmit}

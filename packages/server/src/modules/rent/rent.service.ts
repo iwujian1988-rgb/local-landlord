@@ -55,6 +55,42 @@ export interface PendingRentGroup {
   upcoming: PendingEntry[];
 }
 
+export interface BillListEntry {
+  billId: number;
+  roomId: number;
+  roomName: string;
+  propertyName: string;
+  tenantId: number | null;
+  tenantName: string;
+  period: string;
+  periodEnd: string | null;
+  totalAmount: number;
+  paidAmount: number;
+  status: number;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface SingleChargeListEntry {
+  id: number;
+  roomId: number;
+  roomName: string;
+  propertyName: string;
+  tenantName: string;
+  feeType: string;
+  amount: number;
+  note: string;
+  status: number;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+export interface AllBillsResponse {
+  period: string;
+  bills: BillListEntry[];
+  singleCharges: SingleChargeListEntry[];
+}
+
 @Injectable()
 export class RentService {
   constructor(
@@ -277,6 +313,115 @@ export class RentService {
       completed: completedList,
       upcoming: upcomingList,
     };
+  }
+
+  /**
+   * All bills of a month for the landlord — every status, every room (vacant
+   * rooms included, so bills of moved-out tenants stay auditable) — plus the
+   * month's single charges (water/electric/repair etc.). Mirrors the stats V2
+   * accounting so the numbers on this list always add up to the summary card:
+   * bills by start-period == month, singles by created(pending)/paid(confirmed) date.
+   */
+  async getAllBills(landlordId: number, period?: string): Promise<AllBillsResponse> {
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const monthStr = /^\d{4}-\d{2}$/.test(period || '')
+      ? (period as string)
+      : currentMonthStr;
+    const [year, month] = monthStr.split('-').map(Number);
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 1);
+
+    const properties = await this.propertyRepository.find({ where: { landlordId } });
+    if (properties.length === 0) {
+      return { period: monthStr, bills: [], singleCharges: [] };
+    }
+    const propertyMap = new Map<number, Property>();
+    for (const p of properties) propertyMap.set(p.id, p);
+
+    const rooms = await this.roomRepository.find({
+      where: { propertyId: In(properties.map(p => p.id)) },
+    });
+    if (rooms.length === 0) {
+      return { period: monthStr, bills: [], singleCharges: [] };
+    }
+    const roomMap = new Map<number, Room>();
+    for (const r of rooms) roomMap.set(r.id, r);
+    const roomIds = rooms.map(r => r.id);
+
+    const bills = await this.billRepository.find({
+      where: { roomId: In(roomIds), period: monthStr },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Bind dates as 'YYYY-MM-DD HH:mm:ss' strings: MySQL takes them natively,
+    // and sqlite's driver binds Date objects as epoch numbers which silently
+    // break the string comparison against stored datetime text.
+    const sqlDateTime = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ` +
+      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    const singles = await this.singleChargeRepository
+      .createQueryBuilder('sc')
+      .where('sc.room_id IN (:...ids)', { ids: roomIds })
+      .andWhere(
+        '((sc.status = 0 AND sc.created_at >= :start AND sc.created_at < :end) ' +
+        'OR (sc.status = 1 AND sc.paid_at >= :start AND sc.paid_at < :end))',
+        { start: sqlDateTime(monthStart), end: sqlDateTime(monthEnd) },
+      )
+      .orderBy('sc.created_at', 'DESC')
+      .getMany();
+
+    const tenantIds = new Set<number>();
+    for (const b of bills) if (b.tenantId) tenantIds.add(b.tenantId);
+    for (const s of singles) if (s.tenantId) tenantIds.add(s.tenantId);
+    const tenantNameMap = new Map<number, string>();
+    if (tenantIds.size > 0) {
+      const tenants = await this.tenantRepository.find({ where: { id: In([...tenantIds]) } });
+      for (const t of tenants) tenantNameMap.set(t.id, t.name);
+    }
+
+    const toBillEntry = (b: Bill): BillListEntry => {
+      const room = roomMap.get(b.roomId);
+      return {
+        billId: b.id,
+        roomId: b.roomId,
+        roomName: room?.name || `房间${b.roomId}`,
+        propertyName: room ? (propertyMap.get(room.propertyId)?.name || '') : '',
+        tenantId: b.tenantId || null,
+        tenantName: tenantNameMap.get(b.tenantId) || '',
+        period: b.period,
+        periodEnd: b.periodEnd || null,
+        totalAmount: Number(b.totalAmount) || 0,
+        paidAmount: Number(b.paidAmount) || 0,
+        status: b.status,
+        paidAt: b.paidAt ? b.paidAt.toISOString() : null,
+        createdAt: b.createdAt ? b.createdAt.toISOString() : '',
+      };
+    };
+
+    const statusRank = (s: number) => (s === 1 ? 2 : s === 4 ? 3 : 1);
+    const billEntries = bills
+      .map(toBillEntry)
+      .sort((a, b) => statusRank(a.status) - statusRank(b.status));
+
+    const singleEntries: SingleChargeListEntry[] = singles.map(s => {
+      const room = roomMap.get(s.roomId);
+      return {
+        id: s.id,
+        roomId: s.roomId,
+        roomName: room?.name || `房间${s.roomId}`,
+        propertyName: room ? (propertyMap.get(room.propertyId)?.name || '') : '',
+        tenantName: tenantNameMap.get(s.tenantId) || '',
+        feeType: s.feeType,
+        amount: Number(s.amount) || 0,
+        note: s.note || '',
+        status: s.status,
+        paidAt: s.paidAt ? s.paidAt.toISOString() : null,
+        createdAt: s.createdAt ? s.createdAt.toISOString() : '',
+      };
+    });
+
+    return { period: monthStr, bills: billEntries, singleCharges: singleEntries };
   }
 
   /** Create single charge */

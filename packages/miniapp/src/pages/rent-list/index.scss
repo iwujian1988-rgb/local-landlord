@@ -104,6 +104,8 @@
   color: var(--text-secondary, #7A6F64);
   margin-top: 6px;
   display: block;
+
+  &.green { color: var(--green, #7BA37B); }
 }
 
 .rent-item-period {
@@ -136,6 +138,7 @@
 .rent-tag.tag-red { background: #E8A8A8; }
 .rent-tag.tag-accent { background: var(--accent-soft); }
 .rent-tag.tag-default { background: var(--bg-soft); }
+.rent-tag.tag-green { background: var(--green-soft); }
 
 .rent-tag-text {
   font-size: 22px;
@@ -145,6 +148,7 @@
 
 .rent-tag.tag-accent .rent-tag-text { color: var(--accent-dk); }
 .rent-tag.tag-default .rent-tag-text { color: var(--text-secondary); }
+.rent-tag.tag-green .rent-tag-text { color: var(--green); }
 
 /* Actions */
 .rent-item-actions {
