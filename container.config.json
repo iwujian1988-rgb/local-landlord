@@ -25,6 +25,7 @@
     "DB_DATABASE": "local_landlord",
     "UPLOAD_MODE": "cloudbase",
     "ALLOW_OPENID_HEADER": "true",
+    "WX_API_BASE": "http://api.weixin.qq.com",
     "WX_APPID": "",
     "WX_SECRET": "",
     "JWT_SECRET": "",

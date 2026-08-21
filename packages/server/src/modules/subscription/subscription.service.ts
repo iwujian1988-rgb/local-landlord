@@ -42,6 +42,12 @@ function amountValue(v: number | string | null | undefined): string {
   return String(Math.round(Number(v || 0) * 100) / 100);
 }
 
+// 微信云托管容器的出站流量走内网代理（DNS 把 api.weixin.qq.com 解析到
+// 169.254.10.1），HTTPS 会撞平台自签名证书（DEPTH_ZERO_SELF_SIGNED_CERT）。
+// 官方方案：容器内用 HTTP 协议调用，平台自动注入 access_token，无需密钥。
+// 通过 WX_API_BASE 显式指定，或在未指定时按 DNS 结果自动探测（见 resolveWxApi）。
+
+
 // Cron expressions are written in Beijing time; pin the zone so a UTC container
 // cannot shift them by 8 hours.
 const CRON_TZ = { timeZone: 'Asia/Shanghai' };
@@ -51,6 +57,7 @@ export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
   private cachedAccessToken: string | null = null;
   private tokenExpiresAt = 0;
+  private wxApiCache: { base: string; injected: boolean } | null = null;
 
   constructor(
     @InjectRepository(Bill)
@@ -79,8 +86,38 @@ export class SubscriptionService {
     return value?.enableAutoRemind !== false;
   }
 
+  /**
+   * Resolve the WeChat API base: env override wins; otherwise if DNS maps
+   * api.weixin.qq.com to a link-local address (169.254.x.x — the CloudBase
+   * internal proxy), switch to plain HTTP where the platform injects
+   * access_token and MITM'd TLS would otherwise fail.
+   */
+  private async resolveWxApi(): Promise<{ base: string; injected: boolean }> {
+    if (this.wxApiCache) return this.wxApiCache;
+    let base = process.env.WX_API_BASE || 'https://api.weixin.qq.com';
+    let injected = base.startsWith('http://');
+    if (!process.env.WX_API_BASE) {
+      try {
+        const dns = await import('dns');
+        const records = await dns.promises.lookup('api.weixin.qq.com', { all: true });
+        if (records.some(r => r.address.startsWith('169.254.'))) {
+          base = 'http://api.weixin.qq.com';
+          injected = true;
+        }
+      } catch {
+        // DNS unavailable — keep https and let the fetch error surface.
+      }
+    }
+    this.wxApiCache = { base, injected };
+    return this.wxApiCache;
+  }
+
   /** Get WeChat access_token with caching */
   private async getAccessToken(): Promise<string> {
+    // 云托管内网模式：平台注入 token，跳过获取。
+    const { injected } = await this.resolveWxApi();
+    if (injected) return '';
+
     const now = Date.now();
     if (this.cachedAccessToken && now < this.tokenExpiresAt - 300000) {
       return this.cachedAccessToken;
@@ -92,7 +129,8 @@ export class SubscriptionService {
       throw new Error('WX_APPID or WX_SECRET not configured');
     }
 
-    const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`;
+    const { base } = await this.resolveWxApi();
+    const url = `${base}/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = await resp.json() as { access_token?: string; expires_in?: number; errcode?: number; errmsg?: string };
 
@@ -114,8 +152,11 @@ export class SubscriptionService {
     page?: string,
   ): Promise<boolean> {
     try {
+      const { base, injected } = await this.resolveWxApi();
       const token = await this.getAccessToken();
-      const url = `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`;
+      const url = injected
+        ? `${base}/cgi-bin/message/subscribe/send`
+        : `${base}/cgi-bin/message/subscribe/send?access_token=${token}`;
 
       const body: Record<string, any> = {
         touser: toUser,
@@ -762,15 +803,19 @@ export class SubscriptionService {
 
   /**
    * API: network diagnostics for WeChat API reachability. The container logs
-   * only show "TypeError: fetch failed" — this surfaces DNS records, the
-   * resolved address family, and the fetch error cause (e.g. ENOTFOUND vs
-   * ETIMEDOUT vs UND_ERR_CONNECT_TIMEOUT) so the real blocker is visible.
+   * only show "TypeError: fetch failed" — this surfaces DNS records and per
+   * protocol (https / http) fetch outcomes, including the error cause code,
+   * so the real blocker is visible. The http:// test checks the CloudBase
+   * internal injection path (token auto-injected, no secret needed).
    */
   async netDiag(): Promise<Record<string, unknown>> {
     const host = 'api.weixin.qq.com';
+    const { base, injected } = await this.resolveWxApi();
     const result: Record<string, unknown> = {
       host,
       nodeVersion: process.version,
+      wxApiBase: base,
+      tokenInjectedMode: injected,
       timestamp: new Date().toISOString(),
     };
 
@@ -783,23 +828,29 @@ export class SubscriptionService {
       result.dnsError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
     }
 
-    const started = Date.now();
-    try {
-      const res = await fetch(`https://${host}/cgi-bin/token`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(8000),
-      });
-      result.fetchStatus = res.status;
-      const body = await res.text();
-      result.fetchBodyPreview = body.slice(0, 200);
-    } catch (e) {
-      const err = e as Error & { cause?: { code?: string; message?: string } };
-      result.fetchError = `${err.name}: ${err.message}`;
-      result.fetchCause = err.cause
-        ? { code: err.cause.code ?? null, message: err.cause.message ?? null }
-        : null;
-    }
-    result.fetchMs = Date.now() - started;
+    const probe = async (protocol: 'https' | 'http'): Promise<Record<string, unknown>> => {
+      const started = Date.now();
+      const r: Record<string, unknown> = { protocol };
+      try {
+        const res = await fetch(`${protocol}://${host}/cgi-bin/token`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(8000),
+        });
+        r.status = res.status;
+        r.bodyPreview = (await res.text()).slice(0, 200);
+      } catch (e) {
+        const err = e as Error & { cause?: { code?: string; message?: string } };
+        r.error = `${err.name}: ${err.message}`;
+        r.cause = err.cause
+          ? { code: err.cause.code ?? null, message: err.cause.message ?? null }
+          : null;
+      }
+      r.ms = Date.now() - started;
+      return r;
+    };
+
+    result.httpsProbe = await probe('https');
+    result.httpProbe = await probe('http');
 
     return result;
   }
