@@ -19,7 +19,16 @@ export function requestNotification(): void {
   Taro.requestSubscribeMessage({
     tmplIds,
     entityIds: tmplIds,
-    success: () => {},
-    fail: () => {},
+    success: (res) => {
+      const rejected = tmplIds.filter(id => (res as Record<string, unknown>)[id] === 'reject');
+      if (rejected.length > 0) {
+        console.warn('[notification] user rejected templates:', rejected.join(','));
+      }
+    },
+    fail: (err) => {
+      // e.g. "can only be invoked by user TAP gesture" or invalid template ID —
+      // without this log the failure is completely silent.
+      console.warn('[notification] requestSubscribeMessage failed:', err?.errMsg);
+    },
   });
 }

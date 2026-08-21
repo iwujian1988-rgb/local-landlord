@@ -1,6 +1,6 @@
 FROM node:18-alpine
 WORKDIR /app
-RUN apk add --no-cache ca-certificates python3 make g++ && update-ca-certificates
+RUN apk add --no-cache ca-certificates python3 make g++ tzdata && update-ca-certificates
 RUN npm install -g pnpm@8.15.9
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/
@@ -16,4 +16,5 @@ RUN mkdir -p packages/server/public && cp -r packages/admin/dist/. packages/serv
 EXPOSE 80
 ENV PORT=80
 ENV NODE_ENV=production
+ENV TZ=Asia/Shanghai
 CMD ["node", "packages/server/dist/main.js"]

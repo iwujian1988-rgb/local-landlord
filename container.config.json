@@ -15,6 +15,7 @@
   "envParams": {
     "NODE_ENV": "production",
     "PORT": "80",
+    "TZ": "Asia/Shanghai",
     "PUBLIC_BASE_URL": "https://local-landlord-265509-4-1439465517.sh.run.tcloudbase.com",
     "DB_TYPE": "mysql",
     "DB_HOST": "",
@@ -32,7 +33,8 @@
     "COS_SECRET_KEY": "",
     "COS_BUCKET": "",
     "COS_REGION": "",
-    "WX_SUBSCRIBE_TEMPLATE_RENT": "",
+    "WX_SUBSCRIBE_TEMPLATE_RENT": "siY2jHZxVvfJmZgnrLEzkfYmc8FWt8DFlsdfAIvPGcM",
+    "WX_SUBSCRIBE_TEMPLATE_OVERDUE": "siY2jHZxVvfJmZgnrLEzkfYmc8FWt8DFlsdfAIvPGcM",
     "ADMIN_DEFAULT_PASSWORD": ""
   },
   "customLogs": "stdout",

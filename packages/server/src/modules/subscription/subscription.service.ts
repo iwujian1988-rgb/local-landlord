@@ -13,6 +13,39 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { SystemConfig } from '../system/system-config.entity';
 
+// Must stay in sync with packages/miniapp/src/config.ts (WX_TEMPLATE_RENT/OVERDUE —
+// both use this one template). Env vars override the default; a WRONG env value
+// would be silently rejected by WeChat on every send, so warn loudly.
+const DEFAULT_SUBSCRIBE_TEMPLATE_ID = 'siY2jHZxVvfJmZgnrLEzkfYmc8FWt8DFlsdfAIvPGcM';
+
+function resolveTemplateId(envName: 'WX_SUBSCRIBE_TEMPLATE_RENT' | 'WX_SUBSCRIBE_TEMPLATE_OVERDUE'): string {
+  const value = process.env[envName];
+  if (value && value !== DEFAULT_SUBSCRIBE_TEMPLATE_ID) {
+    console.warn(
+      `[subscription] ${envName}="${value}" differs from the miniapp template ` +
+      `"${DEFAULT_SUBSCRIBE_TEMPLATE_ID}" — WeChat will REJECT these sends until it matches.`,
+    );
+  }
+  return value || DEFAULT_SUBSCRIBE_TEMPLATE_ID;
+}
+
+function rentTemplateId(): string {
+  return resolveTemplateId('WX_SUBSCRIBE_TEMPLATE_RENT');
+}
+
+function overdueTemplateId(): string {
+  return resolveTemplateId('WX_SUBSCRIBE_TEMPLATE_OVERDUE');
+}
+
+/** WeChat amount-type fields accept numbers only (no 元 suffix, no other text). */
+function amountValue(v: number | string | null | undefined): string {
+  return String(Math.round(Number(v || 0) * 100) / 100);
+}
+
+// Cron expressions are written in Beijing time; pin the zone so a UTC container
+// cannot shift them by 8 hours.
+const CRON_TZ = { timeZone: 'Asia/Shanghai' };
+
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
@@ -60,7 +93,7 @@ export class SubscriptionService {
     }
 
     const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const data = await resp.json() as { access_token?: string; expires_in?: number; errcode?: number; errmsg?: string };
 
     if (!data.access_token) {
@@ -95,6 +128,7 @@ export class SubscriptionService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10000),
       });
       const result = await resp.json() as { errcode?: number; errmsg?: string };
 
@@ -134,8 +168,8 @@ export class SubscriptionService {
   /**
    * 自动生成月度账单 + 出账通知 — 每天 8:00
    */
-  @Cron('0 8 * * *')
-  async autoGenerateBills(): Promise<number> {
+  @Cron('0 8 * * *', CRON_TZ)
+  async autoGenerateBills(): Promise<{ generated: number; sent: number; failed: number; skipped: number }> {
     const now = dayjs();
     const today = now.date();
     const isLastDay = now.endOf('month').date() === today;
@@ -224,48 +258,50 @@ export class SubscriptionService {
       this.logger.log(`Auto-generated ${generated} bills for ${monthStr}`);
     }
 
-    await this.sendAutoBillNotifications(landlordBillMap);
-    return generated;
+    const notify = await this.sendAutoBillNotifications(landlordBillMap);
+    return { generated, ...notify };
   }
 
   /** 出账通知：账单生成后推送给房东 */
   private async sendAutoBillNotifications(
     landlordBillMap: Map<number, { count: number; total: number }>,
-  ): Promise<void> {
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
-    if (!templateId || landlordBillMap.size === 0) return;
+  ): Promise<{ sent: number; failed: number; skipped: number }> {
+    if (landlordBillMap.size === 0) return { sent: 0, failed: 0, skipped: 0 };
+    const templateId = rentTemplateId();
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const [landlordId, info] of landlordBillMap) {
       const landlord = await this.landlordRepository.findOne({ where: { id: landlordId } });
-      if (!landlord || !landlord.openId) continue;
+      if (!landlord) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
-      await this.sendSubscribeMessage(
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: this.truncate('月度账单已生成') },
           thing2: { value: this.truncate(`共${info.count}间房待收租`) },
-          amount3: { value: `${info.total}元` },
+          amount3: { value: amountValue(info.total) },
         },
         'pages/rent-list/index',
       );
+      if (ok) sent++; else failed++;
     }
+    return { sent, failed, skipped };
   }
 
   /**
    * 收租提醒 — 每天 9:05
    */
-  @Cron('5 9 * * *')
-  async sendRentReminders(): Promise<void> {
+  @Cron('5 9 * * *', CRON_TZ)
+  async sendRentReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip rent reminders');
-      return;
+      return { sent: 0, failed: 0, skipped: 0 };
     }
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
-    if (!templateId) {
-      this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip');
-      return;
-    }
+    const templateId = rentTemplateId();
 
     const now = dayjs();
     const today = now.date();
@@ -274,6 +310,9 @@ export class SubscriptionService {
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const tenant of tenants) {
       const rentDay = tenant.rentDay ?? 1;
       const shouldNotify = rentDay === today || (rentDay === 0 && isLastDay);
@@ -288,24 +327,27 @@ export class SubscriptionService {
       if (!room) continue;
 
       const landlord = await this.findLandlordByRoom(room.id);
-      if (!landlord || !landlord.openId) continue;
+      if (!landlord) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
       const label = this.truncate(propName ? `${propName} ${room.name} ${tenant.name}` : `${tenant.name} - ${room.name}`);
 
-      await this.sendSubscribeMessage(
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: label },
           thing2: { value: this.truncate(`${monthStr}月房租待收`) },
-          amount3: { value: `${bill.totalAmount}元` },
+          amount3: { value: amountValue(bill.totalAmount) },
         },
         `pages/bill/index?roomId=${room.id}&billId=${bill.id}`,
       );
+      if (ok) sent++; else failed++;
     }
 
-    this.logger.log('Rent reminders sent');
+    this.logger.log(`Rent reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    return { sent, failed, skipped };
   }
 
   /**
@@ -314,17 +356,13 @@ export class SubscriptionService {
    * 场景：租客退租当天（moveOutDate 或 contractEndDate = 今天）
    * 提醒房东检查房屋、安排招租
    */
-  @Cron('30 9 * * *')
-  async sendMoveOutReminders(): Promise<void> {
+  @Cron('30 9 * * *', CRON_TZ)
+  async sendMoveOutReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip move-out reminders');
-      return;
+      return { sent: 0, failed: 0, skipped: 0 };
     }
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
-    if (!templateId) {
-      this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip move-out');
-      return;
-    }
+    const templateId = rentTemplateId();
 
     const todayStr = dayjs().format('YYYY-MM-DD');
 
@@ -347,47 +385,49 @@ export class SubscriptionService {
       ...expiringActive.map(t => ({ ...t, msg: '合同今日到期，确认退租' })),
     ];
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const tenant of allTenants) {
       const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
       if (!room) continue;
 
       const landlord = await this.findLandlordByRoom(room.id);
-      if (!landlord || !landlord.openId) continue;
+      if (!landlord) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
       const label = this.truncate(
         propName ? `${propName} ${room.name} ${tenant.name}` : `${tenant.name} - ${room.name}`,
       );
 
-      await this.sendSubscribeMessage(
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: label },
           thing2: { value: this.truncate(tenant.msg) },
-          amount3: { value: `${tenant.deposit || 0}元` },
+          amount3: { value: amountValue(tenant.deposit || 0) },
         },
         `pages/room-detail/index?roomId=${room.id}`,
       );
+      if (ok) sent++; else failed++;
     }
 
-    this.logger.log('Move-out reminders sent');
+    this.logger.log(`Move-out reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    return { sent, failed, skipped };
   }
 
   /**
    * 逾期提醒 — 每天 10:05
    */
-  @Cron('5 10 * * *')
-  async sendOverdueReminders(): Promise<void> {
+  @Cron('5 10 * * *', CRON_TZ)
+  async sendOverdueReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip overdue reminders');
-      return;
+      return { sent: 0, failed: 0, skipped: 0 };
     }
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_OVERDUE;
-    if (!templateId) {
-      this.logger.warn('WX_SUBSCRIBE_TEMPLATE_OVERDUE not configured, skip');
-      return;
-    }
+    const templateId = overdueTemplateId();
 
     const now = dayjs();
     const today = now.date();
@@ -401,6 +441,9 @@ export class SubscriptionService {
       .where('bill.status IN (:...statuses)', { statuses: [0, 2] })
       .getMany();
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const bill of overdueBills) {
       if (!bill.tenant || !bill.room) continue;
 
@@ -438,7 +481,8 @@ export class SubscriptionService {
       if (!shouldNotify) continue;
 
       const landlord = await this.findLandlordByRoom(bill.room.id);
-      if (!landlord || !landlord.openId) continue;
+      if (!landlord) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(bill.room.id);
       const label = this.truncate(propName ? `${propName} ${bill.room.name} ${bill.tenant.name}` : `${bill.tenant.name} - ${bill.room.name}`);
@@ -447,39 +491,40 @@ export class SubscriptionService {
         ? `${bill.period}房租，如已收请标记`
         : `${bill.period}房租逾期${overdueDays}天`;
 
-      await this.sendSubscribeMessage(
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: label },
           thing2: { value: this.truncate(contextMsg) },
-          amount3: { value: `${bill.totalAmount}元` },
+          amount3: { value: amountValue(bill.totalAmount) },
         },
         `pages/bill/index?roomId=${bill.room.id}&billId=${bill.id}`,
       );
+      if (ok) sent++; else failed++;
     }
 
-    this.logger.log('Overdue reminders sent');
+    this.logger.log(`Overdue reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    return { sent, failed, skipped };
   }
 
   /**
    * 合同到期提醒 — 每天 11:00
    */
-  @Cron('0 11 * * *')
-  async sendContractExpiryReminders(): Promise<void> {
+  @Cron('0 11 * * *', CRON_TZ)
+  async sendContractExpiryReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip contract expiry reminders');
-      return;
+      return { sent: 0, failed: 0, skipped: 0 };
     }
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
-    if (!templateId) {
-      this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip contract expiry');
-      return;
-    }
+    const templateId = rentTemplateId();
 
     const now = dayjs();
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const tenant of tenants) {
       if (!tenant.contractEndDate) continue;
 
@@ -493,7 +538,8 @@ export class SubscriptionService {
       if (!room) continue;
 
       const landlord = await this.findLandlordByRoom(room.id);
-      if (!landlord || !landlord.openId) continue;
+      if (!landlord) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
       const label = this.truncate(propName ? `${propName} ${room.name} ${tenant.name}` : `${tenant.name} - ${room.name}`);
@@ -509,19 +555,23 @@ export class SubscriptionService {
         msg = `合同已过期${Math.abs(daysLeft)}天，尽快处理`;
       }
 
-      await this.sendSubscribeMessage(
+      // amount-type fields only accept numbers — the day count goes here, the
+      // unit is already spelled out in thing2.
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: label },
           thing2: { value: this.truncate(msg) },
-          amount3: { value: `${daysLeft >= 0 ? daysLeft : 0}天` },
+          amount3: { value: `${daysLeft >= 0 ? daysLeft : 0}` },
         },
         `pages/room-detail/index?roomId=${room.id}`,
       );
+      if (ok) sent++; else failed++;
     }
 
-    this.logger.log('Contract expiry reminders sent');
+    this.logger.log(`Contract expiry reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    return { sent, failed, skipped };
   }
 
   /**
@@ -530,21 +580,20 @@ export class SubscriptionService {
    * 场景：房间空置 7/14/30 天，提醒房东尽快招租
    * 通过最近退租租客的 moveOutDate 计算空置天数
    */
-  @Cron('30 11 * * *')
-  async sendVacancyReminders(): Promise<void> {
+  @Cron('30 11 * * *', CRON_TZ)
+  async sendVacancyReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip vacancy reminders');
-      return;
+      return { sent: 0, failed: 0, skipped: 0 };
     }
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
-    if (!templateId) {
-      this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip vacancy');
-      return;
-    }
+    const templateId = rentTemplateId();
 
     const now = dayjs();
     const rooms = await this.roomRepository.find();
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const room of rooms) {
       // 有在租租客则跳过
       const activeTenant = await this.tenantRepository.findOne({
@@ -576,25 +625,28 @@ export class SubscriptionService {
       if (!notifyDays.includes(vacantDays)) continue;
 
       const landlord = await this.findLandlordByRoom(room.id);
-      if (!landlord || !landlord.openId) continue;
+      if (!landlord) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
       const label = this.truncate(propName ? `${propName} ${room.name}` : room.name);
       const rent = Number(room.rent) || 0;
 
-      await this.sendSubscribeMessage(
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: label },
           thing2: { value: this.truncate(`已空置${vacantDays}天，尽快招租`) },
-          amount3: { value: `${rent}元` },
+          amount3: { value: amountValue(rent) },
         },
         `pages/room-detail/index?roomId=${room.id}`,
       );
+      if (ok) sent++; else failed++;
     }
 
-    this.logger.log('Vacancy reminders sent');
+    this.logger.log(`Vacancy reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    return { sent, failed, skipped };
   }
 
   /**
@@ -602,27 +654,26 @@ export class SubscriptionService {
    *
    * 场景：月底给房东发当月收租汇总
    */
-  @Cron('0 20 * * *')
-  async sendMonthlySummary(): Promise<void> {
+  @Cron('0 20 * * *', CRON_TZ)
+  async sendMonthlySummary(): Promise<{ sent: number; failed: number; skipped: number }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip monthly summary');
-      return;
+      return { sent: 0, failed: 0, skipped: 0 };
     }
     const now = dayjs();
     const isLastDay = now.endOf('month').date() === now.date();
-    if (!isLastDay) return;
+    if (!isLastDay) return { sent: 0, failed: 0, skipped: 0 };
 
-    const templateId = process.env.WX_SUBSCRIBE_TEMPLATE_RENT;
-    if (!templateId) {
-      this.logger.warn('WX_SUBSCRIBE_TEMPLATE_RENT not configured, skip monthly summary');
-      return;
-    }
+    const templateId = rentTemplateId();
 
     const monthStr = now.format('YYYY-MM');
     const landlords = await this.landlordRepository.find();
 
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
     for (const landlord of landlords) {
-      if (!landlord.openId) continue;
+      if (!landlord.openId) { skipped++; continue; }
 
       const properties = await this.propertyRepository.find({
         where: { landlordId: landlord.id },
@@ -657,60 +708,55 @@ export class SubscriptionService {
       const paidBills = bills.filter(b => b.status === 1 || b.status === 3);
       const unpaidCount = bills.filter(b => b.status === 0 || b.status === 2).length;
 
-      await this.sendSubscribeMessage(
+      const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing1: { value: this.truncate(`${monthStr}月收租汇总`) },
           thing2: { value: this.truncate(`已收${paidBills.length}间 未收${unpaidCount}间`) },
-          amount3: { value: `${totalCollected}元` },
+          amount3: { value: amountValue(totalCollected) },
         },
         'pages/rent-stats/index',
       );
+      if (ok) sent++; else failed++;
     }
 
-    this.logger.log('Monthly summary sent');
+    this.logger.log(`Monthly summary: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    return { sent, failed, skipped };
   }
 
   /** API: manually trigger auto bill generation */
-  async triggerAutoBills(): Promise<{ generated: number }> {
-    const generated = await this.autoGenerateBills();
-    return { generated };
+  async triggerAutoBills(): Promise<{ generated: number; sent: number; failed: number; skipped: number }> {
+    return this.autoGenerateBills();
   }
 
   /** API: manually trigger rent reminder */
-  async triggerRentReminder(): Promise<{ sent: boolean }> {
-    await this.sendRentReminders();
-    return { sent: true };
+  async triggerRentReminder(): Promise<{ sent: number; failed: number; skipped: number }> {
+    return this.sendRentReminders();
   }
 
   /** API: manually trigger overdue reminder */
-  async triggerOverdueReminder(): Promise<{ sent: boolean }> {
-    await this.sendOverdueReminders();
-    return { sent: true };
+  async triggerOverdueReminder(): Promise<{ sent: number; failed: number; skipped: number }> {
+    return this.sendOverdueReminders();
   }
 
   /** API: manually trigger contract expiry reminder */
-  async triggerContractExpiry(): Promise<{ sent: boolean }> {
-    await this.sendContractExpiryReminders();
-    return { sent: true };
+  async triggerContractExpiry(): Promise<{ sent: number; failed: number; skipped: number }> {
+    return this.sendContractExpiryReminders();
   }
 
   /** API: manually trigger move-out reminder */
-  async triggerMoveOutReminder(): Promise<{ sent: boolean }> {
-    await this.sendMoveOutReminders();
-    return { sent: true };
+  async triggerMoveOutReminder(): Promise<{ sent: number; failed: number; skipped: number }> {
+    return this.sendMoveOutReminders();
   }
 
   /** API: manually trigger vacancy reminder */
-  async triggerVacancyReminder(): Promise<{ sent: boolean }> {
-    await this.sendVacancyReminders();
-    return { sent: true };
+  async triggerVacancyReminder(): Promise<{ sent: number; failed: number; skipped: number }> {
+    return this.sendVacancyReminders();
   }
 
   /** API: manually trigger monthly summary */
-  async triggerMonthlySummary(): Promise<{ sent: boolean }> {
-    await this.sendMonthlySummary();
-    return { sent: true };
+  async triggerMonthlySummary(): Promise<{ sent: number; failed: number; skipped: number }> {
+    return this.sendMonthlySummary();
   }
 }

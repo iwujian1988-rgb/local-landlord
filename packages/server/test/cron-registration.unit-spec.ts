@@ -36,21 +36,22 @@ function findCronFiles(): { file: string; content: string }[] {
 }
 
 /** Extract all @Cron('expr') decorator expressions from a source file. */
-function extractCronExpressions(content: string): { expr: string; method: string }[] {
-  const results: { expr: string; method: string }[] = [];
-  // Match @Cron('xxx') or @Cron(CronExpression.X) followed by async method()
-  const regex = /@Cron\((['"`])([^'"`]+)\1\)\s*(?:async\s+)?(\w+)\s*\(/g;
+function extractCronExpressions(content: string): { expr: string; method: string; options: string }[] {
+  const results: { expr: string; method: string; options: string }[] = [];
+  // Match @Cron('xxx'), @Cron('xxx', <options>) or @Cron(CronExpression.X)
+  // followed by async method()
+  const regex = /@Cron\((['"`])([^'"`]+)\1(\s*,[^)]*)?\)\s*(?:async\s+)?(\w+)\s*\(/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(content)) !== null) {
     const m = match;
-    results.push({ expr: m[2], method: m[3] });
+    results.push({ expr: m[2], method: m[4], options: m[3] || '' });
   }
   // Also match @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT) (enum reference)
-  const enumRegex = /@Cron\((CronExpression\.\w+)\)\s*(?:async\s+)?(\w+)\s*\(/g;
+  const enumRegex = /@Cron\((CronExpression\.\w+)(\s*,[^)]*)?\)\s*(?:async\s+)?(\w+)\s*\(/g;
   while ((match = enumRegex.exec(content)) !== null) {
     const m = match; // narrow non-null for TS
-    if (!results.find(r => r.method === m[2])) {
-      results.push({ expr: m[1], method: m[2] });
+    if (!results.find(r => r.method === m[3])) {
+      results.push({ expr: m[1], method: m[3], options: m[2] || '' });
     }
   }
   return results;
@@ -70,10 +71,10 @@ function isValidCron(expr: string): boolean {
 
 describe('Cron 注册校验', () => {
   const cronFiles = findCronFiles();
-  const allCrons: { file: string; expr: string; method: string }[] = [];
+  const allCrons: { file: string; expr: string; method: string; options: string }[] = [];
   for (const { file, content } of cronFiles) {
-    for (const { expr, method } of extractCronExpressions(content)) {
-      allCrons.push({ file, expr, method });
+    for (const { expr, method, options } of extractCronExpressions(content)) {
+      allCrons.push({ file, expr, method, options });
     }
   }
 
@@ -103,6 +104,23 @@ describe('Cron 注册校验', () => {
         expect(found?.expr).toBe(expr);
       },
     );
+  });
+
+  describe('时区固定', () => {
+    it('TC-CRON-REG-TZ: subscription 的所有 cron 必须固定 Asia/Shanghai 时区', () => {
+      // The CRON_TZ constant itself must pin Beijing time…
+      const content = fs.readFileSync(
+        path.join(SRC_ROOT, 'modules/subscription/subscription.service.ts'),
+        'utf8',
+      );
+      expect(content).toMatch(/CRON_TZ\s*=\s*\{\s*timeZone:\s*'Asia\/Shanghai'\s*\}/);
+      // …and every @Cron in that file must pass it.
+      const subs = allCrons.filter(c => c.file.endsWith('subscription.service.ts'));
+      expect(subs.length).toBeGreaterThanOrEqual(7);
+      for (const c of subs) {
+        expect(c.options).toContain('CRON_TZ');
+      }
+    });
   });
 
   describe('ScheduleModule 注册', () => {
