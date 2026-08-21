@@ -1,4 +1,4 @@
-import { Controller, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { SubscriptionService } from './subscription.service';
 import { BillService } from '../bill/bill.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -52,5 +52,10 @@ export class SubscriptionController {
   @Post('trigger-monthly-summary')
   async triggerMonthlySummary() {
     return this.subscriptionService.triggerMonthlySummary();
+  }
+
+  @Get('net-diag')
+  async netDiag() {
+    return this.subscriptionService.netDiag();
   }
 }

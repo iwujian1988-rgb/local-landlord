@@ -759,4 +759,48 @@ export class SubscriptionService {
   async triggerMonthlySummary(): Promise<{ sent: number; failed: number; skipped: number }> {
     return this.sendMonthlySummary();
   }
+
+  /**
+   * API: network diagnostics for WeChat API reachability. The container logs
+   * only show "TypeError: fetch failed" — this surfaces DNS records, the
+   * resolved address family, and the fetch error cause (e.g. ENOTFOUND vs
+   * ETIMEDOUT vs UND_ERR_CONNECT_TIMEOUT) so the real blocker is visible.
+   */
+  async netDiag(): Promise<Record<string, unknown>> {
+    const host = 'api.weixin.qq.com';
+    const result: Record<string, unknown> = {
+      host,
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      const dns = await import('dns');
+      const records = await dns.promises.lookup(host, { all: true });
+      result.dns = records;
+      result.dnsFamily = records[0]?.family ?? null;
+    } catch (e) {
+      result.dnsError = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    }
+
+    const started = Date.now();
+    try {
+      const res = await fetch(`https://${host}/cgi-bin/token`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(8000),
+      });
+      result.fetchStatus = res.status;
+      const body = await res.text();
+      result.fetchBodyPreview = body.slice(0, 200);
+    } catch (e) {
+      const err = e as Error & { cause?: { code?: string; message?: string } };
+      result.fetchError = `${err.name}: ${err.message}`;
+      result.fetchCause = err.cause
+        ? { code: err.cause.code ?? null, message: err.cause.message ?? null }
+        : null;
+    }
+    result.fetchMs = Date.now() - started;
+
+    return result;
+  }
 }

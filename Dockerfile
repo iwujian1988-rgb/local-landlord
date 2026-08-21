@@ -17,4 +17,4 @@ EXPOSE 80
 ENV PORT=80
 ENV NODE_ENV=production
 ENV TZ=Asia/Shanghai
-CMD ["node", "packages/server/dist/main.js"]
+CMD ["node", "--dns-result-order=ipv4first", "packages/server/dist/main.js"]
