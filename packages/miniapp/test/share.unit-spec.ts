@@ -154,7 +154,7 @@ describe('forwardBillShare', () => {
     const out = await forwardBillShare(1);
     expect(out?.token).toBe('tk');
     expect(Taro.navigateTo).toHaveBeenCalledWith({
-      url: '/pages/tenant-bill/index?token=tk',
+      url: '/pages/tenant-bill/index?token=tk&source=landlord',
     });
     expect(Taro.setClipboardData).not.toHaveBeenCalled();
     expect(Taro.showModal).not.toHaveBeenCalled();
@@ -163,7 +163,7 @@ describe('forwardBillShare', () => {
   it('TC-SHARE-FWD-003: 原生账单 token 中的特殊字符会编码', () => {
     openTenantBill('a b/中文');
     expect(Taro.navigateTo).toHaveBeenCalledWith({
-      url: `/pages/tenant-bill/index?token=${encodeURIComponent('a b/中文')}`,
+      url: `/pages/tenant-bill/index?token=${encodeURIComponent('a b/中文')}&source=landlord`,
     });
   });
 });

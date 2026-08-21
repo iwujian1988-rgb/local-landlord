@@ -4,6 +4,8 @@ import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useState, useCallback } from 'react';
 import { get, post } from '../../services/request';
+import { forwardSingleChargeShare } from '../../services/share';
+import { buildSingleChargeCreatePath, getCreatedSingleChargeId } from '../../utils/single-charge';
 import './index.scss';
 
 // Common fee types as suggestions - user can also type custom ones
@@ -27,6 +29,7 @@ export default function SingleCharge() {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [createdChargeId, setCreatedChargeId] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -60,6 +63,19 @@ export default function SingleCharge() {
   const allFeeTypes = [...new Set([...roomFeeNames, ...COMMON_TYPES])];
 
   const handleGenerate = useCallback(async () => {
+    if (submitting) return;
+
+    // 收费记录已经保存时，只重试打开分享预览，绝不能再次创建一笔收费。
+    if (createdChargeId > 0) {
+      setSubmitting(true);
+      const shared = await forwardSingleChargeShare(createdChargeId);
+      if (!shared) {
+        Taro.showToast({ title: '收费已保存，请重试发送', icon: 'none', duration: 2500 });
+      }
+      setSubmitting(false);
+      return;
+    }
+
     const finalFeeType = useCustomType ? customFeeType.trim() : feeType;
     if (!selectedRoomId) {
       Taro.showToast({ title: '请选择房间', icon: 'none', duration: 2000 });
@@ -77,7 +93,6 @@ export default function SingleCharge() {
       Taro.showToast({ title: '金额超出合理范围', icon: 'none', duration: 2000 });
       return;
     }
-    if (submitting) return;
     const roomLabel = rooms.find(r => r.id === selectedRoomId)?.label || '';
     Taro.showModal({
       title: '确认生成收款通知？',
@@ -88,27 +103,30 @@ export default function SingleCharge() {
         if (!res.confirm) return;
         setSubmitting(true);
         try {
-          const res = await post<{ id: number }>(`/rent/rooms/${selectedRoomId}/single-charge`, {
+          const res = await post<{ id: number }>(buildSingleChargeCreatePath(selectedRoomId), {
             feeType: finalFeeType,
             amount: Number(amount),
             note,
           });
-          const singleChargeId = res.data?.id || 0;
-          Taro.showToast({ title: '已保存，正在跳转到付款页...', icon: 'none', duration: 1500 });
-          setTimeout(() => {
-            setSubmitting(false);
-            Taro.navigateTo({
-              url: `/pages/payment/index?roomId=${selectedRoomId}&amount=${Number(amount)}&feeType=${encodeURIComponent(finalFeeType)}&note=${encodeURIComponent(note)}&singleChargeId=${singleChargeId}`
-            });
-          }, 1500);
-        } catch (err) {
-          Taro.showToast({ title: '保存失败', icon: 'none' });
+          const singleChargeId = getCreatedSingleChargeId(res.data);
+          if (!singleChargeId) {
+            throw new Error('服务端未返回收款记录编号');
+          }
+          setCreatedChargeId(singleChargeId);
+          const shared = await forwardSingleChargeShare(singleChargeId);
+          if (!shared) {
+            Taro.showToast({ title: '收费已保存，请重试发送', icon: 'none', duration: 2500 });
+          }
+          setSubmitting(false);
+        } catch (err: any) {
+          console.error('[SingleCharge] 生成收款通知失败:', err);
+          Taro.showToast({ title: err?.message || '保存失败，请重试', icon: 'none' });
           setSubmitting(false);
           return;
         }
       },
     });
-  }, [selectedRoomId, feeType, customFeeType, useCustomType, amount, note, submitting]);
+  }, [selectedRoomId, feeType, customFeeType, useCustomType, amount, note, submitting, createdChargeId, rooms]);
 
   const selectedRoomLabel = rooms.find(r => r.id === selectedRoomId)?.label || '请选择房间';
 
@@ -122,6 +140,19 @@ export default function SingleCharge() {
         <Text className="sc-tip-text">适合单独收费：水电费、停车费、维修费、押金等</Text>
       </View>
 
+      {createdChargeId > 0 ? (
+        <View className="sc-form">
+          <View className="form-group">
+            <Text className="form-label">收费记录已保存</Text>
+            <Text className="sc-tip-text">不会重复记账，可以继续查看并发送给租客。</Text>
+          </View>
+          <View className="sc-actions">
+            <View className={`sc-submit-btn ${submitting ? 'disabled' : ''}`} onClick={submitting ? undefined : handleGenerate}>
+              <Text className="sc-submit-text">{submitting ? '处理中...' : '查看并发送'}</Text>
+            </View>
+          </View>
+        </View>
+      ) : (
       <View className="sc-form">
         {/* Room Selector */}
         <View className="form-group">
@@ -217,10 +248,11 @@ export default function SingleCharge() {
         {/* Submit */}
         <View className="sc-actions">
           <View className={`sc-submit-btn ${submitting ? 'disabled' : ''}`} onClick={submitting ? undefined : handleGenerate}>
-            <Text className="sc-submit-text">{submitting ? '生成中...' : '生成收款通知'}</Text>
+            <Text className="sc-submit-text">{submitting ? '处理中...' : '生成并发送'}</Text>
           </View>
         </View>
       </View>
+      )}
         </>
       )}
     </View>

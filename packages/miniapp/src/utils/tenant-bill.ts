@@ -56,3 +56,25 @@ export function formatBillPeriod(period: string, periodEnd?: string | null): str
   if (periodEnd && periodEnd !== period) return `${format(period)}—${format(periodEnd)}`;
   return format(period);
 }
+
+export function isLandlordTenantBillPreview(source?: string): boolean {
+  return source === 'landlord';
+}
+
+export function buildTenantBillCopyText(
+  bill: ReturnType<typeof normalizeTenantBill>,
+): string {
+  const period = formatBillPeriod(bill.period, bill.periodEnd);
+  const details = bill.items
+    .map(item => `${item.name}：${item.amount.toLocaleString()}元`)
+    .join('\n');
+  const amountLabel = bill.isPaid ? '账单合计' : '本次应付';
+  return [
+    `${bill.roomName} · ${period}账单`,
+    bill.tenantName ? `租客：${bill.tenantName}` : '',
+    details,
+    `${amountLabel}：${(bill.isPaid ? bill.totalAmount : bill.outstandingAmount).toLocaleString()}元`,
+    bill.payeeName ? `收款人：${bill.payeeName}` : '',
+    bill.paymentNote ? `房东留言：${bill.paymentNote}` : '',
+  ].filter(Boolean).join('\n');
+}

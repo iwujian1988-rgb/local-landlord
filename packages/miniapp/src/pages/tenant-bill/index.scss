@@ -2,20 +2,77 @@
   min-height: 100vh;
   background: #F8F3EC;
   color: #342D28;
+  position: relative;
 }
 
 .tenant-bill-scroll { height: 100vh; }
 
-.tenant-bill-hero {
-  padding: 34px 36px 28px;
+.tenant-preview-intro {
+  margin: 24px 28px 18px;
+  padding: 24px 26px;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  gap: 20px;
+  border-radius: 28px;
+  background: #342D28;
+  color: #FFF;
+  box-sizing: border-box;
 }
 
-.tenant-bill-room { font-size: 42px; font-weight: 800; }
+.tenant-preview-badge {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #FF8D4D;
+  color: #342D28;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tenant-preview-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tenant-preview-title {
+  font-size: 30px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.tenant-preview-desc {
+  font-size: 23px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, .72);
+}
+
+.tenant-bill-hero {
+  padding: 28px 36px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.tenant-bill-heading { min-width: 0; display: flex; flex-direction: column; }
+.tenant-bill-room { font-size: 42px; line-height: 1.25; font-weight: 800; }
 .tenant-bill-period { margin-top: 8px; font-size: 28px; color: #786B61; }
-.tenant-bill-tenant { margin-top: 8px; font-size: 25px; color: #9A8D82; }
+.tenant-bill-tenant {
+  flex: 0 0 auto;
+  max-width: 260px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: #EFE6DB;
+  font-size: 24px;
+  line-height: 1.35;
+  color: #786B61;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .tenant-amount-card,
 .tenant-card {
@@ -28,14 +85,14 @@
 }
 
 .tenant-amount-card {
-  text-align: center;
-  background: linear-gradient(145deg, #FF9657, #F36D4A);
+  text-align: left;
+  background: #F3754F;
   color: #FFF;
 }
 
-.tenant-amount-card.paid { background: linear-gradient(145deg, #7DBA78, #5CA66B); }
+.tenant-amount-card.paid { background: #68A56F; }
 .tenant-amount-label { display: block; font-size: 28px; font-weight: 700; opacity: .95; }
-.tenant-amount-line { margin-top: 8px; display: flex; align-items: baseline; justify-content: center; }
+.tenant-amount-line { margin-top: 8px; display: flex; align-items: baseline; justify-content: flex-start; }
 .tenant-amount-number { font-size: 76px; font-weight: 900; line-height: 1.2; }
 .tenant-amount-unit { margin-left: 8px; font-size: 28px; font-weight: 700; }
 .tenant-paid-tip { display: block; margin-top: 12px; font-size: 24px; opacity: .9; }
@@ -55,17 +112,54 @@
 .tenant-empty-qr, .tenant-note-card { color: #6F6258; font-size: 27px; }
 .tenant-note-text { line-height: 1.7; }
 
+.tenant-action-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 18px 24px calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255, 253, 249, .98);
+  border-top: 2px solid #EEE5DC;
+  box-shadow: 0 -10px 30px rgba(82, 66, 52, .08);
+  box-sizing: border-box;
+}
+
+.tenant-copy-button,
 .tenant-share-button {
-  margin: 12px 28px 24px;
-  height: 100px;
-  line-height: 100px;
-  border: 0;
-  border-radius: 50px;
-  background: #FF8D4D;
-  color: #332B25;
-  font-size: 34px;
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  font-size: 30px;
   font-weight: 800;
 }
+
+.tenant-copy-button {
+  flex: 0 0 210px;
+  border-radius: 46px;
+  background: #EFE9E1;
+  color: #5F554D;
+}
+
+.tenant-share-button {
+  flex: 1;
+  margin: 0;
+  padding: 0 28px;
+  line-height: 92px;
+  border: 0;
+  border-radius: 46px;
+  background: #FF8D4D;
+  color: #332B25;
+  box-shadow: 0 10px 24px rgba(243, 117, 79, .22);
+}
 .tenant-share-button::after { border: 0; }
+.tenant-copy-button:active,
+.tenant-share-button:active { transform: scale(.98); }
 .tenant-footer { display: block; padding: 0 40px; color: #A4978B; font-size: 22px; text-align: center; }
 .tenant-bottom-space { height: 70px; }
+.tenant-bottom-space.with-dock { height: 170px; }

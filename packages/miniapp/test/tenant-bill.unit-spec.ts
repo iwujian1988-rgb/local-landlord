@@ -1,4 +1,10 @@
-import { formatBillPeriod, normalizeTenantBill, TenantBillPayload } from '../src/utils/tenant-bill';
+import {
+  buildTenantBillCopyText,
+  formatBillPeriod,
+  isLandlordTenantBillPreview,
+  normalizeTenantBill,
+  TenantBillPayload,
+} from '../src/utils/tenant-bill';
 
 const payload = (overrides: Partial<TenantBillPayload> = {}): TenantBillPayload => ({
   roomName: '101', tenantName: '王大力', period: '2026-08',
@@ -39,5 +45,20 @@ describe('normalizeTenantBill', () => {
 describe('formatBillPeriod', () => {
   it('TC-TENANT-BILL-005: 多月账单显示完整起止周期', () => {
     expect(formatBillPeriod('2026-08', '2026-10')).toBe('2026年8月—2026年10月');
+  });
+});
+
+describe('tenant bill page roles', () => {
+  it('TC-TENANT-BILL-006: 只有房东入口显示发送操作', () => {
+    expect(isLandlordTenantBillPreview('landlord')).toBe(true);
+    expect(isLandlordTenantBillPreview(undefined)).toBe(false);
+    expect(isLandlordTenantBillPreview('tenant')).toBe(false);
+  });
+
+  it('TC-TENANT-BILL-007: 复制文字包含周期、明细和真实合计', () => {
+    const text = buildTenantBillCopyText(normalizeTenantBill(payload()));
+    expect(text).toContain('101 · 2026年8月账单');
+    expect(text).toContain('房租：3,000元');
+    expect(text).toContain('本次应付：3,600元');
   });
 });

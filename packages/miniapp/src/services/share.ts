@@ -93,7 +93,9 @@ export function openShareWebview(token: string, shareUrl?: string) {
 }
 
 export function openTenantBill(token: string) {
-  Taro.navigateTo({ url: `/pages/tenant-bill/index?token=${encodeURIComponent(token)}` });
+  Taro.navigateTo({
+    url: `/pages/tenant-bill/index?token=${encodeURIComponent(token)}&source=landlord`,
+  });
 }
 
 /**

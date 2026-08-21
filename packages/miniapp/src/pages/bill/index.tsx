@@ -373,10 +373,10 @@ export default function Bill() {
 
             <View className="elder-card">
               <Text className="elder-card-title">第三步：发给租客</Text>
-              <Text className="elder-card-desc">打开租客账单，点“转发给租客”即可。租客无需登录。</Text>
+              <Text className="elder-card-desc">先核对租客看到的账单，再点“微信发送”。租客无需登录。</Text>
 
               <View className="bill-action-btn primary" onClick={handleSendBill}>
-                <Text className="bill-action-text">打开租客账单</Text>
+                <Text className="bill-action-text">预览并发送</Text>
               </View>
 
               <View className="bill-action-btn secondary" onClick={handleCopyText}>

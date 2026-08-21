@@ -4,8 +4,14 @@ import { useCallback, useMemo, useState } from 'react';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { resolveAsset } from '../../config';
-import { get } from '../../services/request';
-import { formatBillPeriod, normalizeTenantBill, TenantBillPayload } from '../../utils/tenant-bill';
+import { get, post } from '../../services/request';
+import {
+  buildTenantBillCopyText,
+  formatBillPeriod,
+  isLandlordTenantBillPreview,
+  normalizeTenantBill,
+  TenantBillPayload,
+} from '../../utils/tenant-bill';
 import './index.scss';
 
 const QR_LABEL: Record<string, string> = {
@@ -17,6 +23,7 @@ const QR_LABEL: Record<string, string> = {
 export default function TenantBill() {
   const params = Taro.getCurrentInstance().router?.params || {};
   const token = params.token || '';
+  const isLandlordPreview = isLandlordTenantBillPreview(params.source);
   const [data, setData] = useState<ReturnType<typeof normalizeTenantBill> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,17 +41,23 @@ export default function TenantBill() {
       if (!res.data) throw new Error('账单内容为空');
       const normalized = normalizeTenantBill(res.data);
       setData(normalized);
-      Taro.setNavigationBarTitle({ title: `${normalized.roomName || '租客'}账单` });
+      Taro.setNavigationBarTitle({
+        title: isLandlordPreview ? '发送前预览' : `${normalized.roomName || '租客'}账单`,
+      });
     } catch (err: any) {
       console.error('[TenantBill] 加载失败:', err);
       setError(err?.message || '账单加载失败，请让房东重新发送');
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, isLandlordPreview]);
 
   useDidShow(() => {
-    Taro.showShareMenu({ withShareTicket: true });
+    if (isLandlordPreview) {
+      Taro.showShareMenu({ withShareTicket: true });
+    } else {
+      Taro.hideShareMenu();
+    }
     loadData();
   });
 
@@ -53,10 +66,25 @@ export default function TenantBill() {
     return `${data.roomName} · ${formatBillPeriod(data.period, data.periodEnd)}账单`;
   }, [data]);
 
-  useShareAppMessage(() => ({
-    title: shareTitle,
-    path: `/pages/tenant-bill/index?token=${encodeURIComponent(token)}`,
-  }));
+  useShareAppMessage(() => {
+    if (isLandlordPreview && token) {
+      post('/share/mark-sent', { token }).catch((err) => {
+        console.error('[TenantBill] 记录发送状态失败:', err);
+      });
+    }
+    return {
+      title: shareTitle,
+      path: `/pages/tenant-bill/index?token=${encodeURIComponent(token)}`,
+    };
+  });
+
+  const handleCopy = useCallback(() => {
+    if (!data) return;
+    Taro.setClipboardData({
+      data: buildTenantBillCopyText(data),
+      success: () => Taro.showToast({ title: '账单文字已复制', icon: 'none' }),
+    });
+  }, [data]);
 
   if (loading) return <View className="tenant-bill-page"><Loading text="正在核对账单..." /></View>;
   if (error || !data) {
@@ -66,11 +94,23 @@ export default function TenantBill() {
   const periodText = formatBillPeriod(data.period, data.periodEnd);
 
   return (
-    <View className="tenant-bill-page">
+    <View className={`tenant-bill-page${isLandlordPreview ? ' landlord-preview' : ''}`}>
       <ScrollView className="tenant-bill-scroll" scrollY>
+        {isLandlordPreview && (
+          <View className="tenant-preview-intro">
+            <View className="tenant-preview-badge"><Text>发送前预览</Text></View>
+            <View className="tenant-preview-copy">
+              <Text className="tenant-preview-title">租客将看到以下账单</Text>
+              <Text className="tenant-preview-desc">核对金额和收款码，确认后点底部“微信发送”</Text>
+            </View>
+          </View>
+        )}
+
         <View className="tenant-bill-hero">
-          <Text className="tenant-bill-room">{data.roomName}</Text>
-          <Text className="tenant-bill-period">{periodText}账单</Text>
+          <View className="tenant-bill-heading">
+            <Text className="tenant-bill-room">{data.roomName}</Text>
+            <Text className="tenant-bill-period">{periodText}账单</Text>
+          </View>
           {data.tenantName && <Text className="tenant-bill-tenant">租客：{data.tenantName}</Text>}
         </View>
 
@@ -133,10 +173,18 @@ export default function TenantBill() {
           </View>
         )}
 
-        <Button className="tenant-share-button" openType="share">转发给租客</Button>
         <Text className="tenant-footer">账单由“五联人家”生成，请以实际付款记录为准</Text>
-        <View className="tenant-bottom-space" />
+        <View className={`tenant-bottom-space${isLandlordPreview ? ' with-dock' : ''}`} />
       </ScrollView>
+
+      {isLandlordPreview && (
+        <View className="tenant-action-dock">
+          <View className="tenant-copy-button" onClick={handleCopy}>
+            <Text>复制文字</Text>
+          </View>
+          <Button className="tenant-share-button" openType="share">微信发送</Button>
+        </View>
+      )}
     </View>
   );
 }

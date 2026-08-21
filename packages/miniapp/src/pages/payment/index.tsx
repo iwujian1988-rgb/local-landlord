@@ -105,7 +105,7 @@ export default function Payment() {
   }, [roomId, paramAmount, feeType, note, roomNameParam, queryItems]);
 
   useDidShow(() => {
-    Taro.setNavigationBarTitle({ title: '发给租客' });
+    Taro.setNavigationBarTitle({ title: '收款码预览' });
     loadData();
   });
 
@@ -248,7 +248,7 @@ export default function Payment() {
               onClick={handleOpenTenantBill}
             >
               <Icon name="send" size={28} color="currentColor" />
-              <Text className="payment-btn-text">{shareLoading ? '生成中...' : '打开租客账单'}</Text>
+              <Text className="payment-btn-text">{shareLoading ? '生成中...' : '预览并发送'}</Text>
             </View>
           </View>
         )}
