@@ -21,6 +21,17 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import * as bcrypt from 'bcryptjs';
 
 const ACCOUNT_RETENTION_DAYS = 30;
+const WECHAT_REQUEST_TIMEOUT_MS = 5000;
+const WECHAT_RETRY_DELAYS_MS = [250, 750];
+const RETRYABLE_WECHAT_ERRORS = new Set([
+  'EAI_AGAIN',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ENETUNREACH',
+  'EPIPE',
+  'ETIMEDOUT',
+  'HTTP_5XX',
+]);
 
 @Injectable()
 export class AuthService {
@@ -83,11 +94,15 @@ export class AuthService {
     let wxData: { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
     try {
       const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
-      const raw = await this.httpGetJson(wxUrl);
+      const raw = await this.httpGetJsonWithRetry(wxUrl);
       const { openid, errcode, errmsg } = raw;
       wxData = { openid, errcode, errmsg };
     } catch (error) {
-      this.logger.error('WeChat code2Session request failed', error);
+      const reason = this.describeWechatRequestError(error);
+      this.logger.error(
+        `WeChat code2Session request failed after retries: ${reason}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new UnauthorizedException('微信登录服务暂时不可用，请稍后重试');
     }
 
@@ -405,21 +420,66 @@ export class AuthService {
     return pwd;
   }
 
+  private async httpGetJsonWithRetry(url: string): Promise<any> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= WECHAT_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        return await this.httpGetJson(url);
+      } catch (error) {
+        lastError = error;
+        if (!this.isRetryableWechatRequestError(error) || attempt === WECHAT_RETRY_DELAYS_MS.length) {
+          throw error;
+        }
+        const delayMs = WECHAT_RETRY_DELAYS_MS[attempt];
+        this.logger.warn(
+          `WeChat code2Session transient failure (${this.describeWechatRequestError(error)}), retrying in ${delayMs}ms`,
+        );
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+    throw lastError;
+  }
+
   private httpGetJson(url: string): Promise<any> {
     return new Promise((resolve, reject) => {
       const mod = url.startsWith('https') ? require('https') : require('http');
-      const timer = setTimeout(() => {
-        req.destroy(new Error('request timeout'));
-      }, 10000);
-      const req = mod.get(url, (res: any) => {
+      const req = mod.get(url, {
+        // CloudRun instances do not always have a working IPv6 egress route.
+        // WeChat's hostname may resolve to IPv6 first, so explicitly use IPv4.
+        family: 4,
+        headers: { Accept: 'application/json' },
+      }, (res: any) => {
         let data = '';
         res.on('data', (chunk: string) => { data += chunk; });
         res.on('end', () => {
-          clearTimeout(timer);
-          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+          if (res.statusCode >= 500) {
+            const error = new Error(`WeChat HTTP ${res.statusCode}`) as NodeJS.ErrnoException;
+            error.code = 'HTTP_5XX';
+            reject(error);
+            return;
+          }
+          try { resolve(JSON.parse(data)); } catch (error) { reject(error); }
         });
       });
-      req.on('error', (err: Error) => { clearTimeout(timer); reject(err); });
+      req.setTimeout(WECHAT_REQUEST_TIMEOUT_MS, () => {
+        const error = new Error('WeChat request timeout') as NodeJS.ErrnoException;
+        error.code = 'ETIMEDOUT';
+        req.destroy(error);
+      });
+      req.on('error', (error: Error) => reject(error));
     });
+  }
+
+  private isRetryableWechatRequestError(error: unknown): boolean {
+    const nested = (error as any)?.cause;
+    const code = String((error as any)?.code || nested?.code || '').toUpperCase();
+    return RETRYABLE_WECHAT_ERRORS.has(code);
+  }
+
+  private describeWechatRequestError(error: unknown): string {
+    const nested = (error as any)?.cause;
+    const code = String((error as any)?.code || nested?.code || 'UNKNOWN');
+    const message = String((error as any)?.message || nested?.message || error || 'unknown error');
+    return `${code} ${message}`.slice(0, 240);
   }
 }
