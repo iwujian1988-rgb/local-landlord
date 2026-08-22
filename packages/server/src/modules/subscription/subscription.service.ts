@@ -463,7 +463,15 @@ export class SubscriptionService {
    * 逾期提醒 — 每天 10:05
    */
   @Cron('5 10 * * *', CRON_TZ)
-  async sendOverdueReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
+  async sendOverdueReminders(dryRun = false): Promise<{
+    sent: number;
+    failed: number;
+    skipped: number;
+    dryRunCandidates?: Array<{
+      billId: number; room: string; tenant: string; rentDay: number | null;
+      overdueDays: number; landlordId: number; openId: string | null;
+    }>;
+  }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip overdue reminders');
       return { sent: 0, failed: 0, skipped: 0 };
@@ -485,6 +493,10 @@ export class SubscriptionService {
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    const dryRunCandidates: Array<{
+      billId: number; room: string; tenant: string; rentDay: number | null;
+      overdueDays: number; landlordId: number; openId: string | null;
+    }> = [];
     for (const bill of overdueBills) {
       if (!bill.tenant || !bill.room) continue;
 
@@ -525,6 +537,19 @@ export class SubscriptionService {
       if (!landlord) continue;
       if (!landlord.openId) { skipped++; continue; }
 
+      if (dryRun) {
+        dryRunCandidates.push({
+          billId: bill.id,
+          room: bill.room.name,
+          tenant: bill.tenant.name,
+          rentDay: bill.tenant.rentDay ?? null,
+          overdueDays,
+          landlordId: landlord.id,
+          openId: landlord.openId,
+        });
+        continue;
+      }
+
       const propName = await this.getPropertyForRoom(bill.room.id);
       const label = this.truncate(propName ? `${propName} ${bill.room.name} ${bill.tenant.name}` : `${bill.tenant.name} - ${bill.room.name}`);
 
@@ -546,6 +571,7 @@ export class SubscriptionService {
     }
 
     this.logger.log(`Overdue reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
+    if (dryRun) return { sent, failed, skipped, dryRunCandidates };
     return { sent, failed, skipped };
   }
 
@@ -776,9 +802,9 @@ export class SubscriptionService {
     return this.sendRentReminders();
   }
 
-  /** API: manually trigger overdue reminder */
-  async triggerOverdueReminder(): Promise<{ sent: number; failed: number; skipped: number }> {
-    return this.sendOverdueReminders();
+  /** API: manually trigger overdue reminder (dryRun=1 lists candidates without sending) */
+  async triggerOverdueReminder(dryRun = false) {
+    return this.sendOverdueReminders(dryRun);
   }
 
   /** API: manually trigger contract expiry reminder */
@@ -851,6 +877,35 @@ export class SubscriptionService {
 
     result.httpsProbe = await probe('https');
     result.httpProbe = await probe('http');
+
+    // Decisive forward test: POST a subscribe message with a deliberately
+    // invalid touser. If WeChat truly receives it, errcode must be 40003
+    // (invalid openid). An errcode 0 here means the proxy fakes success.
+    const postStarted = Date.now();
+    try {
+      const res = await fetch(`${base}/cgi-bin/message/subscribe/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          touser: 'invalid-openid-netdiag',
+          template_id: rentTemplateId(),
+          data: { thing1: { value: '诊断' }, thing2: { value: '不投递' }, amount3: { value: '0' } },
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      result.postProbe = {
+        status: res.status,
+        body: (await res.text()).slice(0, 300),
+        ms: Date.now() - postStarted,
+      };
+    } catch (e) {
+      const err = e as Error & { cause?: { code?: string } };
+      result.postProbe = {
+        error: `${err.name}: ${err.message}`,
+        cause: err.cause?.code ?? null,
+        ms: Date.now() - postStarted,
+      };
+    }
 
     return result;
   }

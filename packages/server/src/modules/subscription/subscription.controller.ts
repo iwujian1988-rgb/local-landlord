@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { SubscriptionService } from './subscription.service';
 import { BillService } from '../bill/bill.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -30,8 +30,8 @@ export class SubscriptionController {
   }
 
   @Post('trigger-overdue')
-  async triggerOverdueReminder() {
-    return this.subscriptionService.triggerOverdueReminder();
+  async triggerOverdueReminder(@Query('dryRun') dryRun?: string) {
+    return this.subscriptionService.triggerOverdueReminder(dryRun === '1');
   }
 
   @Post('trigger-mark-overdue')
