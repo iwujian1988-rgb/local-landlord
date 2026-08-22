@@ -132,11 +132,17 @@ export class SubscriptionService {
     const { base } = await this.resolveWxApi();
     const url = `${base}/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    const data = await resp.json() as { access_token?: string; expires_in?: number; errcode?: number; errmsg?: string };
+    const data = await resp.json() as {
+      access_token?: string; expires_in?: number; errcode?: number; errmsg?: string;
+      error_code?: string; error_message?: string;
+    };
 
     if (!data.access_token) {
-      this.logger.error(`Failed to get access_token: ${data.errcode} ${data.errmsg}`);
-      throw new Error(`WeChat access_token error: ${data.errmsg}`);
+      const reason = data.error_code
+        ? `proxy: ${data.error_code} ${data.error_message}`
+        : `${data.errcode} ${data.errmsg}`;
+      this.logger.error(`Failed to get access_token: ${reason} (http=${resp.status})`);
+      throw new Error(`WeChat access_token error: ${reason}`);
     }
 
     this.cachedAccessToken = data.access_token;
@@ -171,10 +177,19 @@ export class SubscriptionService {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       });
-      const result = await resp.json() as { errcode?: number; errmsg?: string };
+      const result = await resp.json() as {
+        errcode?: number; errmsg?: string; error_code?: string; error_message?: string;
+      };
 
-      if (result.errcode && result.errcode !== 0) {
-        this.logger.warn(`Subscribe message failed: ${result.errcode} ${result.errmsg}`);
+      // CloudBase's internal proxy rejects non-whitelisted URLs with HTTP 502
+      // and a body that has error_code (string) instead of errcode — checking
+      // errcode alone mistook those rejections for successes.
+      if (!resp.ok || result.error_code || (result.errcode !== undefined && result.errcode !== 0)) {
+        this.logger.warn(
+          `Subscribe message failed: http=${resp.status} ` +
+          `${result.errcode ?? ''} ${result.errmsg ?? ''} ` +
+          `${result.error_code ?? ''} ${result.error_message ?? ''}`,
+        );
         return false;
       }
       return true;
