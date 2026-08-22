@@ -340,8 +340,8 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing7: { value: this.truncate('月度账单已生成') },
-          thing11: { value: this.truncate(`共${info.count}间房待收租`) },
+          thing7: { value: this.truncate('本月收租账单出来了') },
+          thing11: { value: this.truncate(`有${info.count}间房的房租该收了`) },
           amount6: { value: amountValue(info.total) },
         },
         'pages/rent-list/index',
@@ -390,14 +390,15 @@ export class SubscriptionService {
       if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
-      const label = this.truncate(propName ? `${propName} ${room.name} ${tenant.name}` : `${tenant.name} - ${room.name}`);
+      const label = propName ? `${propName}${room.name}${tenant.name}` : `${tenant.name}${room.name}`;
+      const monthLabel = dayjs(bill.period + '-01').format('M月');
 
       const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
-          thing7: { value: label },
-          thing11: { value: this.truncate(`${monthStr}月房租待收`) },
+          thing7: { value: this.truncate(`${monthLabel}房租·${label}`) },
+          thing11: { value: this.truncate('今天该收房租了，别忘了') },
           amount6: { value: amountValue(bill.totalAmount) },
         },
         `pages/bill/index?roomId=${room.id}&billId=${bill.id}`,
@@ -440,8 +441,8 @@ export class SubscriptionService {
       .getMany();
 
     const allTenants = [
-      ...movedOut.map(t => ({ ...t, msg: '租客今日退租，请检查' })),
-      ...expiringActive.map(t => ({ ...t, msg: '合同今日到期，确认退租' })),
+      ...movedOut.map(t => ({ ...t, msg: '租客今天退租，检查下房子' })),
+      ...expiringActive.map(t => ({ ...t, msg: '合同今天到期，问下退不退' })),
     ];
 
     let sent = 0;
@@ -456,15 +457,13 @@ export class SubscriptionService {
       if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
-      const label = this.truncate(
-        propName ? `${propName} ${room.name} ${tenant.name}` : `${tenant.name} - ${room.name}`,
-      );
+      const label = propName ? `${propName}${room.name}${tenant.name}` : `${tenant.name}${room.name}`;
 
       const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
-          thing7: { value: label },
+          thing7: { value: this.truncate(label) },
           thing11: { value: this.truncate(tenant.msg) },
           amount6: { value: amountValue(tenant.deposit || 0) },
         },
@@ -571,17 +570,18 @@ export class SubscriptionService {
       }
 
       const propName = await this.getPropertyForRoom(bill.room.id);
-      const label = this.truncate(propName ? `${propName} ${bill.room.name} ${bill.tenant.name}` : `${bill.tenant.name} - ${bill.room.name}`);
+      const label = propName ? `${propName}${bill.room.name}${bill.tenant.name}` : `${bill.tenant.name}${bill.room.name}`;
+      const monthLabel = dayjs(bill.period + '-01').format('M月');
 
       const contextMsg = overdueDays === 1
-        ? `${bill.period}房租，如已收请标记`
-        : `${bill.period}房租逾期${overdueDays}天`;
+        ? '房租拖欠1天了，收了记得标记'
+        : `房租拖欠${overdueDays}天了，快去催收`;
 
       const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
-          thing7: { value: label },
+          thing7: { value: this.truncate(`${monthLabel}房租·${label}`) },
           thing11: { value: this.truncate(contextMsg) },
           amount6: { value: amountValue(bill.totalAmount) },
         },
@@ -635,17 +635,17 @@ export class SubscriptionService {
       if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
-      const label = this.truncate(propName ? `${propName} ${room.name} ${tenant.name}` : `${tenant.name} - ${room.name}`);
+      const label = propName ? `${propName}${room.name}${tenant.name}` : `${tenant.name}${room.name}`;
 
       let msg: string;
       if (daysLeft === 30) {
-        msg = `合同30天后到期，联系确认续租`;
+        msg = `合同还有30天到期，问问租客续不续`;
       } else if (daysLeft === 7) {
-        msg = `合同即将到期，续签或退租`;
+        msg = `合同还有7天到期，准备续签或退租`;
       } else if (daysLeft === 0) {
-        msg = `合同今天到期，请确认处理`;
+        msg = `合同今天到期，处理一下`;
       } else {
-        msg = `合同已过期${Math.abs(daysLeft)}天，尽快处理`;
+        msg = `合同过期${Math.abs(daysLeft)}天了，赶紧处理`;
       }
 
       // amount-type fields only accept numbers — the day count goes here, the
@@ -654,7 +654,7 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing7: { value: label },
+          thing7: { value: this.truncate(label) },
           thing11: { value: this.truncate(msg) },
           amount6: { value: `${daysLeft >= 0 ? daysLeft : 0}` },
         },
@@ -722,15 +722,15 @@ export class SubscriptionService {
       if (!landlord.openId) { skipped++; continue; }
 
       const propName = await this.getPropertyForRoom(room.id);
-      const label = this.truncate(propName ? `${propName} ${room.name}` : room.name);
+      const label = propName ? `${propName}${room.name}` : room.name;
       const rent = Number(room.rent) || 0;
 
       const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
-          thing7: { value: label },
-          thing11: { value: this.truncate(`已空置${vacantDays}天，尽快招租`) },
+          thing7: { value: this.truncate(label) },
+          thing11: { value: this.truncate(`房子空了${vacantDays}天了，赶紧找租客`) },
           amount6: { value: amountValue(rent) },
         },
         `pages/room-detail/index?roomId=${room.id}`,
@@ -805,8 +805,8 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing7: { value: this.truncate(`${monthStr}月收租汇总`) },
-          thing11: { value: this.truncate(`已收${paidBills.length}间 未收${unpaidCount}间`) },
+          thing7: { value: this.truncate(`${now.format('M月')}收租情况`) },
+          thing11: { value: this.truncate(`收到了${paidBills.length}间，还有${unpaidCount}间没收`) },
           amount6: { value: amountValue(totalCollected) },
         },
         'pages/rent-stats/index',
