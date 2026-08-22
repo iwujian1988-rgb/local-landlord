@@ -9,15 +9,14 @@ import iconFee from '../../assets/my/icon-fee-item.png';
 import iconPrivacy from '../../assets/my/icon-privacy.png';
 import iconAgreement from '../../assets/my/icon-agreement.png';
 import iconFaq from '../../assets/my/icon-faq.png';
-import { APP_NAME, APP_VERSION, SUPPORT_EMAIL } from '../../constants/app';
-import { del } from '../../services/request';
+import { APP_NAME, APP_VERSION } from '../../constants/app';
 import './index.scss';
 
 interface MenuItem {
   icon: string;
   label: string;
   url?: string;
-  action?: 'feedback' | 'about' | 'clearTestData';
+  action?: 'about';
 }
 
 const menuItems: MenuItem[] = [
@@ -27,7 +26,6 @@ const menuItems: MenuItem[] = [
   { icon: iconPrivacy, label: '隐私政策', url: '/pages/privacy/index' },
   { icon: iconAgreement, label: '用户协议', url: '/pages/terms/index' },
   { icon: iconAgreement, label: '账户管理', url: '/pages/account/index' },
-  { icon: iconPrivacy, label: '清空测试数据', action: 'clearTestData' },
 ];
 
 const faqItems = [
@@ -73,61 +71,6 @@ export default function My() {
   const handleMenuItem = (item: MenuItem) => {
     if (item.url) {
       Taro.navigateTo({ url: item.url });
-      return;
-    }
-    if (item.action === 'feedback') {
-      Taro.showModal({
-        title: '客服反馈',
-        content: `遇到问题或建议反馈，请发邮件到：\n${SUPPORT_EMAIL}\n（点「复制」可复制邮箱地址）`,
-        confirmText: '复制邮箱',
-        cancelText: '关闭',
-        success: (r) => {
-          if (r.confirm) {
-            Taro.setClipboardData({
-              data: SUPPORT_EMAIL,
-              success: () => Taro.showToast({ title: '邮箱已复制', icon: 'none' }),
-            });
-          }
-        },
-      });
-      return;
-    }
-    if (item.action === 'clearTestData') {
-      Taro.showModal({
-        title: '清空测试数据？',
-        content: '将删除当前账号的房源、房间、租客、账单、收款记录、附件记录和收款码；账号会保留。',
-        confirmText: '继续',
-        confirmColor: '#d9534f',
-        cancelText: '取消',
-        success: (first) => {
-          if (!first.confirm) return;
-          Taro.showModal({
-            title: '最后确认',
-            content: '数据删除后无法恢复，确认清空吗？',
-            confirmText: '确认清空',
-            confirmColor: '#d9534f',
-            cancelText: '再想想',
-            success: async (second) => {
-              if (!second.confirm) return;
-              try {
-                Taro.showLoading({ title: '清空中...' });
-                const result = await del('/auth/test-data');
-                if (result.code !== 0) {
-                  throw new Error(result.message || '清空失败，请重试');
-                }
-                ['draft_property', 'draft_room_info', 'draft_tenant', 'tempRoomPhotos'].forEach((key) => Taro.removeStorageSync(key));
-                Taro.hideLoading();
-                Taro.showToast({ title: '测试数据已清空', icon: 'success' });
-                setTimeout(() => Taro.reLaunch({ url: '/pages/home/index' }), 1000);
-              } catch (err: any) {
-                Taro.hideLoading();
-                console.error('[My] 清空测试数据失败:', err);
-                Taro.showToast({ title: err?.message || '清空失败，请重试', icon: 'none' });
-              }
-            },
-          });
-        },
-      });
       return;
     }
     if (item.action === 'about') {
@@ -209,11 +152,6 @@ export default function My() {
           </View>
 
           <View className="menu-panel menu-secondary">
-            <View className="menu-item" onClick={() => handleMenuItem({ action: 'feedback', label: '客服反馈', icon: iconFaq })}>
-              <Image className="menu-icon-img" src={iconFaq} mode="aspectFit" />
-              <Text className="menu-text">客服反馈</Text>
-              <Text className="menu-arrow">›</Text>
-            </View>
             <View className="menu-item" onClick={() => handleMenuItem({ action: 'about', label: `关于${APP_NAME}`, icon: iconPrivacy })}>
               <Image className="menu-icon-img" src={iconPrivacy} mode="aspectFit" />
               <Text className="menu-text">{`关于${APP_NAME}`}</Text>
