@@ -489,6 +489,7 @@ export class SubscriptionService {
       billId: number; room: string; tenant: string; rentDay: number | null;
       overdueDays: number; landlordId: number; openId: string | null;
     }>;
+    sendResults?: Array<{ billId: number; room: string; ok: boolean; error?: string }>;
   }> {
     if (!(await this.isAutoRemindEnabled())) {
       this.logger.log('enableAutoRemind=false, skip overdue reminders');
