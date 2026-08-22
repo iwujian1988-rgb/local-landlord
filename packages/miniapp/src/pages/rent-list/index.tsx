@@ -219,6 +219,7 @@ export default function RentList() {
   });
 
   const handleConfirm = useCallback((entry: PendingEntry) => {
+    requestNotification();
     setConfirmItem(entry);
     setConfirmVisible(true);
   }, []);
@@ -250,6 +251,7 @@ export default function RentList() {
   }, [confirmItem, loadData]);
 
   const handleSingleConfirm = useCallback((id: number) => {
+    requestNotification();
     if (singleConfirmId) return;
     setSingleConfirmId(id);
     put(`/single-charges/${id}/confirm`, {})
@@ -267,6 +269,7 @@ export default function RentList() {
   const overdueItems = activeItems.filter(i => i.bucket === 'overdue');
 
   const handleBatchRemind = useCallback(async () => {
+    requestNotification();
     if (batchLoading) return;
     Taro.showModal({
       title: '批量发送提醒',

@@ -169,6 +169,7 @@ export default function Bill() {
   }, [data.uploading]);
 
   const handleSendBill = useCallback(async () => {
+    requestNotification();
     if (data.submitting) return;
     setData(prev => ({ ...prev, submitting: true }));
     try {

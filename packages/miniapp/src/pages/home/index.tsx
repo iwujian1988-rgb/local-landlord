@@ -4,7 +4,9 @@ import { useState, useCallback } from 'react';
 import { get, post, put } from '../../services/request';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useGuideStore } from '../../store/useGuideStore';
-// requestNotification removed — see useDidShow comment below.
+// requestNotification re-added — tied to tap gestures below (receipt cards,
+// 去收租 CTA), never to useDidShow (page-load calls fail without a TAP stack).
+import { requestNotification } from '../../services/notification';
 import { APP_NAME, RENT_LIST_TAB_INDEX } from '../../constants/app';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
@@ -191,6 +193,7 @@ export default function Home() {
   }, []);
 
   const handleReceiptConfirmed = useCallback(async () => {
+    requestNotification();
     if (!currentReceipt || receiptLoading) return;
     setReceiptLoading(true);
     try {
@@ -211,6 +214,7 @@ export default function Home() {
   }, [currentReceipt, receiptLoading, loadData, hideReceiptCardsForVisit]);
 
   const handleReceiptNotYet = useCallback(async () => {
+    requestNotification();
     if (!currentReceipt || receiptLoading) return;
     setReceiptLoading(true);
     try {
@@ -333,7 +337,7 @@ export default function Home() {
               )}
 
               {data.pendingCount > 0 && (
-                <View className="home-action-card action-rent" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
+                <View className="home-action-card action-rent" onClick={() => { requestNotification(); Taro.switchTab({ url: '/pages/rent-list/index' }); }}>
                   <View className="home-action-card-left">
                     <Text className="action-badge">{data.pendingHouseholds}笔</Text>
                     <Text className="action-title">待收租</Text>
