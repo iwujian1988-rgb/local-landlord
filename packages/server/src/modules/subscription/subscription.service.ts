@@ -58,6 +58,7 @@ export class SubscriptionService {
   private cachedAccessToken: string | null = null;
   private tokenExpiresAt = 0;
   private wxApiCache: { base: string; injected: boolean } | null = null;
+  private lastSendError: string | null = null;
 
   constructor(
     @InjectRepository(Bill)
@@ -185,15 +186,17 @@ export class SubscriptionService {
       // and a body that has error_code (string) instead of errcode — checking
       // errcode alone mistook those rejections for successes.
       if (!resp.ok || result.error_code || (result.errcode !== undefined && result.errcode !== 0)) {
-        this.logger.warn(
-          `Subscribe message failed: http=${resp.status} ` +
-          `${result.errcode ?? ''} ${result.errmsg ?? ''} ` +
-          `${result.error_code ?? ''} ${result.error_message ?? ''}`,
-        );
+        const reason =
+          `http=${resp.status} ${result.errcode ?? ''} ${result.errmsg ?? ''} ` +
+          `${result.error_code ?? ''} ${result.error_message ?? ''}`.trim();
+        this.lastSendError = reason;
+        this.logger.warn(`Subscribe message failed: ${reason}`);
         return false;
       }
+      this.lastSendError = null;
       return true;
     } catch (err) {
+      this.lastSendError = `exception: ${err instanceof Error ? err.message : String(err)}`;
       this.logger.error('sendSubscribeMessage error', err);
       return false;
     }
@@ -508,6 +511,7 @@ export class SubscriptionService {
     let sent = 0;
     let failed = 0;
     let skipped = 0;
+    const sendResults: Array<{ billId: number; room: string; ok: boolean; error?: string }> = [];
     const dryRunCandidates: Array<{
       billId: number; room: string; tenant: string; rentDay: number | null;
       overdueDays: number; landlordId: number; openId: string | null;
@@ -582,12 +586,18 @@ export class SubscriptionService {
         },
         `pages/bill/index?roomId=${bill.room.id}&billId=${bill.id}`,
       );
-      if (ok) sent++; else failed++;
+      if (ok) {
+        sent++;
+        sendResults.push({ billId: bill.id, room: bill.room.name, ok: true });
+      } else {
+        failed++;
+        sendResults.push({ billId: bill.id, room: bill.room.name, ok: false, error: this.lastSendError || 'unknown' });
+      }
     }
 
     this.logger.log(`Overdue reminders: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
     if (dryRun) return { sent, failed, skipped, dryRunCandidates };
-    return { sent, failed, skipped };
+    return { sent, failed, skipped, sendResults };
   }
 
   /**
