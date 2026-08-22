@@ -340,9 +340,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: this.truncate('月度账单已生成') },
-          thing2: { value: this.truncate(`共${info.count}间房待收租`) },
-          amount3: { value: amountValue(info.total) },
+          thing7: { value: this.truncate('月度账单已生成') },
+          thing11: { value: this.truncate(`共${info.count}间房待收租`) },
+          amount6: { value: amountValue(info.total) },
         },
         'pages/rent-list/index',
       );
@@ -396,9 +396,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: label },
-          thing2: { value: this.truncate(`${monthStr}月房租待收`) },
-          amount3: { value: amountValue(bill.totalAmount) },
+          thing7: { value: label },
+          thing11: { value: this.truncate(`${monthStr}月房租待收`) },
+          amount6: { value: amountValue(bill.totalAmount) },
         },
         `pages/bill/index?roomId=${room.id}&billId=${bill.id}`,
       );
@@ -464,9 +464,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: label },
-          thing2: { value: this.truncate(tenant.msg) },
-          amount3: { value: amountValue(tenant.deposit || 0) },
+          thing7: { value: label },
+          thing11: { value: this.truncate(tenant.msg) },
+          amount6: { value: amountValue(tenant.deposit || 0) },
         },
         `pages/room-detail/index?roomId=${room.id}`,
       );
@@ -581,9 +581,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: label },
-          thing2: { value: this.truncate(contextMsg) },
-          amount3: { value: amountValue(bill.totalAmount) },
+          thing7: { value: label },
+          thing11: { value: this.truncate(contextMsg) },
+          amount6: { value: amountValue(bill.totalAmount) },
         },
         `pages/bill/index?roomId=${bill.room.id}&billId=${bill.id}`,
       );
@@ -654,9 +654,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: label },
-          thing2: { value: this.truncate(msg) },
-          amount3: { value: `${daysLeft >= 0 ? daysLeft : 0}` },
+          thing7: { value: label },
+          thing11: { value: this.truncate(msg) },
+          amount6: { value: `${daysLeft >= 0 ? daysLeft : 0}` },
         },
         `pages/room-detail/index?roomId=${room.id}`,
       );
@@ -729,9 +729,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: label },
-          thing2: { value: this.truncate(`已空置${vacantDays}天，尽快招租`) },
-          amount3: { value: amountValue(rent) },
+          thing7: { value: label },
+          thing11: { value: this.truncate(`已空置${vacantDays}天，尽快招租`) },
+          amount6: { value: amountValue(rent) },
         },
         `pages/room-detail/index?roomId=${room.id}`,
       );
@@ -805,9 +805,9 @@ export class SubscriptionService {
         landlord.openId,
         templateId,
         {
-          thing1: { value: this.truncate(`${monthStr}月收租汇总`) },
-          thing2: { value: this.truncate(`已收${paidBills.length}间 未收${unpaidCount}间`) },
-          amount3: { value: amountValue(totalCollected) },
+          thing7: { value: this.truncate(`${monthStr}月收租汇总`) },
+          thing11: { value: this.truncate(`已收${paidBills.length}间 未收${unpaidCount}间`) },
+          amount6: { value: amountValue(totalCollected) },
         },
         'pages/rent-stats/index',
       );
@@ -915,7 +915,7 @@ export class SubscriptionService {
         body: JSON.stringify({
           touser: 'invalid-openid-netdiag',
           template_id: rentTemplateId(),
-          data: { thing1: { value: '诊断' }, thing2: { value: '不投递' }, amount3: { value: '0' } },
+          data: { thing7: { value: '诊断' }, thing11: { value: '不投递' }, amount6: { value: '0' } },
         }),
         signal: AbortSignal.timeout(8000),
       });
