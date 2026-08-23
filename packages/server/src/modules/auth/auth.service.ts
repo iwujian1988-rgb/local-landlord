@@ -19,6 +19,7 @@ import { WechatLoginDto } from './dto/wechat-login.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
+import { resolveWxApiBase } from '../../common/wx/wx-api';
 import * as bcrypt from 'bcryptjs';
 
 const ACCOUNT_RETENTION_DAYS = 30;
@@ -94,7 +95,11 @@ export class AuthService {
 
     let wxData: { openid?: string; session_key?: string; errcode?: number; errmsg?: string };
     try {
-      const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+      // Inside CloudBase the platform MITMs HTTPS to api.weixin.qq.com with a
+      // self-signed cert; plain HTTP is the official intranet calling path
+      // (see common/wx/wx-api.ts). jscode2session still needs appid+secret.
+      const { base: wxApiBase } = await resolveWxApiBase();
+      const wxUrl = `${wxApiBase}/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
       const raw = await this.httpGetJsonWithRetry(wxUrl);
       const { openid, errcode, errmsg } = raw;
       wxData = { openid, errcode, errmsg };

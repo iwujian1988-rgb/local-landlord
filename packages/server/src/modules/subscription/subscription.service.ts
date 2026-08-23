@@ -12,6 +12,7 @@ import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
 import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { SystemConfig } from '../system/system-config.entity';
+import { resolveWxApiBase } from '../../common/wx/wx-api';
 
 // Must stay in sync with packages/miniapp/src/config.ts (WX_TEMPLATE_RENT/OVERDUE —
 // both use this one template). Env vars override the default; a WRONG env value
@@ -57,7 +58,6 @@ export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
   private cachedAccessToken: string | null = null;
   private tokenExpiresAt = 0;
-  private wxApiCache: { base: string; injected: boolean } | null = null;
   private lastSendError: string | null = null;
 
   constructor(
@@ -88,29 +88,12 @@ export class SubscriptionService {
   }
 
   /**
-   * Resolve the WeChat API base: env override wins; otherwise if DNS maps
-   * api.weixin.qq.com to a link-local address (169.254.x.x — the CloudBase
-   * internal proxy), switch to plain HTTP where the platform injects
-   * access_token and MITM'd TLS would otherwise fail.
+   * Resolve the WeChat API base (shared with auth code2Session): env override
+   * wins; inside CloudBase the DNS probe switches to plain HTTP where the
+   * platform injects access_token and MITM'd TLS would otherwise fail.
    */
   private async resolveWxApi(): Promise<{ base: string; injected: boolean }> {
-    if (this.wxApiCache) return this.wxApiCache;
-    let base = process.env.WX_API_BASE || 'https://api.weixin.qq.com';
-    let injected = base.startsWith('http://');
-    if (!process.env.WX_API_BASE) {
-      try {
-        const dns = await import('dns');
-        const records = await dns.promises.lookup('api.weixin.qq.com', { all: true });
-        if (records.some(r => r.address.startsWith('169.254.'))) {
-          base = 'http://api.weixin.qq.com';
-          injected = true;
-        }
-      } catch {
-        // DNS unavailable — keep https and let the fetch error surface.
-      }
-    }
-    this.wxApiCache = { base, injected };
-    return this.wxApiCache;
+    return resolveWxApiBase();
   }
 
   /** Get WeChat access_token with caching */
