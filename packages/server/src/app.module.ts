@@ -62,10 +62,16 @@ import { SchemaCompatService } from './common/schema-compat.service';
             // synchronize=true is risky in prod (auto-ALTERs tables). Disable for prod, use migrations.
             synchronize: !isProd,
             logging: !isProd,
-            // Cloud hosting keeps instances and DB proxy connections alive on
-            // different schedules. TCP keepalive reduces stale pooled sockets;
-            // idempotent writes additionally perform one targeted packet retry.
+            // CloudBase's DB proxy silently kills long-idle pooled sockets;
+            // the next query on them fails with "Malformed communication
+            // packet" (caused review-rejecting login 500s). mysql2's idle
+            // reaper only activates when maxIdle < connectionLimit, and TCP
+            // keepalive alone does not stop the proxy — so cap idle conns and
+            // recycle them after 30s.
             extra: {
+              connectionLimit: 10,
+              maxIdle: 2,
+              idleTimeout: 15_000,
               enableKeepAlive: true,
               keepAliveInitialDelay: 10_000,
             },
