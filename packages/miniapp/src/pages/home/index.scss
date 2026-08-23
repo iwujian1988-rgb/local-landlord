@@ -743,3 +743,46 @@
   font-size: 26px;
   font-weight: 600;
 }
+
+/* ===== Guest intro cards (feature highlights for visitors) ===== */
+.guest-intro {
+  padding: 0 34px;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guest-intro-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 26px 30px;
+  border-radius: 36px;
+  background: rgba(255,253,248,.94);
+  box-shadow: var(--shadow-float);
+}
+
+.guest-intro-icon {
+  font-size: 44px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.guest-intro-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.guest-intro-title {
+  font-size: 28px;
+  font-weight: 850;
+  color: var(--text-primary);
+}
+
+.guest-intro-desc {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}

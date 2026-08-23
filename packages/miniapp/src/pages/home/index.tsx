@@ -10,6 +10,7 @@ import { requestNotification } from '../../services/notification';
 import { APP_NAME, RENT_LIST_TAB_INDEX } from '../../constants/app';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
+import { promptDemoLogin } from '../../utils/demo-data';
 import heroImg from '../../assets/home/home-hero-illustration.png';
 import bellImg from '../../assets/home/home-reminder-bell.png';
 import billIcon from '../../assets/home/home-icon-checkin.png';
@@ -279,6 +280,78 @@ export default function Home() {
           </View>
         </View>
       )}
+      {!isLoggedIn && (
+        <>
+          <View className="greeting">
+            <View className="greeting-name-wrap">
+              <Text className="greeting-name">房东你好</Text>
+            </View>
+            <View className="greeting-subtitle-wrap">
+              <Text className="greeting-subtitle">看看它怎么帮你收租</Text>
+            </View>
+          </View>
+
+          <View className="action-hero">
+            <View className="home-action-card action-rent" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
+              <View className="home-action-card-left">
+                <Text className="action-badge">3笔</Text>
+                <Text className="action-title">待收租</Text>
+                <Text className="action-desc">张先生的房租拖欠6天了</Text>
+              </View>
+              <View className="action-go">
+                <Text className="action-go-text">去看看</Text>
+              </View>
+            </View>
+
+            <View className="home-action-card action-contract">
+              <View className="action-contract-row" onClick={promptDemoLogin}>
+                <View className="action-contract-info">
+                  <Text className="action-contract-name">3栋-202 · 张先生</Text>
+                  <Text className="action-contract-date">合同还有30天到期</Text>
+                </View>
+                <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>›</Text>
+              </View>
+            </View>
+          </View>
+
+          <View className="monthly-card" onClick={handleStatsTap}>
+            <View className="monthly-row">
+              <View className="monthly-left">
+                <Text className="monthly-title">本月已收到</Text>
+                <Text className="monthly-desc">点了"已收到"后金额会加到这里</Text>
+              </View>
+              <View className="monthly-right">
+                <Text className="monthly-number success">1,500</Text>
+                <Text className="monthly-label">元</Text>
+              </View>
+            </View>
+          </View>
+
+          <View className="guest-intro">
+            <View className="guest-intro-card">
+              <Text className="guest-intro-icon">🏠</Text>
+              <View className="guest-intro-body">
+                <Text className="guest-intro-title">管住房间</Text>
+                <Text className="guest-intro-desc">几处房子、几十间房，一眼看清谁住着、谁空着</Text>
+              </View>
+            </View>
+            <View className="guest-intro-card">
+              <Text className="guest-intro-icon">💰</Text>
+              <View className="guest-intro-body">
+                <Text className="guest-intro-title">算清每笔账</Text>
+                <Text className="guest-intro-desc">房租水电一键生成账单，发给租客不费劲</Text>
+              </View>
+            </View>
+            <View className="guest-intro-card">
+              <Text className="guest-intro-icon">🔔</Text>
+              <View className="guest-intro-body">
+                <Text className="guest-intro-title">到日子提醒</Text>
+                <Text className="guest-intro-desc">收租日、合同到期、逾期，微信主动提醒你</Text>
+              </View>
+            </View>
+          </View>
+        </>
+      )}
       {loading && <Loading />}
       {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
       {!loading && !error && isLoggedIn && (
@@ -494,7 +567,16 @@ export default function Home() {
             <Text className="feature-label">收租列表</Text>
             <Text className="feature-arrow">›</Text>
           </View>
-          <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/add-room-photo/index' })}>
+          <View
+            className="feature-card"
+            onClick={() => {
+              if (!useAuthStore.getState().isLoggedIn) {
+                promptDemoLogin();
+                return;
+              }
+              Taro.navigateTo({ url: '/pages/add-room-photo/index' });
+            }}
+          >
             <View className="feature-icon checkin"><Image src={addIcon} mode="aspectFit" /></View>
             <Text className="feature-label">添加房间</Text>
             <Text className="feature-arrow">›</Text>

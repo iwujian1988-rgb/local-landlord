@@ -8,7 +8,8 @@ import ErrorState from '../../components/ErrorState';
 import { useCallback, useState } from 'react';
 import { get, put } from '../../services/request';
 import { useAuthStore } from '../../store/useAuthStore';
-import LoginPrompt from '../../components/LoginPrompt';
+import DemoBanner from '../../components/DemoBanner';
+import { DEMO_BILLS, DEMO_PENDING, DEMO_SINGLE_CHARGES, DEMO_SUMMARY, promptDemoLogin } from '../../utils/demo-data';
 import { requestNotification } from '../../services/notification';
 import { forwardBillShare } from '../../services/share';
 import { RENT_LIST_TAB_INDEX } from '../../constants/app';
@@ -166,6 +167,17 @@ export default function RentList() {
     setLoading(true);
     setError(false);
     try {
+      if (!useAuthStore.getState().isLoggedIn) {
+        // Demo browsing for guests/reviewers: the full real UI rendered from
+        // static data; actions prompt login instead of calling the API.
+        setSummary(DEMO_SUMMARY);
+        setAllBills(DEMO_BILLS);
+        setSingleCharges(DEMO_SINGLE_CHARGES);
+        const demoItems = buildDisplayItems(DEMO_PENDING);
+        setActiveItems(demoItems.filter(i => i.bucket !== 'upcoming'));
+        setUpcomingItems(demoItems.filter(i => i.bucket === 'upcoming'));
+        return demoItems;
+      }
       const [res, statsRes, billsRes] = await Promise.all([
         get<PendingResponse>('/rent/pending'),
         get<RentStatsSummary>('/stats/rent', { period: 'month' }),
@@ -224,6 +236,10 @@ export default function RentList() {
 
   const handleConfirm = useCallback((entry: PendingEntry) => {
     requestNotification();
+    if (!useAuthStore.getState().isLoggedIn) {
+      promptDemoLogin();
+      return;
+    }
     setConfirmItem(entry);
     setConfirmVisible(true);
   }, []);
@@ -256,6 +272,10 @@ export default function RentList() {
 
   const handleSingleConfirm = useCallback((id: number) => {
     requestNotification();
+    if (!useAuthStore.getState().isLoggedIn) {
+      promptDemoLogin();
+      return;
+    }
     if (singleConfirmId) return;
     setSingleConfirmId(id);
     put(`/single-charges/${id}/confirm`, {})
@@ -310,17 +330,10 @@ export default function RentList() {
   const totalCollected = Number(summary.totalCollected) || 0;
   const totalPending = Number(summary.totalPending) || 0;
 
-  if (!isLoggedIn) {
-    return (
-      <View className="page-rent-list">
-        <LoginPrompt title="登录后查看收租列表" desc="微信一键登录，数据只有你能看到" />
-      </View>
-    );
-  }
-
   return (
     <View className="page-rent-list">
       <ScrollView className="rent-scroll" scrollY>
+        {!isLoggedIn && <DemoBanner />}
         {loading && <Loading />}
         {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
         {!loading && !error && (
@@ -543,7 +556,13 @@ export default function RentList() {
 
         {/* Quick links */}
         <View className="rent-links">
-          <View className="rent-link-item" onClick={() => Taro.navigateTo({ url: '/pages/rent-stats/index' })}>
+          <View className="rent-link-item" onClick={() => {
+            if (!useAuthStore.getState().isLoggedIn) {
+              promptDemoLogin();
+              return;
+            }
+            Taro.navigateTo({ url: '/pages/rent-stats/index' });
+          }}>
             <Icon name="chart" size={28} color="var(--text-secondary)" />
             <Text className="rent-link-text">收租统计</Text>
             <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>›</Text>
@@ -552,6 +571,10 @@ export default function RentList() {
             // Records page is per-room — ask which room rather than silently
             // landing on the stats page (the previous behavior, which was a
             // dead-end since the link text promised "history records").
+            if (!useAuthStore.getState().isLoggedIn) {
+              promptDemoLogin();
+              return;
+            }
             try {
               const res = await get<any[]>('/rooms');
               const rooms = res.data || [];

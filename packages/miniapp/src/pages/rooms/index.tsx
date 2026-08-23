@@ -6,7 +6,8 @@ import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { get } from '../../services/request';
 import { useAuthStore } from '../../store/useAuthStore';
-import LoginPrompt from '../../components/LoginPrompt';
+import DemoBanner from '../../components/DemoBanner';
+import { DEMO_PROPERTIES, DEMO_ROOMS, promptDemoLogin } from '../../utils/demo-data';
 import { useMemo, useState } from 'react';
 import { countRooms, filterRooms, getRoomDisplayStatus, RoomFilter } from '../../utils/room-filter';
 import roomPlaceholder from '../../assets/rooms/room-placeholder.png';
@@ -67,11 +68,21 @@ export default function Rooms() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: '房间' });
-    if (!useAuthStore.getState().isLoggedIn) return;
+    if (!useAuthStore.getState().isLoggedIn) {
+      // Demo browsing for guests/reviewers: real UI, static data, login only
+      // when they act on a room.
+      setRooms(DEMO_ROOMS as Room[]);
+      setProperties(DEMO_PROPERTIES as Property[]);
+      return;
+    }
     loadData();
   });
 
   const goToAddProperty = () => {
+    if (!useAuthStore.getState().isLoggedIn) {
+      promptDemoLogin();
+      return;
+    }
     if (properties.length > 0) {
       setPickerVisible(true);
     } else {
@@ -113,7 +124,53 @@ export default function Rooms() {
   if (!isLoggedIn) {
     return (
       <View className="page-rooms">
-        <LoginPrompt title="登录后查看你的房间" desc="微信一键登录，数据只有你能看到" />
+        <ScrollView className="rooms-scroll" scrollY>
+          <DemoBanner />
+          <View className="room-filter-bar">
+            {filters.map(item => (
+              <View
+                key={item.key}
+                className={`room-filter-tab${roomFilter === item.key ? ' active' : ''}`}
+                onClick={() => setRoomFilter(item.key)}
+              >
+                <Text>{item.label}</Text>
+                <Text className="room-filter-count">{roomCounts[item.key]}</Text>
+              </View>
+            ))}
+          </View>
+          {visibleRooms.map((room) => (
+            <View
+              key={room.id}
+              className="room-card"
+              onClick={promptDemoLogin}
+            >
+              <Image className="room-card-img" src={(room.images && room.images.length > 0) ? resolveAsset(room.images[0]) : roomPlaceholder} mode="aspectFill" />
+              <View className="room-card-main">
+                <View className="room-card-top">
+                  <Text className="room-card-name">{room.name}</Text>
+                  <View className={`room-status ${statusClass(room)}`}>
+                    <Text>{statusText(room)}</Text>
+                  </View>
+                </View>
+                <View className="room-card-meta">
+                  {room.propertyName && (
+                    <Text className="room-card-property">{room.propertyName}</Text>
+                  )}
+                  {room.tenantName && (
+                    <Text className="room-card-tenant">· {room.tenantName}</Text>
+                  )}
+                  <Text className="room-card-rent">{room.rent}元/月</Text>
+                </View>
+              </View>
+              <Text className="room-card-arrow">›</Text>
+            </View>
+          ))}
+          <View style={{ height: '160px' }} />
+        </ScrollView>
+
+        <View className="fab-add" onClick={goToAddProperty}>
+          <Text style={{ fontSize: '64px', lineHeight: 1, color: '#fff', fontWeight: 200 }}>+</Text>
+        </View>
       </View>
     );
   }
