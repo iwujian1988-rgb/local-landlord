@@ -3,8 +3,9 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import * as mysql from 'mysql2/promise';
+import { MysqlRetryInterceptor } from './common/database/mysql-retry.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
 import { PropertyModule } from './modules/property/property.module';
 import { RoomModule } from './modules/room/room.module';
@@ -62,16 +63,18 @@ import { SchemaCompatService } from './common/schema-compat.service';
             // synchronize=true is risky in prod (auto-ALTERs tables). Disable for prod, use migrations.
             synchronize: !isProd,
             logging: !isProd,
-            // CloudBase's DB proxy silently kills long-idle pooled sockets;
-            // the next query on them fails with "Malformed communication
-            // packet" (caused review-rejecting login 500s). mysql2's idle
-            // reaper only activates when maxIdle < connectionLimit, and TCP
-            // keepalive alone does not stop the proxy — so cap idle conns and
-            // recycle them after 30s.
+            // CloudBase's DB proxy silently kills idle pooled sockets; the
+            // next query on them fails with "Malformed communication packet"
+            // (caused review-rejecting login 500s). The proxy kills faster
+            // than any idle-timeout we can set, so: destroy idle connections
+            // within the 1s reaper sweep (maxIdle 0) AND retry the error
+            // itself where safe (login path + GET interceptor) — error 1835
+            // fires before the statement executes, so a retry cannot
+            // double-apply.
             extra: {
               connectionLimit: 10,
-              maxIdle: 2,
-              idleTimeout: 15_000,
+              maxIdle: 0,
+              idleTimeout: 10_000,
               enableKeepAlive: true,
               keepAliveInitialDelay: 10_000,
             },
@@ -109,6 +112,10 @@ import { SchemaCompatService } from './common/schema-compat.service';
   controllers: [HealthController],
   providers: [
     SchemaCompatService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MysqlRetryInterceptor,
+    },
     {
       provide: APP_GUARD,
       // E2E tests log in as a fresh landlord per test for isolation. The auth

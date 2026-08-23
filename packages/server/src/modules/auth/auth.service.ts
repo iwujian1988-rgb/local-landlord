@@ -18,6 +18,7 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { WechatLoginDto } from './dto/wechat-login.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
 import * as bcrypt from 'bcryptjs';
 
 const ACCOUNT_RETENTION_DAYS = 30;
@@ -159,6 +160,16 @@ export class AuthService {
    * Cloud hosting login: authenticate via X-WX-OPENID from CallContainer
    */
   async cloudLogin(openId: string) {
+    // Error 1835 fires before the statement executes, so find-or-create is
+    // safe to retry. An intermittent proxy-killed pool connection here is
+    // what reviewers saw as "登录报错" and rejected the submission for.
+    return retryMalformedMysqlPacket(
+      () => this.doCloudLogin(openId),
+      () => this.logger.warn('Retrying cloud login after malformed MySQL packet'),
+    );
+  }
+
+  private async doCloudLogin(openId: string) {
     let landlord = await this.landlordRepository.findOne({ where: { openId } });
     if (!landlord) {
       landlord = this.landlordRepository.create({
