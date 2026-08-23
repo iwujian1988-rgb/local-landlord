@@ -11,7 +11,6 @@ import { APP_NAME, RENT_LIST_TAB_INDEX } from '../../constants/app';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import heroImg from '../../assets/home/home-hero-illustration.png';
-import loginHeroImg from '../../assets/home/login-hero-illustration.png';
 import bellImg from '../../assets/home/home-reminder-bell.png';
 import billIcon from '../../assets/home/home-icon-checkin.png';
 import rentIcon from '../../assets/home/home-icon-room.png';
@@ -173,6 +172,14 @@ export default function Home() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: APP_NAME });
+    const auth = useAuthStore.getState();
+    if (!auth.isLoggedIn && !Taro.getStorageSync('guest_mode')) {
+      // Silent re-login: cloud identity needs no consent dialog, so no login
+      // wall ever blocks the home page (review rejection reason 1). On
+      // failure the banner's manual 登录 button remains as fallback.
+      auth.login().then(() => loadData()).catch(() => undefined);
+      return;
+    }
     setTimeout(loadData, 100);
     // Note: requestSubscribeMessage is NOT called here — it requires a user
     // TAP gesture's sync stack. Page-load prompts would fail. Subscription
@@ -243,38 +250,32 @@ export default function Home() {
     Taro.switchTab({ url: '/pages/rent-list/index' });
   }, []);
 
+  const handleStatsTap = () => {
+    if (!useAuthStore.getState().isLoggedIn) {
+      Taro.showModal({
+        title: '登录后看统计',
+        content: '收租统计需要登录后查看，微信一键登录很快',
+        confirmText: '去登录',
+        cancelText: '先逛逛',
+        success: (res) => {
+          if (res.confirm) handleLogin();
+        },
+      });
+      return;
+    }
+    Taro.navigateTo({ url: '/pages/rent-stats/index' });
+  };
+
   return (
     <ScrollView className="page-home" scrollY>
-      {!isLoggedIn && Taro.getStorageSync('guest_mode') && (
+      {!isLoggedIn && (
         <View className="guest-banner">
           <View className="guest-banner-body">
-            <Text className="guest-banner-title">访客模式</Text>
-            <Text className="guest-banner-desc">登录后可添加房源、收租等</Text>
+            <Text className="guest-banner-title">{Taro.getStorageSync('guest_mode') ? '访客模式' : `欢迎使用${APP_NAME}`}</Text>
+            <Text className="guest-banner-desc">可以先逛逛，登录后可管理房间、收租</Text>
           </View>
           <View className="guest-banner-btn" onClick={handleLogin}>
             <Text className="guest-banner-btn-text">{loginLoading ? '登录中...' : '登录'}</Text>
-          </View>
-        </View>
-      )}
-      {!isLoggedIn && (
-        <View className="login-section">
-          <View className="login-card">
-            <View className="login-brand">
-              <Text className="login-brand-text">{APP_NAME} · 轻松管房收租</Text>
-            </View>
-            <Text className="login-title">欢迎使用{APP_NAME}</Text>
-            <View className="login-subtitle">
-              <View className="login-line" />
-              <Text className="login-subtitle-text">请先登录以使用全部功能</Text>
-              <View className="login-line" />
-            </View>
-            <Image className="login-hero-img" src={loginHeroImg} mode="aspectFit" />
-            <View className="login-btn" onClick={handleLogin}>
-              <Text className="login-btn-text">{loginLoading ? '登录中...' : '微信一键登录'}</Text>
-            </View>
-            <View className="login-security">
-              <Text className="login-security-text">安全登录 · 保护隐私</Text>
-            </View>
           </View>
         </View>
       )}
@@ -417,36 +418,6 @@ export default function Home() {
             </View>
           )}
 
-          {/* Function Section */}
-          <View className="function-section">
-            <View className="function-header">
-              <Text className="function-title">常用功能</Text>
-              <Text className="function-desc">高频操作一键直达</Text>
-            </View>
-            <View className="function-grid">
-              <View className="feature-card" onClick={() => Taro.switchTab({ url: '/pages/rooms/index' })}>
-                <View className="feature-icon room"><Image src={billIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">我的房间</Text>
-                <Text className="feature-arrow">›</Text>
-              </View>
-              <View className="feature-card" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
-                <View className="feature-icon stats"><Image src={rentIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">收租列表</Text>
-                <Text className="feature-arrow">›</Text>
-              </View>
-              <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/add-room-photo/index' })}>
-                <View className="feature-icon checkin"><Image src={addIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">添加房间</Text>
-                <Text className="feature-arrow">›</Text>
-              </View>
-              <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/rent-stats/index' })}>
-                <View className="feature-icon source"><Image src={statsIcon} mode="aspectFit" /></View>
-                <Text className="feature-label">收租统计</Text>
-                <Text className="feature-arrow">›</Text>
-              </View>
-            </View>
-          </View>
-
           {/* Guide Cards */}
           {data.showRoomGuide && (
             <View className="guide-card">
@@ -501,9 +472,42 @@ export default function Home() {
             </View>
           )}
 
-          <View style={{ height: '160px' }} />
+          <View style={{ height: '40px' }} />
         </>
       )}
+
+      {/* Function Section — visible pre-login so the app is browsable
+          (review requirement: browse first, login on demand) */}
+      <View className="function-section">
+        <View className="function-header">
+          <Text className="function-title">常用功能</Text>
+          <Text className="function-desc">高频操作一键直达</Text>
+        </View>
+        <View className="function-grid">
+          <View className="feature-card" onClick={() => Taro.switchTab({ url: '/pages/rooms/index' })}>
+            <View className="feature-icon room"><Image src={billIcon} mode="aspectFit" /></View>
+            <Text className="feature-label">我的房间</Text>
+            <Text className="feature-arrow">›</Text>
+          </View>
+          <View className="feature-card" onClick={() => Taro.switchTab({ url: '/pages/rent-list/index' })}>
+            <View className="feature-icon stats"><Image src={rentIcon} mode="aspectFit" /></View>
+            <Text className="feature-label">收租列表</Text>
+            <Text className="feature-arrow">›</Text>
+          </View>
+          <View className="feature-card" onClick={() => Taro.navigateTo({ url: '/pages/add-room-photo/index' })}>
+            <View className="feature-icon checkin"><Image src={addIcon} mode="aspectFit" /></View>
+            <Text className="feature-label">添加房间</Text>
+            <Text className="feature-arrow">›</Text>
+          </View>
+          <View className="feature-card" onClick={handleStatsTap}>
+            <View className="feature-icon source"><Image src={statsIcon} mode="aspectFit" /></View>
+            <Text className="feature-label">收租统计</Text>
+            <Text className="feature-arrow">›</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={{ height: '120px' }} />
     </ScrollView>
   );
 }

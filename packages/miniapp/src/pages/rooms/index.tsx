@@ -5,6 +5,8 @@ import { resolveAsset } from '../../config';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { get } from '../../services/request';
+import { useAuthStore } from '../../store/useAuthStore';
+import LoginPrompt from '../../components/LoginPrompt';
 import { useMemo, useState } from 'react';
 import { countRooms, filterRooms, getRoomDisplayStatus, RoomFilter } from '../../utils/room-filter';
 import roomPlaceholder from '../../assets/rooms/room-placeholder.png';
@@ -32,6 +34,7 @@ interface Property {
 type ListResponse<T> = T[] | { list?: T[] };
 
 export default function Rooms() {
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -64,6 +67,7 @@ export default function Rooms() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: '房间' });
+    if (!useAuthStore.getState().isLoggedIn) return;
     loadData();
   });
 
@@ -105,6 +109,14 @@ export default function Rooms() {
     if (displayStatus === 'approaching') return 'approaching';
     return displayStatus === 'rented' ? 'rented' : 'vacant';
   };
+
+  if (!isLoggedIn) {
+    return (
+      <View className="page-rooms">
+        <LoginPrompt title="登录后查看你的房间" desc="微信一键登录，数据只有你能看到" />
+      </View>
+    );
+  }
 
   return (
     <View className="page-rooms">

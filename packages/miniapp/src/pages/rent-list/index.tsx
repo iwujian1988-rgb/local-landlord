@@ -7,6 +7,8 @@ import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useCallback, useState } from 'react';
 import { get, put } from '../../services/request';
+import { useAuthStore } from '../../store/useAuthStore';
+import LoginPrompt from '../../components/LoginPrompt';
 import { requestNotification } from '../../services/notification';
 import { forwardBillShare } from '../../services/share';
 import { RENT_LIST_TAB_INDEX } from '../../constants/app';
@@ -143,6 +145,7 @@ function buildDisplayItems(data: PendingResponse): DisplayItem[] {
 }
 
 export default function RentList() {
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmItem, setConfirmItem] = useState<PendingEntry | null>(null);
   const [activeItems, setActiveItems] = useState<DisplayItem[]>([]);
@@ -204,6 +207,7 @@ export default function RentList() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: '收租' });
+    if (!useAuthStore.getState().isLoggedIn) return;
     // Use the data returned from loadData directly — closures over `activeItems`
     // state would see stale (empty) values on first mount, breaking deep-link
     // auto-open of the confirm modal when arriving from a bill notification.
@@ -305,6 +309,14 @@ export default function RentList() {
   const totalExpected = Number(summary.totalExpected) || 0;
   const totalCollected = Number(summary.totalCollected) || 0;
   const totalPending = Number(summary.totalPending) || 0;
+
+  if (!isLoggedIn) {
+    return (
+      <View className="page-rent-list">
+        <LoginPrompt title="登录后查看收租列表" desc="微信一键登录，数据只有你能看到" />
+      </View>
+    );
+  }
 
   return (
     <View className="page-rent-list">
