@@ -26,11 +26,21 @@ export async function retryMalformedMysqlPacket<T>(
   operation: () => Promise<T>,
   onRetry?: () => void,
 ): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (!isMalformedMysqlPacket(error)) throw error;
-    onRetry?.();
-    return operation();
+  // 1835 is a server-sent error packet, so mysql2 treats the connection as
+  // healthy and returns it to the pool — an immediate retry just re-checks
+  // out the same poisoned connection and fails again. The delays let the
+  // maxIdle:0 reaper (1s sweep) destroy it first so a later attempt gets a
+  // fresh connection.
+  const RETRY_DELAYS_MS = [300, 1300];
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isMalformedMysqlPacket(error) || attempt >= RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+      onRetry?.();
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    }
   }
 }
