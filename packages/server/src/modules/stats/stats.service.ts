@@ -144,21 +144,31 @@ export class StatsService {
 
           if (bill) {
             expected += Number(bill.totalAmount) || totalExpected;
-            // Include partial payments in collected — keeps "本月已收" truthful
-            // even before the cycle completes.
+            // Include any recorded payment in collected — keeps "本月已收"
+            // truthful even before the cycle completes. Paid-amount must be
+            // honored regardless of status: legacy rows flipped to status=2 by
+            // the old overdue cron still carry real money in paidAmount.
+            const billPaid = Number(bill.paidAmount) || 0;
             if (bill.status === 1) {
               collected += Number(bill.totalAmount) || 0;
               received++;
-            } else if (bill.status === 3) {
-              collected += Number(bill.paidAmount) || 0;
-              const remaining = (Number(bill.totalAmount) || 0) - (Number(bill.paidAmount) || 0);
+            } else if (billPaid > 0) {
+              collected += billPaid;
+              const remaining = (Number(bill.totalAmount) || 0) - billPaid;
               pending += remaining;
               received++; // counts as "started collecting"
+              // A partially-paid bill with balance left past its due day is
+              // overdue too — same rule as the V2 period stats below.
+              if (remaining > 0 && this.isBillOverdueForStats(bill, tenant, now)) {
+                overdue++;
+              }
             } else {
               pending += Number(bill.totalAmount) || 0;
-              const rentDay = tenant?.rentDay || 10;
-              const dayOfMonth = now.getDate();
-              if (dayOfMonth > rentDay) overdue++;
+              // Shared helper (not inline dayOfMonth > rentDay) so month-end
+              // rentDay=0 and day clamping match the V2 stats exactly.
+              if (this.isBillOverdueForStats(bill, tenant, now)) {
+                overdue++;
+              }
             }
           } else {
             expected += totalExpected;
@@ -309,7 +319,9 @@ export class StatsService {
           if (bill.status === 1) {
             collected += billTotal;
             received++;
-          } else if (bill.status === 3) {
+          } else if (Number(bill.paidAmount) > 0) {
+            // Partial payment — and any legacy status=2 row that still carries
+            // a paidAmount (old overdue cron) — settles by cash actually paid.
             const paid = Number(bill.paidAmount) || 0;
             const remaining = Math.max(billTotal - paid, 0);
             collected += paid;

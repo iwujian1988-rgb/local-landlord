@@ -126,6 +126,29 @@ describe('Cron behavior (e2e)', () => {
       const after = await apiCall(app, 'get', `/api/bills/${billId}`, auth);
       expect(after.body?.data?.status).toBe(1); // still paid, not overdue
     });
+
+    it('TC-CRON-OVERDUE-004: 部分付款账单 → 不会被刷成逾期', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: '部分付款历史房' });
+      await createTenant(app, auth, rId, {
+        name: '部分付款租客',
+        phone: '13911110003',
+        moveInDate: '2024-01-01',
+        rentDay: 10,
+      });
+      const billId = await createBill(app, auth, rId, {
+        period: '2024-03',
+        items: [{ feeName: '房租', amount: 1500 }],
+        totalAmount: 1500,
+      });
+      await apiCall(app, 'put', `/api/bills/${billId}/confirm`, auth, { actualAmount: 500 });
+
+      await apiCall(app, 'post', '/api/subscription/trigger-mark-overdue', adminAuth, {});
+
+      // Flipping 3→2 used to erase the partial flag, making the rent list
+      // offer 催一下 for a mostly-paid bill whose share page rendered 已付清.
+      const after = await apiCall(app, 'get', `/api/bills/${billId}`, auth);
+      expect(after.body?.data?.status).toBe(3);
+    });
   });
 
   describe('trigger-rent 提醒触发', () => {

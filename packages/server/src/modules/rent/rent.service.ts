@@ -199,8 +199,12 @@ export class RentService {
         })
       : [];
     const priorOverdueMap = new Map<number, boolean>();
+    const priorUnpaidBillMap = new Map<number, Bill>();
     for (const b of unpaidBills) {
-      if (b.period < monthStr) priorOverdueMap.set(b.roomId, true);
+      if (b.period >= monthStr) continue;
+      priorOverdueMap.set(b.roomId, true);
+      const oldest = priorUnpaidBillMap.get(b.roomId);
+      if (!oldest || b.period < oldest.period) priorUnpaidBillMap.set(b.roomId, b);
     }
 
     const todayList: PendingEntry[] = [];
@@ -273,15 +277,38 @@ export class RentService {
         nextDueMonth,
       };
 
-      // Paid bills always show in completed, regardless of cycle.
-      if (bill && bill.status === 1) {
-        completedList.push(entry);
+      // Prior overdue always shows in overdue (e.g., last cycle's unpaid bill) —
+      // even when this month's bill is already paid, otherwise the old debt
+      // silently disappears from every bucket. Point the entry at the oldest
+      // unpaid bill so 催一下/确认收款 act on the money actually owed.
+      if (hasPriorOverdue) {
+        const target = bill && bill.status !== 1 ? bill : priorUnpaidBillMap.get(room.id);
+        if (target) {
+          entry.billId = target.id;
+          entry.billStatus = target.status;
+          entry.billPeriod = target.period;
+          entry.billPeriodEnd = target.periodEnd;
+          entry.totalAmount = Number(target.totalAmount) || 0;
+          entry.paidAmount = Number(target.paidAmount) || 0;
+          // Recompute overdueDays from the target bill's own period — the
+          // entry-level value above is anchored to THIS month's rentDay, so a
+          // repointed prior-period bill would show "已逾期N天" off by whole
+          // months. Mirrors markOverdueBills: due at period-start rentDay.
+          const periodStart = dayjs(target.period + '-01');
+          const targetLastDay = periodStart.endOf('month').date();
+          const targetDueDay = rentDay === 0 ? targetLastDay : Math.min(rentDay, targetLastDay);
+          entry.overdueDays = Math.max(
+            0,
+            dayjs().startOf('day').diff(periodStart.date(targetDueDay).startOf('day'), 'day'),
+          );
+        }
+        overdueList.push(entry);
         continue;
       }
 
-      // Prior overdue always shows in overdue (e.g., last cycle's unpaid bill).
-      if (hasPriorOverdue) {
-        overdueList.push(entry);
+      // Paid bills always show in completed, regardless of cycle.
+      if (bill && bill.status === 1) {
+        completedList.push(entry);
         continue;
       }
 

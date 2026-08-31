@@ -186,10 +186,14 @@ export class ShareService {
     }));
     const storedTotal = this.money(bill.totalAmount);
     const itemTotal = this.money(items.reduce((sum, item) => sum + item.amount, 0));
-    const totalAmount = items.length > 0 ? itemTotal : storedTotal;
     if (items.length > 0 && Math.abs(storedTotal - itemTotal) > 0.009) {
       this.logger.error(`账单 ${bill.id} 金额不一致: total=${storedTotal}, items=${itemTotal}`);
     }
+    // storedTotal is authoritative: confirmPayment and /rent/pending both
+    // settle against it. Deriving the share total from itemTotal made a
+    // partial payment cover the (smaller) item sum and render the bill as
+    // fully paid, hiding the QR codes the tenant still needs to pay with.
+    const totalAmount = storedTotal;
     const rawPaid = bill.status === 1 ? totalAmount : this.money(bill.paidAmount);
     const paidAmount = this.money(Math.min(totalAmount, rawPaid));
     const outstandingAmount = this.money(Math.max(0, totalAmount - paidAmount));

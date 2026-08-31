@@ -188,6 +188,18 @@ export class BillService {
       const currentPaid = Number(bill.paidAmount) || 0;
       const remaining = totalAmount - currentPaid;
 
+      // Legacy corruption: paidAmount already covers totalAmount but status
+      // was never flipped to 1 (old overdue cron / pre-lock item edits).
+      // Settle the state instead of rejecting — otherwise every confirm
+      // attempt fails and the miniapp modal renders a dead 0-元 button.
+      if (remaining <= 0.01) {
+        bill.paidAmount = totalAmount;
+        bill.status = 1;
+        if (!bill.paidAt) bill.paidAt = new Date();
+        await manager.save(bill);
+        return bill;
+      }
+
       // actualAmount defaults to remaining balance (i.e., pay off in full)
       const actualAmount = dto.actualAmount != null ? Number(dto.actualAmount) : remaining;
 
@@ -248,11 +260,14 @@ export class BillService {
         throw new BadRequestException('该账单已退租作废，无法发送');
       }
 
-      // Part-paid bills: refuse item edits to avoid breaking paidAmount audit.
+      // Bills with any recorded payment: refuse item edits to avoid breaking
+      // paidAmount audit (recomputing total below the paid amount makes the
+      // bill unconfirmable). Covers status=3 and legacy status=2 rows that
+      // still carry paidAmount from the old overdue cron.
       // Landlord must either confirm remaining collection or void + recreate.
-      if (items && items.length > 0 && bill.status === 3) {
+      if (items && items.length > 0 && (bill.status === 3 || Number(bill.paidAmount) > 0)) {
         throw new BadRequestException(
-          '该账单已部分付款，无法调整账单项；如需修改请先确认收款完成或重新生成账单',
+          '该账单已有收款记录，无法调整账单项；如需修改请先确认收齐尾款或重新生成账单',
         );
       }
 
@@ -379,15 +394,17 @@ export class BillService {
     const currentMonth = now.month();
     const currentYear = now.year();
 
-    // Find unpaid AND partial-payment bills with their tenant's rentDay.
-    // status=0 (pending) and status=3 (partial) both represent outstanding
-    // balance that should flip to overdue once past the due date.
+    // Only status=0 (pending) flips to overdue. Partial payments (status=3)
+    // keep their status: /rent/pending still buckets them as overdue by date
+    // while the UI shows the 已收/还需 split. Flipping 3→2 erased the partial
+    // flag, so the overdue list offered 催一下 for a mostly-paid bill whose
+    // share page then rendered as "已付清" without payment QR codes.
     const overdueBillIds: number[] = [];
 
     const unpaidBills = await this.billRepository
       .createQueryBuilder('bill')
       .leftJoinAndSelect('bill.tenant', 'tenant')
-      .where('bill.status IN (:...statuses)', { statuses: [0, 3] })
+      .where('bill.status IN (:...statuses)', { statuses: [0] })
       .getMany();
 
     for (const bill of unpaidBills) {
@@ -396,15 +413,17 @@ export class BillService {
       const rentDay = bill.tenant.rentDay ?? 10;
       let dueDay: number;
 
-      // Use periodEnd (if set) as the effective "due-month" for overdue detection.
-      // Old bills without periodEnd fall back to period (single-month behavior).
+      // Overdue is judged by the bill's START period: a 押X付Y bill is due at
+      // its period-start rentDay, so any prior-period unpaid bill is overdue
+      // even if its periodEnd coverage extends into the current month. This
+      // matches /rent/pending's prior-overdue detection (period < this month).
       const effectiveDate = dayjs(bill.period + '-01');
 
-      if (rentDay === 0) {
-        dueDay = effectiveDate.endOf('month').date();
-      } else {
-        dueDay = rentDay;
-      }
+      // Clamp rentDay to the month's last day: rentDay=31 in a 30-day month
+      // must still flip overdue on day 30+ (same rule as /rent/pending and
+      // stats isBillOverdueForStats).
+      const lastDay = effectiveDate.endOf('month').date();
+      dueDay = rentDay === 0 ? lastDay : Math.min(rentDay, lastDay);
 
       const billMonth = effectiveDate.month();
       const billYear = effectiveDate.year();

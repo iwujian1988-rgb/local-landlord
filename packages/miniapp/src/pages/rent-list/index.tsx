@@ -163,7 +163,7 @@ export default function RentList() {
   const [batchLoading, setBatchLoading] = useState(false);
   const [singleConfirmId, setSingleConfirmId] = useState(0);
 
-  const loadData = useCallback(async (): Promise<DisplayItem[]> => {
+  const loadData = useCallback(async (): Promise<{ items: DisplayItem[]; bills: BillRow[] }> => {
     setLoading(true);
     setError(false);
     try {
@@ -176,7 +176,7 @@ export default function RentList() {
         const demoItems = buildDisplayItems(DEMO_PENDING);
         setActiveItems(demoItems.filter(i => i.bucket !== 'upcoming'));
         setUpcomingItems(demoItems.filter(i => i.bucket === 'upcoming'));
-        return demoItems;
+        return { items: demoItems, bills: DEMO_BILLS };
       }
       const [res, statsRes, billsRes] = await Promise.all([
         get<PendingResponse>('/rent/pending'),
@@ -202,17 +202,17 @@ export default function RentList() {
       } catch (e) {
         // ignore
       }
-      return allItems;
+      return { items: allItems, bills: billsRes.data?.bills || [] };
     } catch (err) {
       console.error('[RentList] 加载数据失败:', err);
       setError(true);
-      return [];
+      return { items: [], bills: [] };
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const [pushBillId] = useState(() => {
+  const [pushBillId, setPushBillId] = useState(() => {
     const params = Taro.getCurrentInstance().router?.params || {};
     return Number(params.billId) || 0;
   });
@@ -223,10 +223,18 @@ export default function RentList() {
     // Use the data returned from loadData directly — closures over `activeItems`
     // state would see stale (empty) values on first mount, breaking deep-link
     // auto-open of the confirm modal when arriving from a bill notification.
-    loadData().then((allItems) => {
+    // The overdue entry may be repointed at the oldest unpaid bill, so a
+    // billId miss falls back to matching the pushed bill's room instead.
+    loadData().then(({ items, bills }) => {
       if (pushBillId > 0) {
-        const match = allItems.find(i => i.entry.billId === pushBillId);
+        const pushRoomId = bills.find(b => b.billId === pushBillId)?.roomId;
+        // Skip upcoming entries in the fallback: they may carry no billId and
+        // an estimated amount, leaving the confirm modal a silent no-op.
+        const match = items.find(i => i.entry.billId === pushBillId)
+          ?? (pushRoomId != null ? items.find(i => i.entry.roomId === pushRoomId && i.bucket !== 'upcoming') : undefined);
         if (match) {
+          // One-shot: without this, every later useDidShow re-opens the modal.
+          setPushBillId(0);
           setConfirmItem(match.entry);
           setConfirmVisible(true);
         }
@@ -243,6 +251,26 @@ export default function RentList() {
     setConfirmItem(entry);
     setConfirmVisible(true);
   }, []);
+
+  // Legacy corruption self-heal: paidAmount already covers totalAmount but
+  // status never flipped — the confirm modal would open with a dead button
+  // (待收 0 元). One tap settles the bill state without a modal.
+  const handleSettle = useCallback(async (entry: PendingEntry) => {
+    requestNotification();
+    if (!useAuthStore.getState().isLoggedIn) {
+      promptDemoLogin();
+      return;
+    }
+    if (!entry.billId) return;
+    try {
+      await put(`/bills/${entry.billId}/confirm`, {});
+      Taro.showToast({ title: '已结清', icon: 'success', duration: 1500 });
+      loadData();
+    } catch (err) {
+      console.error('[RentList] 结清失败:', err);
+      Taro.showToast({ title: '操作失败', icon: 'none' });
+    }
+  }, [loadData]);
 
   const handleConfirmSubmit = useCallback(async (actualAmount?: number) => {
     // requestSubscribeMessage MUST run inside the user TAP gesture's sync call
@@ -367,8 +395,13 @@ export default function RentList() {
         )}
 
         {activeItems.map((item, idx) => {
-          const isPartial = item.entry.billStatus === 3 && item.entry.paidAmount > 0;
-          const buttonLabel = isPartial ? '补齐尾款' : '已收到';
+          // paidAmount is the source of truth: legacy rows flipped to
+          // status=2 by the old overdue cron still carry real money and must
+          // render as partial (补齐尾款 + 已收拆分), not as a fresh unpaid bill.
+          const isPartial = item.entry.paidAmount > 0;
+          const remainingAmt = item.entry.totalAmount - (item.entry.paidAmount || 0);
+          const needsSettle = isPartial && remainingAmt <= 0 && item.entry.billStatus !== 1;
+          const buttonLabel = needsSettle ? '标记已收清' : isPartial ? '补齐尾款' : '已收到';
           return (
             <View key={idx} className="rent-item-card">
               <View className="rent-item-top">
@@ -380,7 +413,7 @@ export default function RentList() {
                   )}
                 </View>
                 <View className={`rent-tag ${item.bucket === 'overdue' ? 'tag-red' : item.bucket === 'today' ? 'tag-accent' : 'tag-default'}`}>
-                  <Text className="rent-tag-text">{isPartial ? '部分付款' : item.label}</Text>
+                  <Text className="rent-tag-text">{needsSettle ? '待结清' : isPartial ? '部分付款' : item.label}</Text>
                 </View>
               </View>
 
@@ -411,7 +444,7 @@ export default function RentList() {
                 )}
                 <View
                   className={`rent-btn primary${item.bucket === 'overdue' && item.entry.overdueDays <= 1 ? ' full' : ''}`}
-                  onClick={() => handleConfirm(item.entry)}
+                  onClick={() => (needsSettle ? handleSettle(item.entry) : handleConfirm(item.entry))}
                 >
                   <Text className="rent-btn-text">{buttonLabel}</Text>
                 </View>

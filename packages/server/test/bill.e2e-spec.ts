@@ -1,4 +1,6 @@
 import { INestApplication } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { Bill } from '../src/modules/bill/bill.entity';
 import {
   createTestApp,
   loginAsLandlord,
@@ -223,6 +225,36 @@ describe('Bill module (e2e)', () => {
       const authB = await loginAsLandlord(app, `dev_billB_${Date.now()}`);
       const res = await apiCall(app, 'get', `/api/bills/${billId}`, authB);
       expect(res.body?.code).not.toBe(0);
+    });
+  });
+
+  describe('分享页金额判定', () => {
+    it('TC-BILL-012: 已付≥明细合计但<账单总额 → 不得判定已付清（隐藏收款码回归）', async () => {
+      const rId = await createRoom(app, auth, propertyId, { rent: 2000, name: 'bill-012' });
+      await createTenant(app, auth, rId, {
+        name: '金额漂移',
+        phone: '13900000012',
+        moveInDate: `${currentMonthStr()}-01`,
+      });
+      const billId = await createManualBill(rId); // items 房租2000+水费50 = 2050
+
+      // Simulate legacy total/items drift: stored total higher than item sum.
+      const billRepo = app.get(getRepositoryToken(Bill));
+      await billRepo.update(billId, { totalAmount: 2500 });
+
+      // Pay exactly the item sum — previously this made the share page render
+      // isPaid=true (QR hidden) even though 450 was still outstanding.
+      await apiCall(app, 'put', `/api/bills/${billId}/confirm`, auth, { actualAmount: 2050 });
+
+      const genRes = await apiCall(app, 'post', '/api/share/generate', auth, { billId });
+      const token = expectOk(genRes).token;
+
+      const shareRes = await apiCall(app, 'get', `/api/share/bill/${token}`, null);
+      const data = expectOk(shareRes);
+      expect(data.isPaid).toBe(false);
+      expect(Number(data.totalAmount)).toBe(2500);
+      expect(Number(data.paidAmount)).toBe(2050);
+      expect(Number(data.outstandingAmount)).toBe(450);
     });
   });
 });
