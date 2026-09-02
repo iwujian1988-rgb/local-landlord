@@ -1,5 +1,6 @@
 @echo off
 setlocal
+cd /d "%~dp0"
 
 set "HOST=ubuntu@api.wulianzhijia.cn"
 set "KEY=%USERPROFILE%\.ssh\codex_migration_key"
