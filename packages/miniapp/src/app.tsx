@@ -24,16 +24,10 @@ function App({ children }: { children: ReactNode }) {
       useAuthStore.setState({ token: savedToken, isLoggedIn: true });
     }
 
-    const hasOnboarded = Taro.getStorageSync('has_onboarded');
-    const launchPage = Taro.getCurrentInstance().router?.path || '';
-    const isInsideTab = launchPage.startsWith('pages/home') ||
-      launchPage.startsWith('pages/rooms') ||
-      launchPage.startsWith('pages/rent-list') ||
-      launchPage.startsWith('pages/my');
-
-    // Cold launch into a tab page and user hasn't onboarded → route to onboarding
-    if (!hasOnboarded && isInsideTab) {
-      Taro.reLaunch({ url: '/pages/onboarding/index' });
+    // New users must land on the home page in guest mode. Login is an explicit
+    // user action from the visible banner, never a launch-time requirement.
+    if (!guestMode && !savedToken) {
+      useAuthStore.getState().enterGuestMode();
     }
   });
   return <ErrorBoundary>{children}</ErrorBoundary>;

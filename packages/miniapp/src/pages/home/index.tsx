@@ -173,14 +173,8 @@ export default function Home() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: APP_NAME });
-    const auth = useAuthStore.getState();
-    if (!auth.isLoggedIn && !Taro.getStorageSync('guest_mode')) {
-      // Silent re-login: cloud identity needs no consent dialog, so no login
-      // wall ever blocks the home page (review rejection reason 1). On
-      // failure the banner's manual 登录 button remains as fallback.
-      auth.login().then(() => loadData()).catch(() => undefined);
-      return;
-    }
+    // Do not silently log in on page show. New users must browse first and
+    // choose login themselves from the visible banner (WeChat review rule).
     setTimeout(loadData, 100);
     // Note: requestSubscribeMessage is NOT called here — it requires a user
     // TAP gesture's sync stack. Page-load prompts would fail. Subscription

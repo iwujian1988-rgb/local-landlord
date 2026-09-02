@@ -2,8 +2,8 @@ type AppConfig = Parameters<typeof defineAppConfig>[0];
 
 const appConfig: AppConfig = {
   pages: [
-    'pages/onboarding/index',
     'pages/home/index',
+    'pages/onboarding/index',
     'pages/rooms/index',
     'pages/room-list/index',
     'pages/room-detail/index',
