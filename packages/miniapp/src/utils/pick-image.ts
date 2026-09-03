@@ -5,6 +5,20 @@ export interface PickedImage {
   size: number;
 }
 
+async function ensurePrivacyAuthorization(): Promise<void> {
+  const api = Taro as any;
+  if (typeof api.getPrivacySetting !== 'function' || typeof api.requirePrivacyAuthorize !== 'function') {
+    return;
+  }
+
+  const setting = await api.getPrivacySetting();
+  if (!setting?.needAuthorization) return;
+
+  await new Promise<void>((resolve, reject) => {
+    api.requirePrivacyAuthorize({ success: resolve, fail: reject });
+  });
+}
+
 /**
  * Pick one or more images from album or camera.
  *
@@ -28,6 +42,7 @@ export async function pickImages(opts: {
   } = opts;
 
   try {
+    await ensurePrivacyAuthorization();
     const res = await Taro.chooseMedia({
       count,
       sourceType,

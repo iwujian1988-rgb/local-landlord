@@ -15,6 +15,7 @@
     "coverView": true,
     "nodeModules": true,
     "autoAudits": false,
+    "__usePrivacyCheck__": true,
     "showShadowRootInWxmlPanel": true,
     "scopeDataCheck": false,
     "uglifyFileName": false,
