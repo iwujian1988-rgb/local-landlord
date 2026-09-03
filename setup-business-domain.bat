@@ -2,6 +2,22 @@
 setlocal
 cd /d "%~dp0"
 
+echo 业务域名校验文件上传工具
+echo 脚本目录：%~dp0
+where scp >nul 2>nul
+if errorlevel 1 (
+  echo 未找到 scp，请先安装或启用 Windows OpenSSH Client。
+  pause
+  exit /b 1
+)
+where ssh >nul 2>nul
+if errorlevel 1 (
+  echo 未找到 ssh，请先安装或启用 Windows OpenSSH Client。
+  pause
+  exit /b 1
+)
+pause
+
 set "HOST=api.wulianzhijia.cn"
 set "USER=ubuntu"
 set "VERIFY_FILE=zbQbvEaGmB.txt"
