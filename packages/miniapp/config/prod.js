@@ -1,13 +1,11 @@
 module.exports = {
   env: { NODE_ENV: '"production"' },
   defineConstants: {
-    API_BASE: '"https://local-landlord-265509-4-1439465517.sh.run.tcloudbase.com/api"',
-    APP_USE_CLOUD: 'true',
-    APP_CLOUD_ENV_ID: '"prod-d6gpmvmbod40b5928"',
-    // callContainer expects the CloudRun service name, not the generated
-    // public-domain prefix (local-landlord-265509).
-    APP_CLOUD_SVC: '"local-landlord"',
-    APP_H5_BASE: '"https://local-landlord-265509-4-1439465517.sh.run.tcloudbase.com/h5"',
+    API_BASE: '"https://api.wulianzhijia.cn/api"',
+    APP_USE_CLOUD: 'false',
+    APP_CLOUD_ENV_ID: '""',
+    APP_CLOUD_SVC: '""',
+    APP_H5_BASE: '"https://api.wulianzhijia.cn/h5"',
   },
   mini: {},
   h5: {},
