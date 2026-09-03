@@ -65,7 +65,7 @@ h2 { margin-bottom: 0; font-size: clamp(34px, 4vw, 54px); letter-spacing: -.06em
 .contact { display: grid; grid-template-columns: 1fr 1fr; gap: 10vw; padding: 102px 0; border-top: 1px solid var(--line); }
 .contact-card { align-self: end; padding: 28px; border-radius: var(--radius); background: var(--deep); color: #f1f7ee; }
 .contact-card p { margin-bottom: 18px; color: #b6e36b; font-weight: 700; }
-.contact-card a { display: block; margin-bottom: 22px; font-size: 20px; }
+.contact-channel { display: block; margin-bottom: 22px; font-size: 18px; line-height: 1.5; }
 .contact-card small { display: block; color: #b8c8be; line-height: 1.7; }
 .site-footer { padding: 32px 6vw 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .site-footer > div:first-child { display: flex; justify-content: space-between; margin-bottom: 20px; }
