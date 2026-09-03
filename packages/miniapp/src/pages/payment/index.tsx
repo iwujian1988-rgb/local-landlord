@@ -50,7 +50,6 @@ export default function Payment() {
   const [totalAmount, setTotalAmount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [savingQr, setSavingQr] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const resolvedQrImageUrl = useMemo(() => resolveAsset(qrImageUrl), [qrImageUrl]);
 
@@ -108,41 +107,6 @@ export default function Payment() {
     Taro.setNavigationBarTitle({ title: '收款码预览' });
     loadData();
   });
-
-  // Save QR code to album (real download via temp file)
-  const handleSaveQr = useCallback(() => {
-    if (!resolvedQrImageUrl || savingQr) return;
-    setSavingQr(true);
-    Taro.getImageInfo({
-      src: resolvedQrImageUrl,
-      success: (info) => {
-        Taro.saveImageToPhotosAlbum({
-          filePath: info.path,
-          success: () => {
-            Taro.showToast({ title: '收款码已保存到相册', icon: 'success', duration: 2000 });
-          },
-          fail: (err) => {
-            if (err.errMsg?.includes('auth')) {
-              Taro.showModal({
-                title: '需要相册权限',
-                content: '请在设置中允许保存到相册，方便把收款码发给租客',
-                confirmText: '去设置',
-                success: (r) => {
-                  if (r.confirm) Taro.openSetting();
-                },
-              });
-            } else {
-              Taro.showToast({ title: '保存失败，请长按图片手动保存', icon: 'none', duration: 2500 });
-            }
-          },
-        });
-      },
-      fail: () => {
-        Taro.showToast({ title: '图片加载失败，可长按图片手动保存', icon: 'none', duration: 2500 });
-      },
-      complete: () => setSavingQr(false),
-    });
-  }, [resolvedQrImageUrl, savingQr]);
 
   // Copy bill text to clipboard
   const handleShare = useCallback(() => {
@@ -254,12 +218,7 @@ export default function Payment() {
         )}
 
         <View className="payment-actions">
-          {qrImageUrl && (
-            <View className="payment-btn secondary" onClick={handleSaveQr}>
-              <Text style={{ fontSize: '28px', lineHeight: 1, color: 'var(--accent)' }}>{savingQr ? '…' : '⬇'}</Text>
-              <Text className="payment-btn-text secondary">{savingQr ? '保存中' : '保存收款码'}</Text>
-            </View>
-          )}
+          {qrImageUrl && <Text className="payment-qr-tip">长按收款码可保存或转发给租客</Text>}
           <View className="payment-btn secondary" onClick={handleShare}>
             <Icon name="send" size={28} color="var(--accent)" />
             <Text className="payment-btn-text secondary">复制账单文字</Text>
