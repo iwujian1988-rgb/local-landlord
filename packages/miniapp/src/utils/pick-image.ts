@@ -39,7 +39,7 @@ export async function pickImages(opts: {
       path: f.tempFilePath,
       size: f.size,
     }));
-  } catch {
+  } catch (chooseMediaError) {
     // Fallback for older base libraries without chooseMedia
     try {
       const res = await Taro.chooseImage({ count, sourceType, sizeType });
@@ -49,7 +49,11 @@ export async function pickImages(opts: {
       }
       const paths = res.tempFilePaths || [];
       return paths.map((p: string) => ({ path: p, size: 0 }));
-    } catch {
+    } catch (chooseImageError) {
+      console.error('[pickImages] chooseMedia and chooseImage both failed', {
+        chooseMediaError,
+        chooseImageError,
+      });
       return [];
     }
   }

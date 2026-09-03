@@ -43,9 +43,9 @@ export default function AddRoomPhoto() {
       // Either user cancelled or permission denied. Check scope to disambiguate.
       try {
         const setting = await Taro.getSetting();
-        const scope = setting.authSetting || {};
+        const scope: Record<string, boolean | undefined> = (setting.authSetting || {}) as any;
         const camDenied = scope['scope.camera'] === false;
-        const albumDenied = scope['scope.writePhotosAlbum'] === false;
+        const albumDenied = scope['scope.album'] === false || scope['scope.writePhotosAlbum'] === false;
         if (camDenied || albumDenied) {
           const r = await Taro.showModal({
             title: '相机/相册权限未开启',
@@ -124,7 +124,7 @@ export default function AddRoomPhoto() {
         )}
 
         {photos.length < 9 && !uploading && (
-          <View className="photo-grid-item photo-add-btn" onClick={handleAddPhoto}>
+          <View className="photo-grid-item photo-add-btn" onTap={handleAddPhoto}>
             <Text style={{ fontSize: '32px', color: 'var(--accent-hover)', lineHeight: 1, opacity: 0.4 }}>＋</Text>
             <Text className="photo-add-text">添加照片</Text>
           </View>
@@ -132,10 +132,10 @@ export default function AddRoomPhoto() {
       </View>
 
       <View className="photo-actions">
-        <View className="next-btn" onClick={goNext}>
+        <View className="next-btn" onTap={goNext}>
           <Text className="next-btn-text">下一步</Text>
         </View>
-        <View className="skip-link" onClick={handleSkip}>
+        <View className="skip-link" onTap={handleSkip}>
           <Text className="skip-link-text">跳过拍照，直接填写</Text>
         </View>
       </View>
