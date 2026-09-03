@@ -3,18 +3,17 @@ set -euo pipefail
 
 FILE="zbQbvEaGmB.txt"
 SRC="/tmp/${FILE}"
-DEST_DIR="/var/www/api-verification"
-DEST="${DEST_DIR}/${FILE}"
 CFG="/etc/nginx/sites-enabled/local-landlord"
 
 test -s "${SRC}"
-sudo install -d -m 755 "${DEST_DIR}"
-sudo install -m 644 "${SRC}" "${DEST}"
 
-# The exact location is added only once. It is served directly by Nginx,
-# before the API reverse proxy, so WeChat can verify the business domain.
-if ! sudo grep -Fq "location = /${FILE}" "${CFG}"; then
-  sudo sed -i "/^[[:space:]]*location \/ {/i\\    location = /${FILE} { alias ${DEST}; }" "${CFG}"
+# Return the verification value directly from Nginx. This avoids relying on
+# a container filesystem or an upload directory that may not be mounted.
+RULE="    location = /${FILE} { default_type text/plain; return 200 '7ffedf54c9b468cd427806d42af02bbd'; }"
+if sudo grep -Fq "location = /${FILE}" "${CFG}"; then
+  sudo sed -i "\|location = /${FILE}|c\\${RULE}" "${CFG}"
+else
+  sudo sed -i "/^[[:space:]]*location \/ {/i\\${RULE}" "${CFG}"
 fi
 
 sudo nginx -t
