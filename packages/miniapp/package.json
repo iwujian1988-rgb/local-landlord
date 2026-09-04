@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build:weapp": "taro build --type weapp",
+    "build:weapp": "taro build --type weapp && node scripts/sanitize-privacy-runtime.mjs",
     "dev:weapp": "taro build --type weapp --watch",
     "lint": "eslint src/",
     "type-check": "tsc --noEmit",
