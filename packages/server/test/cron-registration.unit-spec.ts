@@ -121,6 +121,14 @@ describe('Cron 注册校验', () => {
         expect(c.options).toContain('CRON_TZ');
       }
     });
+
+    it('TC-CRON-REG-TZ-BILL: 逾期状态任务必须固定 Asia/Shanghai 时区', () => {
+      const markOverdue = allCrons.find(
+        c => c.method === 'markOverdueBills' && c.file.endsWith('bill.service.ts'),
+      );
+      expect(markOverdue).toBeTruthy();
+      expect(markOverdue?.options).toContain("timeZone: 'Asia/Shanghai'");
+    });
   });
 
   describe('ScheduleModule 注册', () => {

@@ -1,4 +1,6 @@
 import { INestApplication } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { Bill } from '../src/modules/bill/bill.entity';
 import {
   createTestApp,
   loginAsLandlord,
@@ -25,9 +27,11 @@ describe('DB integrity + concurrency (e2e)', () => {
   let app: INestApplication;
   let auth: () => { Authorization: string };
   let propertyId: number;
+  let dataSource: DataSource;
 
   beforeAll(async () => {
     app = await createTestApp();
+    dataSource = app.get(DataSource);
     auth = await loginAsLandlord(app, `dev_integ_${Date.now()}`);
     propertyId = await createProperty(app, auth);
   });
@@ -96,10 +100,10 @@ describe('DB integrity + concurrency (e2e)', () => {
         }),
       ]);
       const successCount = [b1, b2].filter(r => r.body?.code === 0).length;
-      // Both might succeed if backend isn't strict — but the safer behavior
-      // is that the second hits "该周期已存在账单". Document actual behavior.
-      expect(successCount).toBeGreaterThanOrEqual(1);
-      expect(successCount).toBeLessThanOrEqual(2);
+      expect(successCount).toBe(1);
+
+      const billRepo = dataSource.getRepository(Bill);
+      expect(await billRepo.count({ where: { roomId: rId, period } })).toBe(1);
     });
   });
 

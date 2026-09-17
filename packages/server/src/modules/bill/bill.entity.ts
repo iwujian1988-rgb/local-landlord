@@ -8,6 +8,7 @@ import { BillItem } from './bill-item.entity';
 @Index(['tenantId'])
 @Index(['status'])
 @Index(['period'])
+@Index('UQ_bill_tenant_period', ['tenantId', 'period'], { unique: true })
 export class Bill {
   @PrimaryGeneratedColumn({ type: 'integer' })
   id: number;
@@ -25,6 +26,11 @@ export class Bill {
   // 旧账单该字段为 null，按单月 (period) 处理。
   @Column({ name: 'period_end', type: 'varchar', length: 7, nullable: true })
   periodEnd: string | null;
+
+  // Snapshot at bill creation. Later tenant rent-day edits must not rewrite
+  // when an already-issued receivable becomes overdue.
+  @Column({ name: 'due_date', type: 'date', nullable: true })
+  dueDate: string | null;
 
   @Column({ name: 'total_amount', type: 'decimal', precision: 10, scale: 2 })
   totalAmount: number;

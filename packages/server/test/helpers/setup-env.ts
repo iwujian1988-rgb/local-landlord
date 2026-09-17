@@ -17,7 +17,7 @@ process.env.DISABLE_THROTTLE = '1';
 // fail with "no such table".
 process.env.NODE_ENV = 'development';
 process.env.DB_TYPE = 'sqljs';
-// Allow CI/local callers to provide an isolated database per run. Reusing one
-// persisted sql.js file across interrupted suites can leave a malformed test
-// image and create false product failures.
-process.env.DB_LOCATION = process.env.DB_LOCATION || 'data/test_e2e.sqlite';
+// Every Nest test app gets a fresh in-memory sql.js database. Persisting and
+// reusing one file across suites caused false "database disk image is
+// malformed" failures after an interrupted run.
+process.env.DB_IN_MEMORY = '1';

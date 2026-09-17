@@ -14,6 +14,7 @@ import {
 import { DataSource } from 'typeorm';
 import { Bill } from '../src/modules/bill/bill.entity';
 import { BillItem } from '../src/modules/bill/bill-item.entity';
+import { SystemConfig } from '../src/modules/system/system-config.entity';
 
 /**
  * Cron / scheduled-task behavior tests.
@@ -158,6 +159,40 @@ describe('Cron behavior (e2e)', () => {
     });
   });
 
+  describe('逾期提醒回归', () => {
+    it('TC-CRON-REMIND-002: 部分付款账单仍进入逾期提醒候选，金额为剩余待收', async () => {
+      const due = new Date();
+      due.setDate(due.getDate() - 3);
+      const period = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}`;
+      const rId = await createRoom(app, auth, propertyId, { rent: 1000, name: '部分付款提醒房' });
+      await createTenant(app, auth, rId, {
+        name: '部分付款提醒租客', phone: '13911110991', moveInDate: '2024-01-01', rentDay: due.getDate(),
+      });
+      const billId = await createBill(app, auth, rId, {
+        period, items: [{ feeName: '房租', amount: 1000 }], totalAmount: 1000,
+      });
+      expectOk(await apiCall(app, 'put', `/api/bills/${billId}/confirm`, auth, { actualAmount: 400 }));
+
+      const result = expectOk(await apiCall(app, 'post', '/api/subscription/trigger-overdue?dryRun=1', adminAuth, {}));
+      expect(result.dryRunCandidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ billId, overdueDays: 3 }),
+      ]));
+    });
+
+    it('TC-CRON-REMIND-003: 后台关闭逾期提醒后不再产生候选', async () => {
+      const repo = dataSource.getRepository(SystemConfig);
+      await repo.save(repo.create({
+        key: 'notifications',
+        value: { overdueRemind: { enabled: false } },
+      }));
+      const result = expectOk(await apiCall(app, 'post', '/api/subscription/trigger-overdue?dryRun=1', adminAuth, {}));
+      expect(result.sent).toBe(0);
+      expect(result.failed).toBe(0);
+      expect(result.dryRunCandidates).toBeUndefined();
+      await repo.delete({ key: 'notifications' });
+    });
+  });
+
   describe('trigger-auto-bills 自动账单', () => {
     it('TC-CRON-AUTO-001: 触发 trigger-auto-bills 不报错', async () => {
       const res = await apiCall(
@@ -226,6 +261,23 @@ describe('Cron behavior (e2e)', () => {
       // Re-running the job is idempotent.
       expectOk(await apiCall(app, 'post', '/api/subscription/trigger-auto-bills', adminAuth, {}));
       expect(await dataSource.getRepository(Bill).count({ where: { roomId: rId, period: currentMonthStr() } })).toBe(1);
+    });
+
+    it('TC-CRON-AUTO-004: 上月定时任务漏跑后，本月会补建上月账单', async () => {
+      const previous = new Date();
+      previous.setMonth(previous.getMonth() - 1, 1);
+      const previousPeriod = `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}`;
+      const rId = await createRoom(app, auth, propertyId, { rent: 1200, name: '漏跑补账房' });
+      await createTenant(app, auth, rId, {
+        name: '漏跑补账租客', phone: '13911110992', moveInDate: `${previousPeriod}-01`, rentDay: 1,
+      });
+      const billRepo = dataSource.getRepository(Bill);
+      const firstBill = await billRepo.findOneByOrFail({ roomId: rId, period: previousPeriod });
+      await dataSource.getRepository(BillItem).delete({ billId: firstBill.id });
+      await billRepo.delete({ id: firstBill.id });
+
+      expectOk(await apiCall(app, 'post', '/api/subscription/trigger-auto-bills', adminAuth, {}));
+      expect(await billRepo.count({ where: { roomId: rId, period: previousPeriod } })).toBe(1);
     });
   });
 

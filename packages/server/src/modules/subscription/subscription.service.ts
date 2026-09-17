@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { DataSource, Repository, In } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import dayjs from 'dayjs';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
+import { dueDateForPeriod, dueDateString } from '../bill/bill-due-date';
 import { Tenant } from '../tenant/tenant.entity';
 import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
@@ -77,14 +78,26 @@ export class SubscriptionService {
     private readonly feeItemRepository: Repository<FeeItem>,
     @InjectRepository(SystemConfig)
     private readonly configRepository: Repository<SystemConfig>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** Returns true if auto reminders are enabled (admin can disable globally via system params). */
-  private async isAutoRemindEnabled(): Promise<boolean> {
+  private async isAutoRemindEnabled(notificationKey?: 'rentRemind' | 'overdueRemind'): Promise<boolean> {
     const config = await this.configRepository.findOne({ where: { key: 'system_params' } });
     const value = config?.value as any;
-    // Default to true when missing so fresh installs behave as before.
-    return value?.enableAutoRemind !== false;
+    if (value?.enableAutoRemind === false) return false;
+    if (notificationKey) {
+      const notifications = await this.configRepository.findOne({ where: { key: 'notifications' } });
+      const notificationValue = notifications?.value as any;
+      if (notificationValue?.[notificationKey]?.enabled === false) return false;
+    }
+    return true;
+  }
+
+  private async configuredRemindDays(): Promise<number> {
+    const config = await this.configRepository.findOne({ where: { key: 'system_params' } });
+    const value = Number((config?.value as any)?.remindDays);
+    return Number.isInteger(value) && value >= 0 && value <= 30 ? value : 3;
   }
 
   /**
@@ -213,9 +226,9 @@ export class SubscriptionService {
   @Cron('0 8 * * *', CRON_TZ)
   async autoGenerateBills(): Promise<{ generated: number; sent: number; failed: number; skipped: number }> {
     const now = dayjs();
-    const today = now.date();
-    const isLastDay = now.endOf('month').date() === today;
-    const monthStr = now.format('YYYY-MM');
+    // Recheck the previous month as well. This repairs a missed month-end run
+    // after an outage without backfilling an unbounded amount of history.
+    const candidatePeriods = [now.subtract(1, 'month').format('YYYY-MM'), now.format('YYYY-MM')];
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
@@ -223,81 +236,67 @@ export class SubscriptionService {
     const landlordBillMap = new Map<number, { count: number; total: number }>();
 
     for (const tenant of tenants) {
-      const rentDay = tenant.rentDay ?? 1;
-      const payMonths = tenant.payMonths ?? 1;
-      const isRentDay = rentDay === today || (rentDay === 0 && isLastDay);
-      if (!isRentDay) continue;
+      for (const monthStr of candidatePeriods) {
+        const monthDate = dayjs(monthStr + '-01');
+        const rentDay = tenant.rentDay ?? 1;
+        const dueDay = rentDay === 0 ? monthDate.endOf('month').date() : Math.min(rentDay, monthDate.endOf('month').date());
+        if (now.startOf('day').isBefore(monthDate.date(dueDay).startOf('day'))) continue;
 
-      const existing = await this.billRepository.findOne({
-        where: { roomId: tenant.roomId, tenantId: tenant.id, period: monthStr },
-      });
-      if (existing) continue;
+        const created = await this.dataSource.transaction(async manager => {
+          const tenantQuery = manager.getRepository(Tenant).createQueryBuilder('tenant')
+            .where('tenant.id = :id', { id: tenant.id });
+          if (manager.connection.options.type === 'mysql') tenantQuery.setLock('pessimistic_write');
+          const lockedTenant = await tenantQuery.getOne();
+          if (!lockedTenant || lockedTenant.status !== 1) return null;
 
-      const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
-      if (!room) continue;
-
-      const legacyFeeItems = await this.feeItemRepository.find({
-        where: { roomId: room.id },
-        order: { sortOrder: 'ASC' },
-      });
-      const feeItems = resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0);
-
-      const items: { feeName: string; amount: number }[] = [];
-      let totalAmount = 0;
-      let periodEnd = monthStr;
-
-      if (feeItems.length > 0) {
-        for (const fee of feeItems) {
-          if (!fee.enabled) continue;
-          const dueMonths = feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr);
-          if (dueMonths === 0) continue;
-          const amt = feeRuleAmountForMonths(fee, dueMonths);
-          items.push({ feeName: fee.name, amount: amt });
-          totalAmount += amt;
-          if (fee.isRent) periodEnd = dayjs(monthStr + '-01').add(dueMonths - 1, 'month').format('YYYY-MM');
-        }
-      }
-
-      // No fee is due in this month (for example rent quarterly and internet
-      // half-yearly). Do not create an empty bill.
-      if (items.length === 0) continue;
-
-      const bill = this.billRepository.create({
-        roomId: room.id,
-        tenantId: tenant.id,
-        period: monthStr,
-        periodEnd,
-        totalAmount,
-        status: 0,
-        photos: [],
-        sentAt: new Date(),
-      });
-      const savedBill = await this.billRepository.save(bill);
-
-      const billItems = items.map(item =>
-        this.billItemRepository.create({
-          billId: savedBill.id,
-          feeName: item.feeName,
-          amount: item.amount,
-        }),
-      );
-      await this.billItemRepository.save(billItems);
-      generated++;
-
-      const landlord = await this.findLandlordByRoom(room.id);
-      if (landlord) {
-        const entry = landlordBillMap.get(landlord.id);
-        if (entry) {
-          entry.count++;
-          entry.total += totalAmount;
-        } else {
-          landlordBillMap.set(landlord.id, { count: 1, total: totalAmount });
+          const existing = await manager.findOne(Bill, {
+            where: { tenantId: lockedTenant.id, period: monthStr },
+          });
+          if (existing) return null;
+          const room = await manager.findOne(Room, { where: { id: lockedTenant.roomId } });
+          if (!room) return null;
+          const legacyFeeItems = await manager.find(FeeItem, { where: { roomId: room.id }, order: { sortOrder: 'ASC' } });
+          const feeItems = resolveFeeRules(lockedTenant.feeRules, legacyFeeItems, Number(room.rent) || 0);
+          const items: { feeName: string; amount: number }[] = [];
+          let totalAmount = 0;
+          let periodEnd = monthStr;
+          for (const fee of feeItems) {
+            if (!fee.enabled) continue;
+            const dueMonths = feeRuleDueMonths(fee, lockedTenant.payMonths ?? 1, lockedTenant.moveInDate, monthStr);
+            if (dueMonths === 0) continue;
+            const amount = feeRuleAmountForMonths(fee, dueMonths);
+            items.push({ feeName: fee.name, amount });
+            totalAmount += amount;
+            if (fee.isRent) periodEnd = monthDate.add(dueMonths - 1, 'month').format('YYYY-MM');
+          }
+          if (items.length === 0) return null;
+          const savedBill = await manager.save(manager.create(Bill, {
+            roomId: room.id, tenantId: lockedTenant.id, period: monthStr, periodEnd,
+            dueDate: dueDateString(monthStr, lockedTenant.rentDay),
+            totalAmount, status: 0, photos: [], sentAt: new Date(),
+          }));
+          await manager.save(items.map(item => manager.create(BillItem, {
+            billId: savedBill.id, feeName: item.feeName, amount: item.amount,
+          })));
+          return { roomId: room.id, totalAmount };
+        });
+        if (!created) continue;
+        generated++;
+        const landlord = await this.findLandlordByRoom(created.roomId);
+        if (landlord) {
+          const entry = landlordBillMap.get(landlord.id);
+          if (entry) {
+            entry.count++;
+            entry.total += created.totalAmount;
+          } else {
+            landlordBillMap.set(landlord.id, { count: 1, total: created.totalAmount });
+          }
         }
       }
     }
 
     if (generated > 0) {
-      this.logger.log(`Auto-generated ${generated} bills for ${monthStr}`);
+      this.logger.log(`Auto-generated ${generated} catch-up/current bills`);
     }
 
     const notify = await this.sendAutoBillNotifications(landlordBillMap);
@@ -309,6 +308,9 @@ export class SubscriptionService {
     landlordBillMap: Map<number, { count: number; total: number }>,
   ): Promise<{ sent: number; failed: number; skipped: number }> {
     if (landlordBillMap.size === 0) return { sent: 0, failed: 0, skipped: 0 };
+    if (!(await this.isAutoRemindEnabled('rentRemind'))) {
+      return { sent: 0, failed: 0, skipped: landlordBillMap.size };
+    }
     const templateId = rentTemplateId();
 
     let sent = 0;
@@ -339,7 +341,7 @@ export class SubscriptionService {
    */
   @Cron('5 9 * * *', CRON_TZ)
   async sendRentReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
-    if (!(await this.isAutoRemindEnabled())) {
+    if (!(await this.isAutoRemindEnabled('rentRemind'))) {
       this.logger.log('enableAutoRemind=false, skip rent reminders');
       return { sent: 0, failed: 0, skipped: 0 };
     }
@@ -347,8 +349,8 @@ export class SubscriptionService {
 
     const now = dayjs();
     const today = now.date();
-    const isLastDay = now.endOf('month').date() === today;
     const monthStr = now.format('YYYY-MM');
+    const remindDays = await this.configuredRemindDays();
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
@@ -357,7 +359,9 @@ export class SubscriptionService {
     let skipped = 0;
     for (const tenant of tenants) {
       const rentDay = tenant.rentDay ?? 1;
-      const shouldNotify = rentDay === today || (rentDay === 0 && isLastDay);
+      const dueDay = rentDay === 0 ? now.endOf('month').date() : Math.min(rentDay, now.endOf('month').date());
+      const daysUntil = dueDay - today;
+      const shouldNotify = daysUntil === 0 || daysUntil === remindDays;
       if (!shouldNotify) continue;
 
       const bill = await this.billRepository.findOne({
@@ -381,7 +385,7 @@ export class SubscriptionService {
         templateId,
         {
           thing7: { value: this.truncate(`${monthLabel}房租·${label}`) },
-          thing11: { value: this.truncate('今天该收房租了，别忘了') },
+          thing11: { value: this.truncate(daysUntil === 0 ? '今天该收房租了，别忘了' : `还有${daysUntil}天该收房租`) },
           amount6: { value: amountValue(bill.totalAmount) },
         },
         `pages/bill/index?roomId=${room.id}&billId=${bill.id}`,
@@ -396,12 +400,12 @@ export class SubscriptionService {
   /**
    * 退租提醒 — 每天 9:30
    *
-   * 场景：租客退租当天（moveOutDate 或 contractEndDate = 今天）
+   * 场景：租客实际退租当天（moveOutDate = 今天）
    * 提醒房东检查房屋、安排招租
    */
   @Cron('30 9 * * *', CRON_TZ)
   async sendMoveOutReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
-    if (!(await this.isAutoRemindEnabled())) {
+    if (!(await this.isAutoRemindEnabled('rentRemind'))) {
       this.logger.log('enableAutoRemind=false, skip move-out reminders');
       return { sent: 0, failed: 0, skipped: 0 };
     }
@@ -416,17 +420,8 @@ export class SubscriptionService {
       .andWhere('tenant.status = :status', { status: 0 })
       .getMany();
 
-    // 合同到期但仍在住（status=1 且 contractEndDate=今天）
-    const expiringActive = await this.tenantRepository
-      .createQueryBuilder('tenant')
-      .where('tenant.contract_end_date = :today', { today: todayStr })
-      .andWhere('tenant.status = :status', { status: 1 })
-      .getMany();
-
-    const allTenants = [
-      ...movedOut.map(t => ({ ...t, msg: '租客今天退租，检查下房子' })),
-      ...expiringActive.map(t => ({ ...t, msg: '合同今天到期，问下退不退' })),
-    ];
+    // 合同到期由 sendContractExpiryReminders 统一负责，避免同一天重复提醒。
+    const allTenants = movedOut.map(t => ({ ...t, msg: '租客今天退租，检查下房子' }));
 
     let sent = 0;
     let failed = 0;
@@ -473,22 +468,19 @@ export class SubscriptionService {
     }>;
     sendResults?: Array<{ billId: number; room: string; ok: boolean; error?: string }>;
   }> {
-    if (!(await this.isAutoRemindEnabled())) {
+    if (!(await this.isAutoRemindEnabled('overdueRemind'))) {
       this.logger.log('enableAutoRemind=false, skip overdue reminders');
       return { sent: 0, failed: 0, skipped: 0 };
     }
     const templateId = overdueTemplateId();
 
     const now = dayjs();
-    const today = now.date();
-    const currentMonth = now.month();
-    const currentYear = now.year();
 
     const overdueBills = await this.billRepository
       .createQueryBuilder('bill')
       .leftJoinAndSelect('bill.tenant', 'tenant')
       .leftJoinAndSelect('bill.room', 'room')
-      .where('bill.status IN (:...statuses)', { statuses: [0, 2] })
+      .where('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
       .getMany();
 
     let sent = 0;
@@ -502,27 +494,10 @@ export class SubscriptionService {
     for (const bill of overdueBills) {
       if (!bill.tenant || !bill.room) continue;
 
-      const rentDay = bill.tenant.rentDay ?? 1;
-      // A prepaid bill is due in its collection month; coverage must not delay reminders.
-      const effectivePeriod = bill.period;
-      let dueDay: number;
-      if (rentDay === 0) {
-        dueDay = dayjs(effectivePeriod + '-01').endOf('month').date();
-      } else {
-        dueDay = rentDay;
-      }
-
-      const periodDate = dayjs(effectivePeriod + '-01');
-      const billMonth = periodDate.month();
-      const billYear = periodDate.year();
-
-      let overdueDays = 0;
-      if (billYear < currentYear || (billYear === currentYear && billMonth < currentMonth)) {
-        const lastDayOfBillMonth = periodDate.endOf('month').date();
-        overdueDays = now.diff(periodDate.date(lastDayOfBillMonth), 'day') + 1;
-      } else if (billYear === currentYear && billMonth === currentMonth) {
-        overdueDays = today - dueDay;
-      }
+      const dueDate = bill.dueDate
+        ? dayjs(bill.dueDate).startOf('day')
+        : dueDateForPeriod(bill.period, bill.tenant.rentDay);
+      const overdueDays = now.startOf('day').diff(dueDate, 'day');
 
       if (overdueDays <= 0) continue;
 
@@ -566,7 +541,7 @@ export class SubscriptionService {
         {
           thing7: { value: this.truncate(`${monthLabel}房租·${label}`) },
           thing11: { value: this.truncate(contextMsg) },
-          amount6: { value: amountValue(bill.totalAmount) },
+          amount6: { value: amountValue(Math.max(0, Number(bill.totalAmount) - (Number(bill.paidAmount) || 0))) },
         },
         `pages/bill/index?roomId=${bill.room.id}&billId=${bill.id}`,
       );
@@ -589,13 +564,13 @@ export class SubscriptionService {
    */
   @Cron('0 11 * * *', CRON_TZ)
   async sendContractExpiryReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
-    if (!(await this.isAutoRemindEnabled())) {
+    if (!(await this.isAutoRemindEnabled('rentRemind'))) {
       this.logger.log('enableAutoRemind=false, skip contract expiry reminders');
       return { sent: 0, failed: 0, skipped: 0 };
     }
     const templateId = rentTemplateId();
 
-    const now = dayjs();
+    const now = dayjs().startOf('day');
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
     let sent = 0;
@@ -604,7 +579,7 @@ export class SubscriptionService {
     for (const tenant of tenants) {
       if (!tenant.contractEndDate) continue;
 
-      const endDate = dayjs(tenant.contractEndDate);
+      const endDate = dayjs(tenant.contractEndDate).startOf('day');
       const daysLeft = endDate.diff(now, 'day');
 
       const notifyAt = [30, 7, 0, -7];
@@ -658,7 +633,7 @@ export class SubscriptionService {
    */
   @Cron('30 11 * * *', CRON_TZ)
   async sendVacancyReminders(): Promise<{ sent: number; failed: number; skipped: number }> {
-    if (!(await this.isAutoRemindEnabled())) {
+    if (!(await this.isAutoRemindEnabled('rentRemind'))) {
       this.logger.log('enableAutoRemind=false, skip vacancy reminders');
       return { sent: 0, failed: 0, skipped: 0 };
     }
@@ -732,7 +707,7 @@ export class SubscriptionService {
    */
   @Cron('0 20 * * *', CRON_TZ)
   async sendMonthlySummary(): Promise<{ sent: number; failed: number; skipped: number }> {
-    if (!(await this.isAutoRemindEnabled())) {
+    if (!(await this.isAutoRemindEnabled('rentRemind'))) {
       this.logger.log('enableAutoRemind=false, skip monthly summary');
       return { sent: 0, failed: 0, skipped: 0 };
     }
@@ -781,15 +756,15 @@ export class SubscriptionService {
         if (b.status === 3) return sum + (Number(b.paidAmount) || 0);
         return sum;
       }, 0);
-      const paidBills = bills.filter(b => b.status === 1 || b.status === 3);
-      const unpaidCount = bills.filter(b => b.status === 0 || b.status === 2).length;
+      const paidBills = bills.filter(b => b.status === 1);
+      const unpaidCount = bills.filter(b => b.status === 0 || b.status === 2 || b.status === 3).length;
 
       const ok = await this.sendSubscribeMessage(
         landlord.openId,
         templateId,
         {
           thing7: { value: this.truncate(`${now.format('M月')}收租情况`) },
-          thing11: { value: this.truncate(`收到了${paidBills.length}间，还有${unpaidCount}间没收`) },
+          thing11: { value: this.truncate(`收齐了${paidBills.length}间，还有${unpaidCount}间未收齐`) },
           amount6: { value: amountValue(totalCollected) },
         },
         'pages/rent-stats/index',

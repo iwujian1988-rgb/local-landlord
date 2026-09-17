@@ -46,6 +46,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       ALLOW_OPENID_HEADER: 'false'
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       mysql:
         condition: service_healthy
@@ -56,3 +58,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  uploads_data:

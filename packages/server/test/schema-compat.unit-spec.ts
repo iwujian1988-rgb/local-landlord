@@ -30,6 +30,7 @@ class FakeDataSource {
   public alters: string[] = [];
   // Per-(table,column) presence map — tests populate this.
   public existingColumns = new Set<string>();
+  public existingIndexes = new Set<string>();
   public duplicateAlterOnce = false;
 
   constructor(type: any) {
@@ -45,6 +46,10 @@ class FakeDataSource {
       const key = `${table}:${col}`;
       return this.existingColumns.has(key) ? [{ COLUMN_NAME: col }] : [];
     }
+    if (/INFORMATION_SCHEMA\.STATISTICS/i.test(sql)) {
+      return this.existingIndexes.has(String(params?.[2])) ? [{ INDEX_NAME: params?.[2] }] : [];
+    }
+    if (/HAVING COUNT\(\*\) > 1/i.test(sql)) return [];
     // ALTER TABLE `xxx` ADD COLUMN ...
     if (/^ALTER\s+TABLE/i.test(sql)) {
       this.alters.push(sql);
@@ -104,9 +109,9 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     const svc = makeService(ds);
     await svc.onApplicationBootstrap();
 
-    const selectCount = ds.queryLog.filter((q) => /INFORMATION_SCHEMA/i.test(q.sql)).length;
+    const selectCount = ds.queryLog.filter((q) => /INFORMATION_SCHEMA\.COLUMNS/i.test(q.sql)).length;
     expect(selectCount).toBe(COLUMN_COUNT);
-    expect(ds.alters.length).toBe(COLUMN_COUNT);
+    expect(ds.alters.filter(sql => /ADD COLUMN/i.test(sql))).toHaveLength(COLUMN_COUNT);
 
     // Each SELECT carries [database, table, column] params
     for (const q of ds.queryLog) {
@@ -123,12 +128,13 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     // We do this by reading the spec from the source.
     const specs = parseColumnSpecs();
     for (const s of specs) ds.existingColumns.add(`${s.table}:${s.column}`);
+    ds.existingIndexes.add('UQ_bill_tenant_period');
 
     const svc = makeService(ds);
     await svc.onApplicationBootstrap();
 
     expect(ds.alters).toHaveLength(0);
-    const selectCount = ds.queryLog.filter((q) => /INFORMATION_SCHEMA/i.test(q.sql)).length;
+    const selectCount = ds.queryLog.filter((q) => /INFORMATION_SCHEMA\.COLUMNS/i.test(q.sql)).length;
     expect(selectCount).toBe(COLUMN_COUNT);
   });
 
@@ -141,7 +147,7 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     const svc = makeService(ds);
     await svc.onApplicationBootstrap();
 
-    expect(ds.alters).toHaveLength(3);
+    expect(ds.alters.filter(sql => /ADD COLUMN/i.test(sql))).toHaveLength(3);
     // ALTER statements should mention the missing columns
     for (let i = 0; i < 3; i++) {
       expect(ds.alters[i]).toContain(`\`${specs[i].table}\``);
@@ -159,6 +165,7 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     // Mark every column from the spec as now present (simulating ALTERs landed)
     const specs = parseColumnSpecs();
     for (const s of specs) ds.existingColumns.add(`${s.table}:${s.column}`);
+    ds.existingIndexes.add('UQ_bill_tenant_period');
 
     await svc.onApplicationBootstrap();
     expect(ds.alters.length).toBe(firstRunAlters); // no new ALTERs
@@ -169,7 +176,7 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     const svc = makeService(ds);
     await svc.onApplicationBootstrap();
 
-    for (const sql of ds.alters) {
+    for (const sql of ds.alters.filter(sql => /ADD COLUMN/i.test(sql))) {
       expect(sql).toMatch(/^ALTER\s+TABLE\s+`[a-z_]+`\s+ADD\s+COLUMN\s+/i);
     }
   });
@@ -186,7 +193,7 @@ describe('SchemaCompatService — 查询/ALTER 行为', () => {
     ds.duplicateAlterOnce = true;
     const svc = makeService(ds);
     await expect(svc.onApplicationBootstrap()).resolves.toBeUndefined();
-    expect(ds.alters.length).toBe(COLUMN_COUNT);
+    expect(ds.alters.filter(sql => /ADD COLUMN/i.test(sql))).toHaveLength(COLUMN_COUNT);
   });
 });
 

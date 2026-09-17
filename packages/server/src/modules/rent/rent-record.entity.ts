@@ -27,6 +27,11 @@ export class RentRecord {
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   amount: number;
 
+  // The date on which cash actually moved. Legacy rows fall back to createdAt
+  // in reports, while imported/initial payments can retain their real date.
+  @Column({ name: 'payment_at', type: 'datetime', nullable: true })
+  paymentAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

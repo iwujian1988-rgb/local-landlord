@@ -15,6 +15,7 @@ import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { UtilityReading } from '../utility-reading/utility-reading.entity';
 import { isUtilityFeeName, utilityName, utilityTypesForFeeRules } from '../utility-reading/utility-reading.helpers';
+import { dueDateForPeriod, dueDateString } from './bill-due-date';
 
 @Injectable()
 export class BillService {
@@ -62,13 +63,15 @@ export class BillService {
     }
 
     return this.entityManager.transaction(async (manager) => {
-      const tenant = await manager.findOne(Tenant, {
-        where: { roomId, status: 1 },
-      });
+      const tenantQuery = manager.getRepository(Tenant).createQueryBuilder('tenant')
+        .where('tenant.room_id = :roomId', { roomId })
+        .andWhere('tenant.status = 1');
+      if (manager.connection.options.type === 'mysql') tenantQuery.setLock('pessimistic_write');
+      const tenant = await tenantQuery.getOne();
       if (!tenant) throw new BadRequestException('房间没有在租租客，无法生成账单');
 
       const existingBill = await manager.findOne(Bill, {
-        where: { roomId, period: dto.period },
+        where: { tenantId: tenant.id, period: dto.period },
       });
       if (existingBill) {
         throw new BadRequestException('该周期已存在账单');
@@ -87,6 +90,7 @@ export class BillService {
         tenantId: tenant.id,
         period: dto.period,
         periodEnd,
+        dueDate: dueDateString(dto.period, tenant.rentDay),
         totalAmount,
         status: 0,
         photos: dto.photos || [],
@@ -171,10 +175,13 @@ export class BillService {
   /** Confirm payment — supports partial payments via actualAmount + status=3 */
   async confirmPayment(id: number, dto: ConfirmPaymentDto): Promise<Bill> {
     return this.entityManager.transaction(async (manager) => {
-      const bill = await manager.findOne(Bill, {
-        where: { id },
-        relations: ['items', 'tenant', 'room'],
-      });
+      const billQuery = manager.getRepository(Bill)
+        .createQueryBuilder('bill')
+        .where('bill.id = :id', { id });
+      if (manager.connection.options.type === 'mysql') {
+        billQuery.setLock('pessimistic_write');
+      }
+      const bill = await billQuery.getOne();
       if (!bill) throw new NotFoundException('账单不存在');
 
       if (bill.status === 1) {
@@ -237,6 +244,7 @@ export class BillService {
             ? (currentPaid > 0 ? `补齐尾款: ${actualAmount}，合计 ${totalAmount}` : `确认收款: ${totalAmount}`)
             : `部分付款: ${actualAmount}，已收 ${newPaidAmount}/${totalAmount}`),
         amount: actualAmount,
+        paymentAt: new Date(),
       });
       await manager.save(rentRecord);
 
@@ -387,12 +395,9 @@ export class BillService {
    * Scheduled task: mark overdue bills at midnight.
    * Optimized to use a single SQL UPDATE instead of N+1 loop.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { timeZone: 'Asia/Shanghai' })
   async markOverdueBills(): Promise<void> {
     const now = dayjs();
-    const today = now.date();
-    const currentMonth = now.month();
-    const currentYear = now.year();
 
     // Only status=0 (pending) flips to overdue. Partial payments (status=3)
     // keep their status: /rent/pending still buckets them as overdue by date
@@ -410,31 +415,10 @@ export class BillService {
     for (const bill of unpaidBills) {
       if (!bill.tenant) continue;
 
-      const rentDay = bill.tenant.rentDay ?? 10;
-      let dueDay: number;
-
-      // Overdue is judged by the bill's START period: a 押X付Y bill is due at
-      // its period-start rentDay, so any prior-period unpaid bill is overdue
-      // even if its periodEnd coverage extends into the current month. This
-      // matches /rent/pending's prior-overdue detection (period < this month).
-      const effectiveDate = dayjs(bill.period + '-01');
-
-      // Clamp rentDay to the month's last day: rentDay=31 in a 30-day month
-      // must still flip overdue on day 30+ (same rule as /rent/pending and
-      // stats isBillOverdueForStats).
-      const lastDay = effectiveDate.endOf('month').date();
-      dueDay = rentDay === 0 ? lastDay : Math.min(rentDay, lastDay);
-
-      const billMonth = effectiveDate.month();
-      const billYear = effectiveDate.year();
-
-      if (billYear < currentYear || (billYear === currentYear && billMonth < currentMonth)) {
-        overdueBillIds.push(bill.id);
-      } else if (billYear === currentYear && billMonth === currentMonth) {
-        if (today > dueDay) {
-          overdueBillIds.push(bill.id);
-        }
-      }
+      const dueDate = bill.dueDate
+        ? dayjs(bill.dueDate).startOf('day')
+        : dueDateForPeriod(bill.period, bill.tenant.rentDay);
+      if (now.startOf('day').isAfter(dueDate)) overdueBillIds.push(bill.id);
     }
 
     if (overdueBillIds.length > 0) {

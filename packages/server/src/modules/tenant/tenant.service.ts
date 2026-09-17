@@ -7,6 +7,7 @@ import { Room } from '../room/room.entity';
 import { Property } from '../property/property.entity';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
+import { dueDateString } from '../bill/bill-due-date';
 import { FeeItem } from '../fee/fee-item.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -178,6 +179,7 @@ export class TenantService {
       tenantId: tenant.id,
       period,
       periodEnd,
+      dueDate: dueDateString(period, tenant.rentDay),
       totalAmount,
       paidAmount: recordedAmount,
       status: paymentStatus,
@@ -213,6 +215,7 @@ export class TenantService {
         title: paymentStatus === 1 ? '入住首期账单已收' : '入住首期账单部分付款',
         description: `${methodLabel} · ${tenant.initialPaymentDate || '入住时'}实收`,
         amount: recordedAmount,
+        paymentAt: tenant.initialPaymentDate ? new Date(tenant.initialPaymentDate) : new Date(),
       });
       await manager.getRepository(RentRecord).save(rentRecord);
     }
@@ -229,6 +232,7 @@ export class TenantService {
         title: '入住押金已收',
         description: `${tenant.initialPaymentDate || '入住时'}收取；押金不计入租金收入`,
         amount: depositReceived,
+        paymentAt: tenant.initialPaymentDate ? new Date(tenant.initialPaymentDate) : new Date(),
       });
       await manager.getRepository(RentRecord).save(depositRecord);
     }
@@ -254,57 +258,62 @@ export class TenantService {
    * compute prepaid rent refund for 押X付Y tenants who leave mid-cycle.
    */
   async moveOut(id: number, dto: MoveOutDto): Promise<Tenant> {
-    const tenant = await this.tenantRepository.findOne({ where: { id } });
-    if (!tenant) throw new NotFoundException('租客不存在');
+    return this.dataSource.transaction(async manager => {
+      const tenantQuery = manager.getRepository(Tenant)
+        .createQueryBuilder('tenant')
+        .where('tenant.id = :id', { id });
+      if (manager.connection.options.type === 'mysql') tenantQuery.setLock('pessimistic_write');
+      const tenant = await tenantQuery.getOne();
+      if (!tenant) throw new NotFoundException('租客不存在');
+      if (tenant.status !== 1) throw new BadRequestException('该租客已退租');
 
-    if (tenant.status !== 1) {
-      throw new BadRequestException('该租客已退租');
-    }
+      tenant.status = 0;
+      tenant.moveOutDate = dto.moveOutDate || new Date().toISOString().slice(0, 10);
 
-    tenant.status = 0;
-    tenant.moveOutDate = dto.moveOutDate || new Date().toISOString().slice(0, 10);
-
-    if (dto.depositStatus != null) {
-      tenant.depositStatus = dto.depositStatus;
-      if (dto.depositRefundAmount != null) {
-        tenant.depositRefundAmount = dto.depositRefundAmount;
+      if (dto.depositStatus != null) {
+        tenant.depositStatus = dto.depositStatus;
+        if (dto.depositRefundAmount != null) tenant.depositRefundAmount = dto.depositRefundAmount;
+        if (dto.depositDeductReason != null) tenant.depositDeductReason = dto.depositDeductReason;
       }
-      if (dto.depositDeductReason != null) {
-        tenant.depositDeductReason = dto.depositDeductReason;
+      if (dto.moveOutReading != null) tenant.moveOutReading = dto.moveOutReading;
+
+      tenant.prepaidRefundAmount = dto.prepaidRefundAmount != null
+        ? dto.prepaidRefundAmount
+        : await this.computePrepaidRefund(tenant, manager);
+
+      const saved = await manager.getRepository(Tenant).save(tenant);
+
+      // Close the remaining receivable. Actual cash already collected is kept
+      // in rent_record and therefore remains visible in cash reports.
+      await manager.getRepository(Bill)
+        .createQueryBuilder()
+        .update(Bill)
+        .set({ status: 4 })
+        .where('tenant_id = :tid', { tid: saved.id })
+        .andWhere('status IN (:...statuses)', { statuses: [0, 2, 3] })
+        .execute();
+
+      const room = await manager.findOne(Room, { where: { id: tenant.roomId } });
+      if (room) {
+        room.status = 0;
+        await manager.save(room);
       }
-    }
 
-    if (dto.moveOutReading != null) {
-      tenant.moveOutReading = dto.moveOutReading;
-    }
+      const prepaidRefund = Number(saved.prepaidRefundAmount) || 0;
+      if (prepaidRefund > 0) {
+        await manager.save(manager.create(RentRecord, {
+          roomId: saved.roomId,
+          billId: null,
+          type: 6,
+          title: '退租预付租金退款',
+          description: '退租时退还未使用的预付租金',
+          amount: -prepaidRefund,
+          paymentAt: new Date(),
+        }));
+      }
 
-    // Prepaid rent refund: prefer frontend-provided value, otherwise auto-compute.
-    if (dto.prepaidRefundAmount != null) {
-      tenant.prepaidRefundAmount = dto.prepaidRefundAmount;
-    } else {
-      const computed = await this.computePrepaidRefund(tenant);
-      tenant.prepaidRefundAmount = computed;
-    }
-
-    const saved = await this.tenantRepository.save(tenant);
-
-    // P1: Cancel pending/partial/overdue bills so they don't keep催收. status=4
-    // means "退租作废". Paid bills (status=1) are kept for history.
-    await this.billRepository
-      .createQueryBuilder()
-      .update(Bill)
-      .set({ status: 4 })
-      .where('tenant_id = :tid', { tid: saved.id })
-      .andWhere('status IN (:...statuses)', { statuses: [0, 2, 3] })
-      .execute();
-
-    const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
-    if (room) {
-      room.status = 0;
-      await this.roomRepository.save(room);
-    }
-
-    return saved;
+      return saved;
+    });
   }
 
   /**
@@ -326,13 +335,19 @@ export class TenantService {
    * Returns 0 if no paid bill exists, or moveOutDate is at/after end of
    * periodEnd month AND moveInDate was on/before period start.
    */
-  async computePrepaidRefund(tenant: Tenant): Promise<number> {
+  async computePrepaidRefund(tenant: Tenant, manager?: EntityManager): Promise<number> {
     if (!tenant.moveOutDate) return 0;
 
-    const latestPaidBill = await this.billRepository.findOne({
-      where: { tenantId: tenant.id, status: 1 },
-      order: { periodEnd: 'DESC' },
-    });
+    const billRepository = manager?.getRepository(Bill) || this.billRepository;
+    const roomRepository = manager?.getRepository(Room) || this.roomRepository;
+    const latestPaidBill = await billRepository
+      .createQueryBuilder('bill')
+      .leftJoinAndSelect('bill.items', 'items')
+      .where('bill.tenant_id = :tenantId', { tenantId: tenant.id })
+      .andWhere('bill.status IN (:...statuses)', { statuses: [1, 3] })
+      .andWhere('bill.paid_amount > 0')
+      .orderBy('COALESCE(bill.period_end, bill.period)', 'DESC')
+      .getOne();
     if (!latestPaidBill) return 0;
 
     // Use periodEnd if set, else period (legacy single-month bills)
@@ -350,20 +365,31 @@ export class TenantService {
         : 0;
 
     // Days charged for but tenant has already moved out (tail of cycle)
-    const unusedAfterMoveOut = Math.max(0, periodEndDate.diff(moveOutDay, 'day'));
+    // The recorded move-out date is the first non-occupied/refundable day.
+    const unusedAfterMoveOut = moveOutDay.isAfter(periodEndDate)
+      ? 0
+      : Math.max(0, periodEndDate.diff(moveOutDay, 'day') + 1);
 
     const totalUnusedDays = overpaidBeforeMoveIn + unusedAfterMoveOut;
     if (totalUnusedDays <= 0) return 0;
 
-    const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
+    const room = await roomRepository.findOne({ where: { id: tenant.roomId } });
     if (!room) return 0;
-    const monthlyRent = Number(room.rent) || 0;
+    const coverageMonths = Math.max(
+      1,
+      (dayjs(effectivePeriodEnd + '-01').year() - dayjs(latestPaidBill.period + '-01').year()) * 12
+        + dayjs(effectivePeriodEnd + '-01').month() - dayjs(latestPaidBill.period + '-01').month() + 1,
+    );
+    const historicalRentItem = latestPaidBill.items?.find(item => item.feeName === '房租');
+    const monthlyRent = historicalRentItem
+      ? Number(historicalRentItem.amount) / coverageMonths
+      : Number(room.rent) || 0;
     if (monthlyRent <= 0) return 0;
 
     // Standard landlord convention: 日租金 = 月租 / 30 (not / 实际天数)
     const dailyRate = monthlyRent / 30;
     const refund = Math.round(dailyRate * totalUnusedDays * 100) / 100;
-    return Math.max(0, refund);
+    return Math.max(0, Math.min(refund, Number(latestPaidBill.paidAmount) || 0));
   }
 
   /** Get tenant detail */

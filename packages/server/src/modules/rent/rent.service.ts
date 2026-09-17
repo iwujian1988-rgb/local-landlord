@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { DataSource, Repository, In } from 'typeorm';
 import dayjs from 'dayjs';
 import { SingleCharge } from './single-charge.entity';
 import { RentRecord } from './rent-record.entity';
 import { Room } from '../room/room.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { Bill } from '../bill/bill.entity';
+import { dueDateForPeriod } from '../bill/bill-due-date';
 import { Property } from '../property/property.entity';
 import { CreateSingleChargeDto } from './dto/create-single-charge.dto';
 import { RemindTenantDto } from './dto/remind-tenant.dto';
@@ -14,11 +15,11 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 
 const RECORD_TYPE_MAP: Record<number, string> = {
-  0: 'bill_sent', 1: 'bill_paid', 2: 'single_charge', 3: 'single_paid', 4: 'reminder', 5: 'deposit_paid',
+  0: 'bill_sent', 1: 'bill_paid', 2: 'single_charge', 3: 'single_paid', 4: 'reminder', 5: 'deposit_paid', 6: 'rent_refund',
 };
 
 const DOT_COLOR_MAP: Record<number, string> = {
-  0: 'accent', 1: 'green', 2: 'orange', 3: 'green', 4: 'accent',
+  0: 'accent', 1: 'green', 2: 'orange', 3: 'green', 4: 'accent', 6: 'orange',
 };
 
 export interface PendingEntry {
@@ -108,6 +109,7 @@ export class RentService {
     private readonly propertyRepository: Repository<Property>,
     @InjectRepository(FeeItem)
     private readonly feeItemRepository: Repository<FeeItem>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /** Verify room belongs to landlord */
@@ -218,7 +220,9 @@ export class RentService {
       const bill = currentBillMap.get(room.id) || null;
       const prop = propertyMap.get(room.propertyId);
       const rentDay = tenant?.rentDay ?? 10;
-      const dueDay = rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth);
+      const dueDay = bill?.dueDate
+        ? dayjs(bill.dueDate).date()
+        : (rentDay === 0 ? lastDayOfMonth : Math.min(rentDay, lastDayOfMonth));
       const payMonths = tenant?.payMonths ?? 1;
       const hasPriorOverdue = priorOverdueMap.get(room.id) || false;
       const resolvedRules = resolveFeeRules(
@@ -294,12 +298,12 @@ export class RentService {
           // entry-level value above is anchored to THIS month's rentDay, so a
           // repointed prior-period bill would show "已逾期N天" off by whole
           // months. Mirrors markOverdueBills: due at period-start rentDay.
-          const periodStart = dayjs(target.period + '-01');
-          const targetLastDay = periodStart.endOf('month').date();
-          const targetDueDay = rentDay === 0 ? targetLastDay : Math.min(rentDay, targetLastDay);
+          const targetDueDate = target.dueDate
+            ? dayjs(target.dueDate).startOf('day')
+            : dueDateForPeriod(target.period, rentDay);
           entry.overdueDays = Math.max(
             0,
-            dayjs().startOf('day').diff(periodStart.date(targetDueDay).startOf('day'), 'day'),
+            dayjs().startOf('day').diff(targetDueDate, 'day'),
           );
         }
         overdueList.push(entry);
@@ -479,31 +483,34 @@ export class RentService {
 
   /** Confirm single charge with ownership check */
   async confirmSingleCharge(id: number, landlordId: number): Promise<SingleCharge> {
-    const charge = await this.singleChargeRepository.findOne({
-      where: { id },
-      relations: ['tenant'],
+    return this.dataSource.transaction(async manager => {
+      const chargeQuery = manager.getRepository(SingleCharge)
+        .createQueryBuilder('charge')
+        .where('charge.id = :id', { id });
+      if (manager.connection.options.type === 'mysql') chargeQuery.setLock('pessimistic_write');
+      const charge = await chargeQuery.getOne();
+      if (!charge) throw new NotFoundException('收款记录不存在');
+
+      const room = await manager.findOne(Room, { where: { id: charge.roomId } });
+      const property = room ? await manager.findOne(Property, { where: { id: room.propertyId } }) : null;
+      if (!room || !property || property.landlordId !== landlordId) {
+        throw new ForbiddenException('无权操作该收款记录');
+      }
+      if (charge.status === 1) throw new BadRequestException('该收款已确认');
+
+      charge.status = 1;
+      charge.paidAt = new Date();
+      const saved = await manager.save(charge);
+      await manager.save(manager.create(RentRecord, {
+        roomId: charge.roomId,
+        type: 2,
+        title: `单独收款-${charge.feeType}`,
+        description: charge.note || `单独收款: ${charge.amount}`,
+        amount: charge.amount,
+        paymentAt: charge.paidAt,
+      }));
+      return saved;
     });
-    if (!charge) throw new NotFoundException('收款记录不存在');
-    await this.verifyRoomOwnership(charge.roomId, landlordId);
-
-    if (charge.status === 1) {
-      throw new BadRequestException('该收款已确认');
-    }
-
-    charge.status = 1;
-    charge.paidAt = new Date();
-    const saved = await this.singleChargeRepository.save(charge);
-
-    const rentRecord = this.rentRecordRepository.create({
-      roomId: charge.roomId,
-      type: 2,
-      title: `单独收款-${charge.feeType}`,
-      description: charge.note || `单独收款: ${charge.amount}`,
-      amount: charge.amount,
-    });
-    await this.rentRecordRepository.save(rentRecord);
-
-    return saved;
   }
 
   /** Get rent records for a room (API contract shape with type as string, dotColor, time) */

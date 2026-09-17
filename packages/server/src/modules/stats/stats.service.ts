@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import dayjs from 'dayjs';
 import { Room } from '../room/room.entity';
 import { Bill } from '../bill/bill.entity';
+import { dueDateForPeriod } from '../bill/bill-due-date';
 import { Tenant } from '../tenant/tenant.entity';
 import { Property } from '../property/property.entity';
 import { Landlord } from '../landlord/landlord.entity';
@@ -10,6 +12,7 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { FeeRule, feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { PaymentQr } from '../payment-qr/payment-qr.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
+import { RentRecord } from '../rent/rent-record.entity';
 
 export interface ExpiringContract {
   tenantId: number;
@@ -80,6 +83,8 @@ export class StatsService {
     private readonly paymentQrRepository: Repository<PaymentQr>,
     @InjectRepository(SingleCharge)
     private readonly singleChargeRepository: Repository<SingleCharge>,
+    @InjectRepository(RentRecord)
+    private readonly rentRecordRepository: Repository<RentRecord>,
   ) {}
 
   /** 收租统计 */
@@ -259,6 +264,9 @@ export class StatsService {
 
     const confirmedSingleByRoom = new Map<number, number>();
     const pendingSingleByRoom = new Map<number, number>();
+    const rentCashByRoom = new Map<number, number>();
+    const rentRefundByRoom = new Map<number, number>();
+    const billsWithPaymentRecords = new Set<number>();
     if (allRoomIds.length > 0) {
       const singles = await this.singleChargeRepository
         .createQueryBuilder('sc')
@@ -277,9 +285,37 @@ export class StatsService {
           pendingSingleByRoom.set(s.roomId, (pendingSingleByRoom.get(s.roomId) || 0) + amount);
         }
       }
-    }
 
-    const refundByProperty = await this.getRefundsByPropertyForStats(propertyIds, periodInfo.startDate, periodInfo.endDate);
+      // Cash income belongs to the month in which each payment actually
+      // happened, not to the bill's accounting period. Refund records carry a
+      // negative amount and therefore reduce cash income in their actual month.
+      const cashRecords = await this.rentRecordRepository
+        .createQueryBuilder('record')
+        .where('record.room_id IN (:...ids)', { ids: allRoomIds })
+        .andWhere('record.type IN (:...types)', { types: [1, 6] })
+        .andWhere('COALESCE(record.payment_at, record.created_at) >= :start')
+        .andWhere('COALESCE(record.payment_at, record.created_at) < :end')
+        .setParameters({
+          start: this.formatStatsDateTime(periodInfo.startDate),
+          end: this.formatStatsDateTime(periodInfo.endDate),
+        })
+        .getMany();
+      for (const record of cashRecords) {
+        const amount = Number(record.amount) || 0;
+        rentCashByRoom.set(record.roomId, (rentCashByRoom.get(record.roomId) || 0) + amount);
+        if (record.type === 6 && amount < 0) {
+          rentRefundByRoom.set(record.roomId, (rentRefundByRoom.get(record.roomId) || 0) + Math.abs(amount));
+        }
+      }
+      const linkedPayments = await this.rentRecordRepository
+        .createQueryBuilder('record')
+        .select('record.bill_id', 'billId')
+        .where('record.room_id IN (:...ids)', { ids: allRoomIds })
+        .andWhere('record.type = :type', { type: 1 })
+        .andWhere('record.bill_id IS NOT NULL')
+        .getRawMany();
+      for (const row of linkedPayments) billsWithPaymentRecords.add(Number(row.billId));
+    }
 
     const roomsByProperty = new Map<number, Room[]>();
     for (const room of allRooms) {
@@ -317,16 +353,19 @@ export class StatsService {
           billCoveredMonths.add(bill.period);
 
           if (bill.status === 1) {
-            collected += billTotal;
             received++;
+            // Legacy rows created before payment ledgers existed have no
+            // reliable cash date. Preserve their old bill-period accounting
+            // only as a fallback; all new payments use rent_record.paymentAt.
+            if (!billsWithPaymentRecords.has(bill.id)) collected += billTotal;
           } else if (Number(bill.paidAmount) > 0) {
             // Partial payment — and any legacy status=2 row that still carries
             // a paidAmount (old overdue cron) — settles by cash actually paid.
             const paid = Number(bill.paidAmount) || 0;
             const remaining = Math.max(billTotal - paid, 0);
-            collected += paid;
             pending += remaining;
             received++;
+            if (!billsWithPaymentRecords.has(bill.id)) collected += paid;
             if (remaining > 0 && this.isBillOverdueForStats(bill, tenant, now)) {
               overdue++;
             }
@@ -337,6 +376,8 @@ export class StatsService {
             }
           }
         }
+
+        collected += rentCashByRoom.get(room.id) || 0;
 
         // Vacant rooms must not create receivables. Historical bills above are
         // still counted, so old/moved-out bills remain auditable.
@@ -375,10 +416,7 @@ export class StatsService {
         }
       }
 
-      const refund = refundByProperty.get(prop.id) || 0;
-      if (refund > 0) {
-        collected -= refund;
-      }
+      const refund = rooms.reduce((sum, room) => sum + (rentRefundByRoom.get(room.id) || 0), 0);
 
       if (expected > 0 || collected !== 0 || pending > 0) {
         propStats.push({
@@ -471,6 +509,9 @@ export class StatsService {
   }
 
   private isBillOverdueForStats(bill: Bill, tenant: Tenant | null, now: Date): boolean {
+    if (bill.dueDate) {
+      return dayjs(now).startOf('day').isAfter(dayjs(bill.dueDate).startOf('day'));
+    }
     return this.isEstimatedReceivableOverdueForStats(bill.period, tenant, now);
   }
 
@@ -513,6 +554,10 @@ export class StatsService {
 
   private formatStatsDate(date: Date): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  private formatStatsDateTime(date: Date): string {
+    return `${this.formatStatsDate(date)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
   }
 
   async getHomeStats(landlordId: number): Promise<HomeStats> {
@@ -662,20 +707,21 @@ export class StatsService {
     // Monthly collected — count a prepaid bill once, in its collection month.
     let monthlyCollected = 0;
     if (allRoomIds.length > 0) {
-      const result = await this.billRepository
-        .createQueryBuilder('bill')
-        .where('bill.roomId IN (:...ids)', { ids: allRoomIds })
-        .andWhere('bill.status IN (:...statuses)', { statuses: [1, 3] })
-        .andWhere('bill.period = :monthStr', { monthStr })
-        // Use CASE to pick paidAmount when partial, else totalAmount
-        .select('SUM(CASE WHEN bill.status = 3 THEN bill.paid_amount ELSE bill.total_amount END)', 'total')
+      const monthStart = new Date(currentYear, currentMonth, 1);
+      const monthEnd = new Date(currentYear, currentMonth + 1, 1);
+      const result = await this.rentRecordRepository
+        .createQueryBuilder('record')
+        .where('record.room_id IN (:...ids)', { ids: allRoomIds })
+        .andWhere('record.type IN (:...types)', { types: [1, 6] })
+        .andWhere('COALESCE(record.payment_at, record.created_at) >= :start')
+        .andWhere('COALESCE(record.payment_at, record.created_at) < :end')
+        .setParameters({ start: this.formatStatsDateTime(monthStart), end: this.formatStatsDateTime(monthEnd) })
+        .select('SUM(record.amount)', 'total')
         .getRawOne();
       monthlyCollected = Number(result?.total) || 0;
 
       // Add confirmed single_charges (水电维修等) paid this month — these are
       // real cash received but not tracked in the bill table.
-      const monthStart = new Date(currentYear, currentMonth, 1);
-      const monthEnd = new Date(currentYear, currentMonth + 1, 1);
       const singleResult = await this.singleChargeRepository
         .createQueryBuilder('sc')
         .where('sc.room_id IN (:...ids)', { ids: allRoomIds })
@@ -685,10 +731,6 @@ export class StatsService {
         .getRawOne();
       monthlyCollected += Number(singleResult?.total) || 0;
 
-      const refundByProperty = await this.getRefundsByPropertyForStats(propertyIds, monthStart, monthEnd);
-      for (const refund of refundByProperty.values()) {
-        monthlyCollected -= refund;
-      }
     }
 
     // Guide flags

@@ -82,10 +82,15 @@ import { SchemaCompatService } from './common/schema-compat.service';
         }
 
         // Default: sqljs for development
+        const inMemory = configService.get('DB_IN_MEMORY') === '1';
         return {
           type: 'sqljs' as const,
-          location: configService.get('DB_LOCATION', 'data/local_landlord.sqlite'),
-          autoSave: true,
+          ...(inMemory
+            ? { autoSave: false }
+            : {
+                location: configService.get('DB_LOCATION', 'data/local_landlord.sqlite'),
+                autoSave: true,
+              }),
           autoLoadEntities: true,
           synchronize: configService.get('NODE_ENV') === 'development',
           logging: configService.get('NODE_ENV') === 'development',

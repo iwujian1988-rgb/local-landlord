@@ -47,6 +47,7 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
 
   // bill
   { table: 'bill', column: 'period_end', definition: '`period_end` varchar(7) NULL' },
+  { table: 'bill', column: 'due_date', definition: '`due_date` date NULL' },
   { table: 'bill', column: 'paid_amount', definition: '`paid_amount` decimal(10,2) NOT NULL DEFAULT 0' },
   { table: 'bill', column: 'photos', definition: '`photos` json NULL' },
   { table: 'bill', column: 'sent_at', definition: '`sent_at` datetime NULL' },
@@ -66,6 +67,9 @@ const MYSQL_COMPAT_COLUMNS: ColumnSpec[] = [
   { table: 'single_charge', column: 'paid_at', definition: '`paid_at` datetime NULL' },
   { table: 'single_charge', column: 'last_shared_at', definition: '`last_shared_at` datetime NULL' },
   { table: 'single_charge', column: 'receipt_prompt_dismissed_at', definition: '`receipt_prompt_dismissed_at` datetime NULL' },
+
+  // rent_record
+  { table: 'rent_record', column: 'payment_at', definition: '`payment_at` datetime NULL' },
 
   // document
   { table: 'document', column: 'room_id', definition: '`room_id` int NOT NULL DEFAULT 0' },
@@ -100,6 +104,10 @@ const MYSQL_COMPAT_TABLES = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ];
 
+const MYSQL_COMPAT_INDEXES = [
+  { tableName: 'bill', indexName: 'UQ_bill_tenant_period', columns: ['tenant_id', 'period'] },
+];
+
 @Injectable()
 export class SchemaCompatService implements OnApplicationBootstrap {
   private readonly logger = new Logger(SchemaCompatService.name);
@@ -114,6 +122,7 @@ export class SchemaCompatService implements OnApplicationBootstrap {
       await this.dataSource.query(statement);
     }
     await this.ensureMysqlColumns();
+    await this.ensureMysqlIndexes();
   }
 
   private async ensureMysqlColumns() {
@@ -149,6 +158,36 @@ export class SchemaCompatService implements OnApplicationBootstrap {
           this.logger.warn(`Column ${spec.table}.${spec.column} was added concurrently`);
           continue;
         }
+        throw error;
+      }
+    }
+  }
+
+  private async ensureMysqlIndexes() {
+    const database = this.dataSource.options.database;
+    if (!database || typeof database !== 'string') return;
+    for (const spec of MYSQL_COMPAT_INDEXES) {
+      const existing = await this.dataSource.query(
+        `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+        [database, spec.tableName, spec.indexName],
+      );
+      if (existing.length) continue;
+      const columnList = spec.columns.map(column => `\`${column}\``).join(', ');
+      const duplicates = await this.dataSource.query(
+        `SELECT ${columnList}, COUNT(*) AS duplicate_count FROM \`${spec.tableName}\`
+         GROUP BY ${columnList} HAVING COUNT(*) > 1 LIMIT 1`,
+      );
+      if (duplicates.length) {
+        this.logger.error(`Cannot add ${spec.indexName}: duplicate bill rows already exist`);
+        continue;
+      }
+      try {
+        await this.dataSource.query(
+          `ALTER TABLE \`${spec.tableName}\` ADD UNIQUE KEY \`${spec.indexName}\` (${columnList})`,
+        );
+      } catch (error: any) {
+        if (error?.code === 'ER_DUP_KEYNAME' || Number(error?.errno) === 1061) continue;
         throw error;
       }
     }
