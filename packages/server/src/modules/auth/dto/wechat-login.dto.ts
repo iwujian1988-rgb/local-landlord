@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
 
 export class WechatLoginDto {
   @IsString()
@@ -12,4 +12,10 @@ export class WechatLoginDto {
   @IsOptional()
   @IsString()
   avatar?: string;
+
+  /** One-time code returned by the miniapp getPhoneNumber button. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  phoneCode?: string;
 }

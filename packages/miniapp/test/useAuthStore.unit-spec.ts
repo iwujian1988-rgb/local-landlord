@@ -220,6 +220,22 @@ describe('login (USE_CLOUD=false) — wx.login → /auth/wechat/login', () => {
     expect(useAuthStore.getState().token).toBe('single-token');
     expect(useAuthStore.getState().loginLoading).toBe(false);
   });
+
+  it('TC-AUTH-LOGIN-008: 手机号授权 code 与 wx.login code 一次提交', async () => {
+    (Taro.login as jest.Mock).mockResolvedValueOnce({ code: 'wx-login-code' });
+    mockRequest().mockResolvedValueOnce({
+      statusCode: 200,
+      data: { code: 0, data: { token: 'phone-token', user: { id: 10, name: '房东', phone: '13912345678' } } },
+    });
+
+    await useAuthStore.getState().login('wx-phone-code');
+
+    expect(mockRequest()).toHaveBeenLastCalledWith(expect.objectContaining({
+      method: 'POST',
+      data: { code: 'wx-login-code', phoneCode: 'wx-phone-code' },
+    }));
+    expect(useAuthStore.getState().user?.phone).toBe('13912345678');
+  });
 });
 
 /**

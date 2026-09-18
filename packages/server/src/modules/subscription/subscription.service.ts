@@ -13,7 +13,7 @@ import { Landlord } from '../landlord/landlord.entity';
 import { FeeItem } from '../fee/fee-item.entity';
 import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { SystemConfig } from '../system/system-config.entity';
-import { resolveWxApiBase } from '../../common/wx/wx-api';
+import { WechatApiService } from '../../common/wx/wechat-api.service';
 
 // Must stay in sync with packages/miniapp/src/config.ts (WX_TEMPLATE_RENT/OVERDUE —
 // both use this one template). Env vars override the default; a WRONG env value
@@ -57,8 +57,6 @@ const CRON_TZ = { timeZone: 'Asia/Shanghai' };
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
-  private cachedAccessToken: string | null = null;
-  private tokenExpiresAt = 0;
   private lastSendError: string | null = null;
 
   constructor(
@@ -79,6 +77,7 @@ export class SubscriptionService {
     @InjectRepository(SystemConfig)
     private readonly configRepository: Repository<SystemConfig>,
     private readonly dataSource: DataSource,
+    private readonly wechatApiService: WechatApiService,
   ) {}
 
   /** Returns true if auto reminders are enabled (admin can disable globally via system params). */
@@ -106,45 +105,12 @@ export class SubscriptionService {
    * platform injects access_token and MITM'd TLS would otherwise fail.
    */
   private async resolveWxApi(): Promise<{ base: string; injected: boolean }> {
-    return resolveWxApiBase();
+    return this.wechatApiService.resolveApi();
   }
 
   /** Get WeChat access_token with caching */
   private async getAccessToken(): Promise<string> {
-    // 云托管内网模式：平台注入 token，跳过获取。
-    const { injected } = await this.resolveWxApi();
-    if (injected) return '';
-
-    const now = Date.now();
-    if (this.cachedAccessToken && now < this.tokenExpiresAt - 300000) {
-      return this.cachedAccessToken;
-    }
-
-    const appid = process.env.WX_APPID;
-    const secret = process.env.WX_SECRET;
-    if (!appid || !secret) {
-      throw new Error('WX_APPID or WX_SECRET not configured');
-    }
-
-    const { base } = await this.resolveWxApi();
-    const url = `${base}/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    const data = await resp.json() as {
-      access_token?: string; expires_in?: number; errcode?: number; errmsg?: string;
-      error_code?: string; error_message?: string;
-    };
-
-    if (!data.access_token) {
-      const reason = data.error_code
-        ? `proxy: ${data.error_code} ${data.error_message}`
-        : `${data.errcode} ${data.errmsg}`;
-      this.logger.error(`Failed to get access_token: ${reason} (http=${resp.status})`);
-      throw new Error(`WeChat access_token error: ${reason}`);
-    }
-
-    this.cachedAccessToken = data.access_token;
-    this.tokenExpiresAt = now + (data.expires_in || 7200) * 1000;
-    return this.cachedAccessToken;
+    return this.wechatApiService.getAccessToken();
   }
 
   /** Send subscribe message to a user */

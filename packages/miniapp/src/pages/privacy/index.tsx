@@ -18,7 +18,7 @@ export default function Privacy() {
           <View className="policy-section">
             <Text className="section-title">1. 信息收集</Text>
             <Text className="section-text">
-              我们收集以下您主动提供的信息：房源名称和地址、租客姓名和电话、账单和收款记录、房源及合同照片。此外，我们通过微信登录获取您的微信 OpenID 用于身份识别。我们不会收集您的通讯录、位置信息或其他无关数据。
+              我们收集以下实现功能所必要的信息：您主动录入的房源名称和地址、租客姓名和电话、账单和收款记录、房源及合同照片；通过微信登录获得的 OpenID 用于识别账号；以及在您主动点击并同意后获得的微信绑定手机号，用于账号登录、身份识别和账户安全。拒绝提供手机号不影响普通微信登录。
             </Text>
           </View>
 
@@ -32,7 +32,7 @@ export default function Privacy() {
           <View className="policy-section">
             <Text className="section-title">3. 数据存储</Text>
             <Text className="section-text">
-              您的数据通过加密连接（HTTPS）传输，安全存储在我们的服务器上。照片等文件资源存储在腾讯云对象存储（COS）中。我们使用 JWT（JSON Web Token）进行身份认证，确保只有您本人可以访问自己的数据。服务器采取合理的安全措施防止数据泄露。
+              您的数据通过加密连接（HTTPS）传输，安全存储在已备案的腾讯云服务器上。照片等文件资源存储在服务器的持久化存储空间中。我们使用登录令牌进行身份认证，确保只有您本人可以访问自己的数据，并采取合理的安全措施防止数据泄露。
             </Text>
           </View>
 
@@ -46,14 +46,14 @@ export default function Privacy() {
           <View className="policy-section">
             <Text className="section-title">5. 权限说明</Text>
             <Text className="section-text">
-              本应用需要以下权限：微信登录（用于身份识别）、相册/相机（用于拍摄和上传房源照片、合同照片、收款码）。所有权限都需要您的明确授权，您可以在微信设置中随时关闭。
+              本应用会在您主动操作时申请：微信手机号授权（用于账号登录、身份识别和账户安全）、选择照片或视频及相机能力（用于拍摄和上传房源照片、合同照片、收款码）。所有授权均由您主动选择，您可以拒绝手机号授权并继续使用普通微信登录，也可以在微信设置中管理相关授权。
             </Text>
           </View>
 
           <View className="policy-section">
             <Text className="section-title">6. 数据删除</Text>
             <Text className="section-text">
-              您可以在应用内删除自己录入的房源、租客、照片等数据。如需彻底注销账户和清除所有数据，请联系客服处理。
+              您可以在应用内删除自己录入的房源、租客、照片等数据，也可以在「我的－账户管理」中申请注销账户。账户注销后数据保留 30 天，期满后按照法律法规要求清除。
             </Text>
           </View>
 

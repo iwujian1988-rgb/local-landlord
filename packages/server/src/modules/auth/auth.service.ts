@@ -20,6 +20,7 @@ import { AdminLoginDto } from './dto/admin-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
 import { resolveWxApiBase } from '../../common/wx/wx-api';
+import { WechatApiService } from '../../common/wx/wechat-api.service';
 import * as bcrypt from 'bcryptjs';
 
 const ACCOUNT_RETENTION_DAYS = 30;
@@ -46,6 +47,7 @@ export class AuthService {
     private readonly landlordRepository: Repository<Landlord>,
     @InjectRepository(Admin)
     private readonly adminRepository: Repository<Admin>,
+    private readonly wechatApiService: WechatApiService,
   ) {}
 
   /**
@@ -84,7 +86,7 @@ export class AuthService {
    * WeChat login: call code2Session to get openid, find or create landlord, issue JWT
    */
   async wechatLogin(dto: WechatLoginDto) {
-    const { code, nickname, avatar } = dto;
+    const { code, nickname, avatar, phoneCode } = dto;
 
     // 1. Call WeChat code2Session with 10s timeout
     const appid = process.env.WX_APPID;
@@ -122,19 +124,33 @@ export class AuthService {
       throw new UnauthorizedException(`${wxData.errmsg || '微信授权失败'}${details}`);
     }
 
+    // getPhoneNumber returns a separate, one-time code. Resolve it only when
+    // the user explicitly approved the phone dialog; ordinary OpenID login
+    // remains available when the user declines.
+    let authorizedPhone = '';
+    if (phoneCode) {
+      try {
+        authorizedPhone = await this.wechatApiService.getPhoneNumber(phoneCode);
+      } catch (error) {
+        this.logger.warn(`WeChat phone exchange rejected: ${this.describeWechatRequestError(error)}`);
+        throw new BadRequestException('手机号授权已失效，请重新点击登录；也可以拒绝手机号后普通登录');
+      }
+    }
+
     // 2. Find or create landlord by openid
     let landlord = await this.landlordRepository.findOne({ where: { openId: wxData.openid } });
     if (!landlord) {
       landlord = this.landlordRepository.create({
         openId: wxData.openid,
         name: '房东',
-        phone: '',
+        phone: authorizedPhone,
         avatar: avatar || '',
       });
       landlord = await this.landlordRepository.save(landlord);
-    } else if (nickname || avatar) {
+    } else if (nickname || avatar || authorizedPhone) {
       if (nickname) landlord.name = nickname;
       if (avatar) landlord.avatar = avatar;
+      if (authorizedPhone) landlord.phone = authorizedPhone;
       landlord = await this.landlordRepository.save(landlord);
     }
 

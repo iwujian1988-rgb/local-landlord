@@ -732,10 +732,19 @@
 }
 
 .guest-banner-btn {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  line-height: 1;
   background: var(--accent);
   border-radius: var(--radius-xs);
   padding: 14px 32px;
   flex-shrink: 0;
+}
+
+.guest-banner-btn::after {
+  border: 0;
 }
 
 .guest-banner-btn-text {

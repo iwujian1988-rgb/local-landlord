@@ -13,7 +13,7 @@ import { WX_TEMPLATE_RENT, WX_TEMPLATE_OVERDUE } from '../config';
  * requestSubscribeMessage gives us ONE send opportunity per template.
  */
 export function requestNotification(): void {
-  const tmplIds = [WX_TEMPLATE_RENT, WX_TEMPLATE_OVERDUE].filter(Boolean);
+  const tmplIds = [...new Set([WX_TEMPLATE_RENT, WX_TEMPLATE_OVERDUE].filter(Boolean))];
   if (tmplIds.length === 0) return;
 
   Taro.requestSubscribeMessage({

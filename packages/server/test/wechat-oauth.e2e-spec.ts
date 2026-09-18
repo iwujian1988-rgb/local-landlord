@@ -5,6 +5,7 @@ import { AuthService } from '../src/modules/auth/auth.service';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Landlord } from '../src/modules/landlord/landlord.entity';
 import request from 'supertest';
+import { WechatApiService } from '../src/common/wx/wechat-api.service';
 
 /**
  * WeChat OAuth full-path tests with mocked WeChat API.
@@ -23,6 +24,7 @@ import request from 'supertest';
 describe('WeChat OAuth 全链路 (mocked)', () => {
   let app: INestApplication;
   let authService: AuthService;
+  let wechatApiService: WechatApiService;
 
   beforeAll(async () => {
     process.env.WX_APPID = 'wx-test-appid';
@@ -33,6 +35,7 @@ describe('WeChat OAuth 全链路 (mocked)', () => {
     app.setGlobalPrefix('api');
     await app.init();
     authService = app.get(AuthService);
+    wechatApiService = app.get(WechatApiService);
   });
 
   afterAll(async () => {
@@ -100,6 +103,36 @@ describe('WeChat OAuth 全链路 (mocked)', () => {
 
       expect(updated.user.name).toBe('新昵称');
       expect(updated.user.avatar).toBe('http://x.com/a.png');
+    });
+
+    it('TC-WX-004: 同一次登录携带手机号授权 code → 保存微信手机号', async () => {
+      const openId = 'wx-phone-' + Date.now();
+      const restore = mockWx({ openid: openId });
+      const phoneSpy = jest.spyOn(wechatApiService, 'getPhoneNumber').mockResolvedValue('13912345678');
+      try {
+        const result = await authService.wechatLogin({ code: 'login-code', phoneCode: 'phone-code' });
+        expect(phoneSpy).toHaveBeenCalledWith('phone-code');
+        expect(result.user.phone).toBe('13912345678');
+        const saved = await app.get(getRepositoryToken(Landlord)).findOneByOrFail({ openId });
+        expect(saved.phone).toBe('13912345678');
+      } finally {
+        phoneSpy.mockRestore();
+        restore();
+      }
+    });
+
+    it('TC-WX-005: 用户拒绝手机号时不传 phoneCode → 仍可普通登录', async () => {
+      const restore = mockWx({ openid: 'wx-no-phone-' + Date.now() });
+      const phoneSpy = jest.spyOn(wechatApiService, 'getPhoneNumber');
+      try {
+        const result = await authService.wechatLogin({ code: 'login-only-code' });
+        expect(result.token).toBeTruthy();
+        expect(result.user.phone).toBe('');
+        expect(phoneSpy).not.toHaveBeenCalled();
+      } finally {
+        phoneSpy.mockRestore();
+        restore();
+      }
     });
   });
 

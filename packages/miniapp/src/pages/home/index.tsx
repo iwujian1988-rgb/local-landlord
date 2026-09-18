@@ -1,6 +1,6 @@
-import { View, Text, ScrollView, Image } from '@tarojs/components';
-import Taro, { useDidShow } from '@tarojs/taro';
-import { useState, useCallback } from 'react';
+import { View, Text, ScrollView, Image, Button } from '@tarojs/components';
+import Taro, { useDidShow, useShareAppMessage, useShareTimeline } from '@tarojs/taro';
+import { useState, useCallback, useRef } from 'react';
 import { get, post, put } from '../../services/request';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useGuideStore } from '../../store/useGuideStore';
@@ -17,6 +17,7 @@ import billIcon from '../../assets/home/home-icon-checkin.png';
 import rentIcon from '../../assets/home/home-icon-room.png';
 import addIcon from '../../assets/home/home-icon-source.png';
 import statsIcon from '../../assets/home/home-icon-stats.png';
+import shareCardImg from '../../assets/home/home-share-card.jpg';
 import './index.scss';
 
 const getGreeting = () => {
@@ -87,17 +88,19 @@ const emptyData: PageData = {
 
 export default function Home() {
   const [data, setData] = useState<PageData>(emptyData);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => useAuthStore.getState().isLoggedIn);
   const [error, setError] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
+  const loadedUserIdRef = useRef<number | null>(null);
+  const loadSequenceRef = useRef(0);
 
-  const handleLogin = async () => {
+  const handleLogin = async (phoneCode?: string) => {
     if (loginLoading) return;
     setLoginLoading(true);
     try {
-      await useAuthStore.getState().login();
+      await useAuthStore.getState().login(phoneCode);
       setLoginLoading(false);
       loadData();
       // Note: requestSubscribeMessage cannot be called here — it must run
@@ -120,15 +123,31 @@ export default function Home() {
     }
   };
 
+  const handlePhoneLogin = (event: any) => {
+    const phoneCode = event?.detail?.code || '';
+    void handleLogin(phoneCode);
+  };
+
   const loadData = useCallback(async () => {
-    if (!useAuthStore.getState().isLoggedIn) {
-      setData(prev => ({ ...prev, greeting: getGreeting() }));
+    const authState = useAuthStore.getState();
+    const activeUserId = authState.user?.id || null;
+    const sequence = ++loadSequenceRef.current;
+    if (!authState.isLoggedIn || !activeUserId) {
+      loadedUserIdRef.current = null;
+      setLoading(false);
+      setError(false);
+      setData({ ...emptyData, greeting: getGreeting() });
       return;
     }
-    setLoading(true);
-    setError(false);
+    const isInitialLoad = loadedUserIdRef.current !== activeUserId;
+    if (isInitialLoad) {
+      setLoading(true);
+      setError(false);
+    }
     try {
       const statsRes = await get<any>('/stats/home');
+      const latestAuthState = useAuthStore.getState();
+      if (sequence !== loadSequenceRef.current || latestAuthState.user?.id !== activeUserId) return;
       const s = statsRes.data || {};
       const todoCount = Number(s.todoCount || 0);
       setData({
@@ -147,6 +166,8 @@ export default function Home() {
         receiptConfirmations: Array.isArray(s.receiptConfirmations) ? s.receiptConfirmations : [],
         receiptConfirmationCount: Number(s.receiptConfirmationCount || 0),
       });
+      loadedUserIdRef.current = activeUserId;
+      setError(false);
       useGuideStore.getState().setFromStats({
         showRoomGuide: s.showRoomGuide,
         showTenantGuide: s.showTenantGuide,
@@ -165,21 +186,42 @@ export default function Home() {
       }
     } catch (err) {
       console.error('[Home] 加载数据失败:', err);
-      setError(true);
+      if (sequence === loadSequenceRef.current && isInitialLoad) {
+        setError(true);
+      }
     } finally {
-      setLoading(false);
+      if (sequence === loadSequenceRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: APP_NAME });
+    // Taro 3.6 typings do not include `menus`, but the WeChat runtime does.
+    (Taro.showShareMenu as any)({
+      withShareTicket: true,
+      menus: ['shareAppMessage', 'shareTimeline'],
+    });
     // Do not silently log in on page show. New users must browse first and
     // choose login themselves from the visible banner (WeChat review rule).
-    setTimeout(loadData, 100);
+    void loadData();
     // Note: requestSubscribeMessage is NOT called here — it requires a user
     // TAP gesture's sync stack. Page-load prompts would fail. Subscription
     // requests are tied to user-initiated actions (confirm/save buttons).
   });
+
+  useShareAppMessage(() => ({
+    title: `${APP_NAME}｜房间·租客·收租，轻松管理`,
+    path: '/pages/home/index',
+    imageUrl: shareCardImg,
+  }));
+
+  useShareTimeline(() => ({
+    title: `${APP_NAME}｜房间·租客·收租，轻松管理`,
+    query: '',
+    imageUrl: shareCardImg,
+  }));
 
   const currentReceipt = data.receiptConfirmations[0];
   const hasPendingActions = !!currentReceipt || data.pendingCount > 0 || data.expiringContracts.length > 0;
@@ -269,9 +311,14 @@ export default function Home() {
             <Text className="guest-banner-title">{Taro.getStorageSync('guest_mode') ? '访客模式' : `欢迎使用${APP_NAME}`}</Text>
             <Text className="guest-banner-desc">可以先逛逛，登录后可管理房间、收租</Text>
           </View>
-          <View className="guest-banner-btn" onClick={handleLogin}>
+          <Button
+            className="guest-banner-btn"
+            openType="getPhoneNumber"
+            disabled={loginLoading}
+            onGetPhoneNumber={handlePhoneLogin}
+          >
             <Text className="guest-banner-btn-text">{loginLoading ? '登录中...' : '登录'}</Text>
-          </View>
+          </Button>
         </View>
       )}
       {!isLoggedIn && (

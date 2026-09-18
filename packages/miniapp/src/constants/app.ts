@@ -1,6 +1,6 @@
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.5';
 
-export const POLICY_UPDATED_AT = '2026年6月';
+export const POLICY_UPDATED_AT = '2026年9月';
 
 export const SUPPORT_EMAIL = 'support@local-landlord.app';
 

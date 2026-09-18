@@ -1,4 +1,4 @@
-import { View, Text, Image } from '@tarojs/components';
+import { View, Text, Image, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { useState } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -24,11 +24,11 @@ export default function Onboarding() {
     Taro.navigateTo({ url: `/pages/${type}/index` });
   };
 
-  const handleStart = async () => {
+  const handleStart = async (phoneCode?: string) => {
     if (starting) return;
     setStarting(true);
     try {
-      await useAuthStore.getState().login();
+      await useAuthStore.getState().login(phoneCode);
       Taro.setStorageSync('has_onboarded', 1);
       Taro.removeStorageSync('guest_mode');
       Taro.reLaunch({ url: '/pages/home/index' });
@@ -48,6 +48,13 @@ export default function Onboarding() {
         },
       });
     }
+  };
+
+  const handlePhoneLogin = (event: any) => {
+    // Declining the phone dialog must not block account access. In that case
+    // continue with ordinary OpenID login and leave the phone field unbound.
+    const phoneCode = event?.detail?.code || '';
+    void handleStart(phoneCode);
   };
 
   const handleBrowse = () => {
@@ -98,14 +105,16 @@ export default function Onboarding() {
           </Text>
         </View>
 
-        <View
+        <Button
           className={`ob-start-btn${agreed ? '' : ' disabled'}${starting ? ' loading' : ''}`}
-          onClick={agreed && !starting ? handleStart : undefined}
+          openType={agreed && !starting ? 'getPhoneNumber' : undefined}
+          disabled={!agreed || starting}
+          onGetPhoneNumber={handlePhoneLogin}
         >
           <Text className="ob-start-btn-text">
-            {starting ? '正在登录...' : '微信一键登录并开始'}
+            {starting ? '正在登录...' : '微信登录并绑定手机号'}
           </Text>
-        </View>
+        </Button>
         {!agreed && (
           <Text className="ob-agreement-hint">请先勾选并同意协议</Text>
         )}

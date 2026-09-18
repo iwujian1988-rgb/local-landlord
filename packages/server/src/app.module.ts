@@ -24,6 +24,7 @@ import { UtilityReadingModule } from './modules/utility-reading/utility-reading.
 import { ShareModule } from './modules/share/share.module';
 import { HealthController } from './modules/health/health.controller';
 import { SchemaCompatService } from './common/schema-compat.service';
+import { WechatApiModule } from './common/wx/wechat-api.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { SchemaCompatService } from './common/schema-compat.service';
         };
       },
     }),
+    WechatApiModule,
     AuthModule,
     PropertyModule,
     RoomModule,

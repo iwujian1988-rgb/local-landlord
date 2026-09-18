@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Image } from '@tarojs/components';
+import { View, Text, ScrollView, Image, Button } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import { useState, useCallback } from 'react';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -42,11 +42,11 @@ export default function My() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const handleLogin = async (phoneCode?: string) => {
     if (loginLoading) return;
     setLoginLoading(true);
     try {
-      await useAuthStore.getState().login();
+      await useAuthStore.getState().login(phoneCode);
     } catch (err: any) {
       Taro.showModal({
         title: '登录失败',
@@ -62,6 +62,11 @@ export default function My() {
     } finally {
       setLoginLoading(false);
     }
+  };
+
+  const handlePhoneLogin = (event: any) => {
+    const phoneCode = event?.detail?.code || '';
+    void handleLogin(phoneCode);
   };
 
   useDidShow(() => {
@@ -108,9 +113,14 @@ export default function My() {
           <Image className="login-state-avatar" src={avatarImg} mode="aspectFit" />
           <Text className="login-state-title">欢迎使用{APP_NAME}</Text>
           <Text className="login-state-desc">登录后可管理房间和收租</Text>
-          <View className="login-state-btn" onClick={handleLogin}>
-            <Text className="login-state-btn-text">{loginLoading ? '登录中...' : '微信一键登录'}</Text>
-          </View>
+          <Button
+            className="login-state-btn"
+            openType="getPhoneNumber"
+            disabled={loginLoading}
+            onGetPhoneNumber={handlePhoneLogin}
+          >
+            <Text className="login-state-btn-text">{loginLoading ? '登录中...' : '微信登录并绑定手机号'}</Text>
+          </Button>
         </View>
       ) : (
         <>
@@ -118,7 +128,18 @@ export default function My() {
             <Image className="profile-avatar-img" src={avatarImg} mode="aspectFit" />
             <View className="profile-info">
               <Text className="profile-name">{displayName || '房东'}</Text>
-              <Text className="profile-phone">{displayPhone || '未绑定手机'}</Text>
+              {displayPhone ? (
+                <Text className="profile-phone">{displayPhone}</Text>
+              ) : (
+                <Button
+                  className="profile-bind-phone"
+                  openType="getPhoneNumber"
+                  disabled={loginLoading}
+                  onGetPhoneNumber={handlePhoneLogin}
+                >
+                  {loginLoading ? '绑定中...' : '绑定手机号（可选）'}
+                </Button>
+              )}
             </View>
             <Image className="profile-ill" src={heroIll} mode="aspectFit" />
           </View>

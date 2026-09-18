@@ -119,3 +119,17 @@ describe('home page — one-time receipt confirmation', () => {
     expect(HOME_SOURCE).toContain('本次不再提醒');
   });
 });
+
+describe('home page — background refresh without flashing', () => {
+  it('TC-HOME-REFRESH-001: only the first load for an account enables the full-page loader', () => {
+    expect(HOME_SOURCE).toContain('const isInitialLoad = loadedUserIdRef.current !== activeUserId');
+    expect(HOME_SOURCE).toContain('if (isInitialLoad) {');
+    expect(HOME_SOURCE).toContain('loadedUserIdRef.current = activeUserId');
+  });
+
+  it('TC-HOME-REFRESH-002: returning to home keeps current content during refresh', () => {
+    expect(HOME_SOURCE).not.toContain('setTimeout(loadData, 100)');
+    expect(HOME_SOURCE).toContain('void loadData();');
+    expect(HOME_SOURCE).toContain('sequence !== loadSequenceRef.current');
+  });
+});

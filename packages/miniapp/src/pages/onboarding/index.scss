@@ -140,12 +140,20 @@
 }
 
 .ob-start-btn {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  line-height: 1;
   background: var(--accent);
   border-radius: var(--radius-sm);
   padding: 32px 0;
   text-align: center;
   transition: all 0.2s;
   box-shadow: 0 8px 24px rgba(255, 139, 69, 0.3);
+}
+
+.ob-start-btn::after {
+  border: 0;
 }
 
 .ob-start-btn.disabled {

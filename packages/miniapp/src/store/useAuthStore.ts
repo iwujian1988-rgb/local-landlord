@@ -15,7 +15,7 @@ interface AuthState {
   loginLoading: boolean;
   loginError: string;
   loginSilently: () => Promise<string>;
-  login: () => Promise<void>;
+  login: (phoneCode?: string) => Promise<void>;
   logout: () => void;
   enterGuestMode: () => void;
 }
@@ -52,7 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return '';
   },
 
-  login: async () => {
+  login: async (phoneCode?: string) => {
     if (activeLoginPromise) return activeLoginPromise;
 
     let resolveActiveLogin!: () => void;
@@ -70,7 +70,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       let data: any;
 
-      if (USE_CLOUD) {
+      if (phoneCode) {
+        // Phone authorization codes must be exchanged by our server together
+        // with a fresh wx.login code. This is also the production path after
+        // moving away from WeChat Cloud Hosting.
+        data = await loginByWechatCode(phoneCode);
+      } else if (USE_CLOUD) {
         // Cloud hosting: callContainer auto-injects X-WX-OPENID
         try {
           data = await loginByCloudIdentity();
@@ -184,12 +189,15 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loginByWechatCode() {
+async function loginByWechatCode(phoneCode?: string) {
   const { code } = await Taro.login();
   if (!code) {
     throw new Error('微信登录失败，请检查微信后重试');
   }
-  const resp = await directPost<any>('/auth/wechat/login', { code });
+  const resp = await directPost<any>('/auth/wechat/login', {
+    code,
+    ...(phoneCode ? { phoneCode } : {}),
+  });
   if (resp.code !== 0) {
     throw new Error(resp.message || '微信登录失败，请稍后重试');
   }
