@@ -208,7 +208,8 @@ describe('账务完整性 (billing integrity, e2e)', () => {
       const paidBill = await createManualBill(roomId, '2026-07'); // 付清 → 应保留
       await apiCall(app, 'put', `/api/bills/${paidBill}/confirm`, auth, { actualAmount: 2050 });
 
-      await apiCall(app, 'delete', `/api/tenants/${tenantId}`, auth, {});
+      await apiCall(app, 'delete', `/api/tenants/${tenantId}`, auth,
+        { debtAction: 'waive', debtReason: '测试明确减免' });
 
       expect((await getBill(voidTarget)).status).toBe(4);
       expect((await getBill(paidBill)).status).toBe(1);
@@ -337,9 +338,9 @@ describe('账务完整性 (billing integrity, e2e)', () => {
       expect(completedEntry).toBeUndefined();
     });
 
-    it('TC-BI-016: 当月未付 + 往期未付 → 逾期桶指向当月账单（先收当月这笔）', async () => {
+    it('TC-BI-016: 当月未付 + 往期未付 → 逾期桶先处理最早欠款，不误收当月账单', async () => {
       const { roomId } = await makeRoom({ moveInDate: `${currentMonthStr()}-01` }); // 当月自动账单 2000
-      await createManualBill(roomId, priorMonthStr()); // 往期也未付
+      const priorBillId = await createManualBill(roomId, priorMonthStr()); // 往期也未付
 
       const currentBillId = expectOk(await apiCall(app, 'get', `/api/rooms/${roomId}/bills`, auth)).billId;
       expect(currentBillId).toBeTruthy();
@@ -349,9 +350,9 @@ describe('账务完整性 (billing integrity, e2e)', () => {
 
       const overdueEntry = (data.overdue || []).find((e: any) => e.roomId === roomId);
       expect(overdueEntry).toBeTruthy();
-      expect(overdueEntry.billId).toBe(currentBillId);
-      expect(overdueEntry.billPeriod).toBe(currentMonthStr());
-      expect(Number(overdueEntry.totalAmount)).toBe(2000);
+      expect(overdueEntry.billId).toBe(priorBillId);
+      expect(overdueEntry.billPeriod).toBe(priorMonthStr());
+      expect(Number(overdueEntry.totalAmount)).toBe(2050);
     });
   });
 });

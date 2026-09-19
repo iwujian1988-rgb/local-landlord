@@ -10,6 +10,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class RentController {
   constructor(private readonly rentService: RentService) {}
 
+  @Get('rent/departed-debts')
+  async getDepartedDebts(@CurrentUser() user: any) {
+    return this.rentService.getDepartedDebts(user.id);
+  }
+
   @Get('rent/pending')
   async getPendingRent(@CurrentUser() user: any) {
     return this.rentService.getPendingRent(user.id);

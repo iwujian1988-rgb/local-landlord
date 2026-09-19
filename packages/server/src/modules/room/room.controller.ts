@@ -22,8 +22,8 @@ export class RoomController {
   }
 
   @Get('rooms')
-  async findAllForLandlord(@CurrentUser() user: any) {
-    return this.roomService.findAllForLandlord(user.id);
+  async findAllForLandlord(@CurrentUser() user: any, @Query('includeArchived') includeArchived?: string) {
+    return this.roomService.findAllForLandlord(user.id, includeArchived === 'true');
   }
 
   @Get('properties/:propertyId/rooms')

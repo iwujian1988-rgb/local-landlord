@@ -3,13 +3,14 @@ import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '../../components/Icon';
 import ConfirmModal from '../../components/ConfirmModal';
 import DepositModal from '../../components/DepositModal';
+import DebtDecisionModal from '../../components/DebtDecisionModal';
 import { resolveAsset } from '../../config';
 import NoteEditModal from '../../components/NoteEditModal';
 import ContractRenewModal from '../../components/ContractRenewModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useState, useCallback } from 'react';
-import { get, put, del } from '../../services/request';
+import { get, put } from '../../services/request';
 import { buildCheckoutPayload } from '../../utils/checkout-payload';
 import { isValidDateOnly } from '../../utils/form-validation';
 import './index.scss';
@@ -79,12 +80,16 @@ interface PageData {
   error: boolean;
   checkoutVisible: boolean;
   depositVisible: boolean;
+  debtVisible: boolean;
+  debtAction: 'keep' | 'waive';
+  debtReason: string;
   deleteVisible: boolean;
   showMoreActions: boolean;
   noteModalVisible: boolean;
   renewModalVisible: boolean;
   moveOutPreview: MoveOutPreview | null;
   activePartialPayment: ActivePartialPayment | null;
+  outstandingDebt: number;
 }
 
 const emptyPageData: PageData = {
@@ -98,12 +103,16 @@ const emptyPageData: PageData = {
   error: false,
   checkoutVisible: false,
   depositVisible: false,
+  debtVisible: false,
+  debtAction: 'keep',
+  debtReason: '',
   deleteVisible: false,
   showMoreActions: false,
   noteModalVisible: false,
   renewModalVisible: false,
   moveOutPreview: null,
   activePartialPayment: null,
+  outstandingDebt: 0,
 };
 
 export default function RoomDetail() {
@@ -126,10 +135,11 @@ export default function RoomDetail() {
           tenant: d.tenant || null,
           property: d.property || null,
           historyTenants: d.historyTenants || [],
-          roomStatus: d.status === 1 ? '已租' : '空着',
+          roomStatus: d.status === 2 ? '已归档' : d.status === 1 ? '已租' : '空着',
           tenantId: d.tenant ? d.tenant.id : null,
           moveOutPreview: d.moveOutPreview || null,
           activePartialPayment: d.activePartialPayment || null,
+          outstandingDebt: Number(d.outstandingDebt) || 0,
         }));
         Taro.setNavigationBarTitle({ title: d.name || '房间详情' });
       }
@@ -151,8 +161,13 @@ export default function RoomDetail() {
   }, []);
 
   const handleCheckout = useCallback(() => {
-    // Close confirm modal, open deposit modal
-    setData(prev => ({ ...prev, checkoutVisible: false, depositVisible: true }));
+    setData(prev => ({ ...prev, checkoutVisible: false,
+      debtVisible: prev.outstandingDebt > 0, depositVisible: prev.outstandingDebt <= 0,
+      debtAction: 'keep', debtReason: '' }));
+  }, []);
+
+  const handleDebtDecision = useCallback((action: 'keep' | 'waive', reason = '') => {
+    setData(prev => ({ ...prev, debtVisible: false, depositVisible: true, debtAction: action, debtReason: reason }));
   }, []);
 
   const handleCheckoutSubmit = useCallback(async (depositData?: {
@@ -163,11 +178,13 @@ export default function RoomDetail() {
   }) => {
     setData(prev => ({ ...prev, depositVisible: false }));
     try {
-      await put(`/rooms/${roomId}`, buildCheckoutPayload(depositData));
+      await put(`/rooms/${roomId}`, buildCheckoutPayload({ ...(depositData || {
+        depositStatus: 0, refundAmount: 0, deductReason: '',
+      }), debtAction: data.debtAction, debtReason: data.debtReason }));
       setData(prev => ({ ...prev, tenant: null, roomStatus: '空着', moveOutPreview: null }));
       Taro.showModal({
         title: '退租成功',
-        content: '房间已变为空置状态，是否立即登记新租客？',
+        content: '这个房间现在是空房。要马上登记下一位租客吗？',
         confirmText: '去登记',
         cancelText: '稍后再说',
         success: (res) => {
@@ -180,21 +197,22 @@ export default function RoomDetail() {
       console.error('[RoomDetail] 退租失败:', err);
       Taro.showToast({ title: '退租失败', icon: 'none' });
     }
-  }, [roomId]);
+  }, [roomId, data.debtAction, data.debtReason]);
 
-  const handleDeleteRoom = useCallback(async () => {
+  const handleArchiveRoom = useCallback(async () => {
     setData(prev => ({ ...prev, deleteVisible: false }));
     try {
-      await del(`/rooms/${roomId}`);
-      Taro.showToast({ title: '已删除，页面即将返回', icon: 'none', duration: 1500 });
+      const restore = data.roomStatus === '已归档';
+      await put(`/rooms/${roomId}`, { action: restore ? 'restore' : 'archive' });
+      Taro.showToast({ title: restore ? '这个房间已经重新显示' : '已暂时隐藏，过去的账还在', icon: 'none', duration: 1800 });
       setTimeout(() => {
         Taro.navigateBack();
       }, 800);
     } catch (err) {
-      console.error('[RoomDetail] 删除房间失败:', err);
-      Taro.showToast({ title: '删除失败', icon: 'none' });
+      console.error('[RoomDetail] 归档房间失败:', err);
+      Taro.showToast({ title: '操作失败', icon: 'none' });
     }
-  }, [roomId]);
+  }, [roomId, data.roomStatus]);
 
   const handleNoteSave = useCallback(async (note: string) => {
     try {
@@ -567,7 +585,7 @@ export default function RoomDetail() {
               },
             },
             {
-              label: '删除',
+              label: data.roomStatus === '已归档' ? '重新管理这个房间' : '暂时不管理这个房间',
               iconBg: 'red-bg',
               icon: (<Icon name="trash" size={28} color="var(--danger)" />),
               action: () => setData(prev => ({ ...prev, deleteVisible: true })),
@@ -590,31 +608,36 @@ export default function RoomDetail() {
         visible={data.checkoutVisible}
         title={`确认${data.tenant?.name || '租客'}退租？`}
         description={
-          data.activePartialPayment
-            ? `⚠ 该租客已付 ¥${data.activePartialPayment.totalPaid.toLocaleString()}（${data.activePartialPayment.count} 笔部分付款），退租后未付清的账单将作废。建议先确认收齐尾款，或与租客协商退还已付款。`
-            : '退租后房间将变为空置状态'
+          data.outstandingDebt > 0
+            ? `还有 ${data.outstandingDebt.toLocaleString()} 元没有收到。下一步请确认，这笔钱以后还要不要收。`
+            : '退租后，这个房间会显示为空房。以前的账不会删除。'
         }
-        confirmText="下一步"
+        confirmText={data.outstandingDebt > 0 ? '去处理没收到的钱' : '继续退租'}
         onConfirm={handleCheckout}
         onCancel={() => setData(prev => ({ ...prev, checkoutVisible: false }))}
       />
 
       <DepositModal
         visible={data.depositVisible}
+        hasDebtStep={data.outstandingDebt > 0}
         deposit={Number(data.tenant?.deposit) || 0}
         prepaidRefund={Number(data.moveOutPreview?.prepaidRefund) || 0}
         moveInReading={data.tenant?.moveInReading || ''}
         onCancel={() => setData(prev => ({ ...prev, depositVisible: false }))}
-        onSkip={() => handleCheckoutSubmit()}
         onConfirm={handleCheckoutSubmit}
       />
 
+      <DebtDecisionModal visible={data.debtVisible} amount={data.outstandingDebt}
+        tenantName={data.tenant?.name || '租客'}
+        onCancel={() => setData(prev => ({ ...prev, debtVisible: false }))}
+        onConfirm={handleDebtDecision} />
+
       <ConfirmModal
         visible={data.deleteVisible}
-        title="确认删除该房间？"
-        description="删除后不可恢复"
-        confirmText="确认删除"
-        onConfirm={handleDeleteRoom}
+        title={data.roomStatus === '已归档' ? '重新管理这个房间？' : '暂时不管理这个房间？'}
+        description={data.roomStatus === '已归档' ? '确认后，它会重新显示在正常房间列表里' : '确认后，它会从正常列表隐藏。以前的账单和收款记录都还在。'}
+        confirmText={data.roomStatus === '已归档' ? '重新显示' : '暂时隐藏'}
+        onConfirm={handleArchiveRoom}
         onCancel={() => setData(prev => ({ ...prev, deleteVisible: false }))}
       />
 

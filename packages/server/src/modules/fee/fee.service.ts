@@ -7,7 +7,7 @@ import { Property } from '../property/property.entity';
 import { CreateFeeItemDto } from './dto/create-fee-item.dto';
 import { UpdateFeeItemDto } from './dto/update-fee-item.dto';
 import { Tenant } from '../tenant/tenant.entity';
-import { feeEntitiesToRules, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from './fee-rules';
+import { feeEntitiesToRules, feeRulesToResponse, normalizeFeeRules, normalizeUpdatedFeeRules, resolveFeeRules } from './fee-rules';
 import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
 
 @Injectable()
@@ -56,9 +56,12 @@ export class FeeService {
 
   /** Batch save fee items for a room */
   async batchSave(roomId: number, fees: any[]) {
-    const rules = normalizeFeeRules(fees);
     const tenant = await this.tenantRepository.findOne({ where: { roomId, status: 1 } });
     if (tenant) {
+      const room = await this.roomRepository.findOneByOrFail({ id: roomId });
+      const legacy = await this.feeItemRepository.findBy({ roomId });
+      const rules = normalizeUpdatedFeeRules(fees,
+        resolveFeeRules(tenant.feeRules, legacy, Number(room.rent) || 0), tenant.payMonths);
       tenant.feeRules = rules;
       await retryMalformedMysqlPacket(
         () => this.tenantRepository.save(tenant),
@@ -68,6 +71,7 @@ export class FeeService {
     }
 
     // Vacant-room settings act as a reusable template for the next tenancy.
+    const rules = normalizeFeeRules(fees);
     await this.feeItemRepository.delete({ roomId });
 
     const entities = rules.map((fee, index) => this.feeItemRepository.create({

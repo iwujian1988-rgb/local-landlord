@@ -13,6 +13,7 @@ import { FeeItem } from '../fee/fee-item.entity';
 import { feeRuleAmountForMonths, feeRuleDueMonths, resolveFeeRules } from '../fee/fee-rules';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { CorrectPaymentDto } from './dto/correct-payment.dto';
 import { UtilityReading } from '../utility-reading/utility-reading.entity';
 import { isUtilityFeeName, utilityName, utilityTypesForFeeRules } from '../utility-reading/utility-reading.helpers';
 import { dueDateForPeriod, dueDateString } from './bill-due-date';
@@ -191,15 +192,17 @@ export class BillService {
         throw new BadRequestException('该账单已退租作废，无法收款');
       }
 
-      const totalAmount = Number(bill.totalAmount);
-      const currentPaid = Number(bill.paidAmount) || 0;
-      const remaining = totalAmount - currentPaid;
+      const totalCents = Math.round(Number(bill.totalAmount) * 100);
+      const paidCents = Math.round((Number(bill.paidAmount) || 0) * 100);
+      const totalAmount = totalCents / 100;
+      const currentPaid = paidCents / 100;
+      const remaining = (totalCents - paidCents) / 100;
 
       // Legacy corruption: paidAmount already covers totalAmount but status
       // was never flipped to 1 (old overdue cron / pre-lock item edits).
       // Settle the state instead of rejecting — otherwise every confirm
       // attempt fails and the miniapp modal renders a dead 0-元 button.
-      if (remaining <= 0.01) {
+      if (remaining <= 0) {
         bill.paidAmount = totalAmount;
         bill.status = 1;
         if (!bill.paidAt) bill.paidAt = new Date();
@@ -209,21 +212,22 @@ export class BillService {
 
       // actualAmount defaults to remaining balance (i.e., pay off in full)
       const actualAmount = dto.actualAmount != null ? Number(dto.actualAmount) : remaining;
+      const actualCents = Math.round(actualAmount * 100);
 
-      if (!(actualAmount > 0)) {
-        throw new BadRequestException('收款金额必须大于 0');
+      if (!Number.isFinite(actualAmount) || actualCents <= 0 || Math.abs(actualAmount * 100 - actualCents) > 0.000001) {
+        throw new BadRequestException('收款金额必须大于 0 且最多保留两位小数');
       }
       // Reject over-payment — keeps paidAmount audit-clean. Landlord should
       // either record the over-payment as a separate single-charge, or adjust
       // totalAmount first.
-      if (actualAmount > remaining + 0.01) {
+      if (actualCents > totalCents - paidCents) {
         throw new BadRequestException(
           `收款金额 ${actualAmount} 超出待收 ${remaining} 元，请先修改账单金额或单独记一笔超额收款`,
         );
       }
 
-      const newPaidAmount = currentPaid + actualAmount;
-      const isFullyPaid = newPaidAmount >= totalAmount - 0.01;
+      const newPaidAmount = (paidCents + actualCents) / 100;
+      const isFullyPaid = paidCents + actualCents === totalCents;
 
       bill.paidAmount = isFullyPaid ? totalAmount : newPaidAmount;
       bill.status = isFullyPaid ? 1 : 3;
@@ -252,11 +256,62 @@ export class BillService {
     });
   }
 
+  /** Correct the cumulative receipt; append audit entries, never erase history. */
+  async correctPayment(id: number, dto: CorrectPaymentDto): Promise<Bill> {
+    if (!dto.reason?.trim()) throw new BadRequestException('请填写更正原因');
+    return this.entityManager.transaction(async manager => {
+      const query = manager.getRepository(Bill).createQueryBuilder('bill').where('bill.id = :id', { id });
+      if (manager.connection.options.type === 'mysql') query.setLock('pessimistic_write');
+      const bill = await query.getOne();
+      if (!bill) throw new NotFoundException('账单不存在');
+      if (bill.status === 4) throw new BadRequestException('作废账单不能更正收款');
+      const old = Math.round(Number(bill.paidAmount) * 100);
+      const next = Math.round(dto.paidAmount * 100);
+      if (old !== Math.round(dto.expectedPaidAmount * 100)) throw new BadRequestException('这笔收款刚刚有变化，请返回后重新打开再改');
+      if (next > Math.round(Number(bill.totalAmount) * 100)) throw new BadRequestException('更正后累计实收不能超过账单金额');
+      if (old === next) return bill;
+      // Backdated replacement entries repair the original collection period,
+      // while createdAt preserves when the correction was actually performed.
+      const receipts = await manager.find(RentRecord, { where: { billId: id, type: 1 } });
+      if (receipts.length === 0 && old > 0) {
+        await manager.save(manager.create(RentRecord, { roomId: bill.roomId, billId: id, type: 1,
+          title: '补记历史收款基线', description: dto.reason.trim(), amount: old / 100,
+          paymentAt: bill.paidAt || new Date() }));
+      }
+      const changes = new Map<number, number>();
+      for (const r of receipts) {
+        const at = (r.paymentAt || r.createdAt).getTime();
+        changes.set(at, (changes.get(at) || 0) + Math.round(Number(r.amount) * 100));
+      }
+      if (receipts.length === 0) changes.set((bill.paidAt || new Date()).getTime(), old);
+      for (const [at, cents] of changes) {
+        if (cents === 0) continue;
+        await manager.save(manager.create(RentRecord, { roomId: bill.roomId, billId: id, type: 1,
+          title: '收款更正冲回', description: `仅更正记账，不执行退款。${dto.reason.trim()}`,
+          amount: -cents / 100, paymentAt: new Date(at) }));
+      }
+      if (next > 0) await manager.save(manager.create(RentRecord, { roomId: bill.roomId, billId: id, type: 1,
+        title: '更正后累计实收', description: dto.reason.trim(), amount: next / 100,
+        paymentAt: bill.paidAt || new Date() }));
+      bill.paidAmount = next / 100;
+      bill.status = next >= Math.round(Number(bill.totalAmount) * 100) ? 1 : next > 0 ? 3 : 0;
+      bill.receiptPromptDismissedAt = null;
+      return manager.save(bill);
+    });
+  }
+
   /** Send bill (mark sent_at). Optionally update items + recompute total in the same tx. */
   async sendBill(
     id: number,
     items?: { feeName?: string; name?: string; amount: number; utilityReadingId?: number }[],
   ): Promise<Bill> {
+    if (items !== undefined && (!Array.isArray(items) || items.some(item => {
+      const amount = Number(item?.amount);
+      return !item || item.amount == null || !Number.isFinite(amount) || amount < 0
+        || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001;
+    }))) {
+      throw new BadRequestException('账单金额必须非负且最多保留两位小数');
+    }
     return this.entityManager.transaction(async (manager) => {
       const bill = await manager.findOne(Bill, {
         where: { id },
@@ -265,7 +320,7 @@ export class BillService {
       if (!bill) throw new NotFoundException('账单不存在');
 
       if (bill.status === 4) {
-        throw new BadRequestException('该账单已退租作废，无法发送');
+        throw new BadRequestException('该账单已作废，无法发送');
       }
 
       // Bills with any recorded payment: refuse item edits to avoid breaking
@@ -273,7 +328,7 @@ export class BillService {
       // bill unconfirmable). Covers status=3 and legacy status=2 rows that
       // still carry paidAmount from the old overdue cron.
       // Landlord must either confirm remaining collection or void + recreate.
-      if (items && items.length > 0 && (bill.status === 3 || Number(bill.paidAmount) > 0)) {
+      if (items && items.length > 0 && ([1, 3].includes(bill.status) || Number(bill.paidAmount) > 0)) {
         throw new BadRequestException(
           '该账单已有收款记录，无法调整账单项；如需修改请先确认收齐尾款或重新生成账单',
         );

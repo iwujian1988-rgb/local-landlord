@@ -109,6 +109,7 @@ describe('checkout payload regressions', () => {
     })).toEqual({
       status: 0,
       action: 'checkout',
+      debtAction: 'keep',
       depositStatus: 1,
       depositRefundAmount: 1800,
       depositDeductReason: '维修扣除200元',

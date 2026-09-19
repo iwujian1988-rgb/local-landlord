@@ -106,6 +106,40 @@ describe('authenticated API error envelope', () => {
 
     await expect(get('/rooms/1')).rejects.toThrow('合同日期格式错误');
   });
+
+  it.each([null, '<html>Bad Gateway</html>', { message: 'Unavailable' }])('does not report a successful save for malformed response %p', async (data) => {
+    (Taro.request as jest.Mock).mockResolvedValueOnce({ statusCode: 200, data });
+    await expect(get('/rooms/1')).rejects.toThrow('服务端返回格式错误');
+  });
+
+  it('concurrent expired requests share login without logging out the in-flight refresh', async () => {
+    let finishLogin!: () => void;
+    const login = jest.spyOn(useAuthStore.getState(), 'login').mockImplementation(() => {
+      useAuthStore.setState({ loginLoading: true });
+      return new Promise<void>(resolve => { finishLogin = () => {
+        useAuthStore.setState({ token: 'new-token', loginLoading: false });
+        resolve();
+      }; });
+    });
+    (Taro.request as jest.Mock)
+      .mockResolvedValueOnce({ statusCode: 401, data: { code: 401 } })
+      .mockResolvedValueOnce({ statusCode: 401, data: { code: 401 } })
+      .mockResolvedValue({ statusCode: 200, data: { code: 0, data: [] } });
+    try {
+      const first = get('/rooms');
+      const second = get('/bills');
+      const results = Promise.all([first, second]);
+      await new Promise(resolve => setImmediate(resolve));
+      expect(login).toHaveBeenCalledTimes(1);
+      expect(Taro.reLaunch).not.toHaveBeenCalled();
+      finishLogin();
+      expect(await results).toHaveLength(2);
+      expect(useAuthStore.getState().token).toBe('new-token');
+    } finally {
+      finishLogin?.();
+      login.mockRestore();
+    }
+  });
 });
 
 /**

@@ -48,7 +48,7 @@ export default function Rooms() {
     setError(false);
     try {
       const [roomsRes, propsRes] = await Promise.all([
-        get<Room[]>('/rooms'),
+        get<Room[]>('/rooms?includeArchived=true'),
         get<ListResponse<Property>>('/properties'),
       ]);
       if (roomsRes.code === 0) {
@@ -112,6 +112,7 @@ export default function Rooms() {
     if (displayStatus === 'overdue') return room.overdueDays && room.overdueDays > 0 ? `欠租${room.overdueDays}天` : '欠租';
     if (displayStatus === 'approaching') return '待收租';
     if (displayStatus === 'rented') return '已出租';
+    if (displayStatus === 'archived') return '暂时隐藏';
     return '空着';
   };
   const statusClass = (room: Room) => {
@@ -199,7 +200,7 @@ export default function Rooms() {
                   ))}
                 </View>
                 {visibleRooms.length === 0 ? (
-                  <EmptyState title={`没有${roomFilter === 'vacant' ? '未出租' : '已出租'}的房间`} description="可以切换上方分类查看其他房间" />
+                  <EmptyState title={`没有${roomFilter === 'vacant' ? '未出租' : roomFilter === 'archived' ? '暂时隐藏' : '已出租'}的房间`} description="可以切换上方分类查看其他房间" />
                 ) : visibleRooms.map((room) => (
                   <View
                     key={room.id}
@@ -227,6 +228,10 @@ export default function Rooms() {
                     <Text className="room-card-arrow">›</Text>
                   </View>
                 ))}
+                {roomCounts.archived > 0 && <View className="room-archive-link"
+                  onClick={() => setRoomFilter(roomFilter === 'archived' ? 'all' : 'archived')}>
+                  <Text>{roomFilter === 'archived' ? '返回正常房间' : `查看暂时不管理的房间（${roomCounts.archived}）`}</Text>
+                </View>}
               </>
             )}
             <View style={{ height: '160px' }} />

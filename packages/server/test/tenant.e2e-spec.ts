@@ -583,6 +583,8 @@ describe('Tenant module (e2e)', () => {
 
       await apiCall(app, 'delete', `/api/tenants/${tid}`, auth, {
         moveOutDate: `${currentMonthStr()}-15`,
+        debtAction: 'waive',
+        debtReason: '测试明确减免',
       });
 
       // Fetch the bill directly via /api/bills/:id — findByRoom excludes status=4

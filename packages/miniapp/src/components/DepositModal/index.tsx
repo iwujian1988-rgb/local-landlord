@@ -4,6 +4,8 @@ import './index.scss';
 
 interface DepositModalProps {
   visible: boolean;
+  /** Whether the debt decision was shown as step 1 */
+  hasDebtStep?: boolean;
   /** Original deposit collected at move-in */
   deposit?: number;
   /** P0-B: Auto-computed prepaid rent refund (unused days × monthly rent/30) */
@@ -12,8 +14,6 @@ interface DepositModalProps {
   moveInReading?: string;
   /** Pure close — does NOT trigger checkout */
   onCancel: () => void;
-  /** Skip deposit record and proceed directly with checkout (no refund logged) */
-  onSkip: () => void;
   onConfirm: (data: {
     depositStatus: number;
     refundAmount: number;
@@ -24,11 +24,11 @@ interface DepositModalProps {
 
 export default function DepositModal({
   visible,
+  hasDebtStep = false,
   deposit = 0,
   prepaidRefund = 0,
   moveInReading = '',
   onCancel,
-  onSkip,
   onConfirm,
 }: DepositModalProps) {
   const [option, setOption] = useState<'full' | 'partial' | 'none'>('full');
@@ -76,8 +76,8 @@ export default function DepositModal({
         <View className="deposit-handle" />
 
         <View className="deposit-text">
-          <Text className="deposit-title">退租结算</Text>
-          <Text className="deposit-desc">押金 {deposit.toLocaleString()} 元 + 预付租金剩余 {prepaidRefund.toLocaleString()} 元 = 应退 {(deposit + prepaidRefund).toLocaleString()} 元</Text>
+          <Text className="deposit-title">{hasDebtStep ? '退租第 2 步：押金怎么办？' : '退租：押金怎么办？'}</Text>
+          <Text className="deposit-desc">请选实际退给租客的押金。系统只做记录，不会自动转账。</Text>
         </View>
 
         {/* Summary breakdown */}
@@ -173,17 +173,14 @@ export default function DepositModal({
         </View>
 
         <View className="deposit-actions">
-          <View className="deposit-btn cancel" onClick={onCancel}>
-            取消
-          </View>
-          <View className="deposit-btn skip" onClick={onSkip}>
-            跳过押金
-          </View>
           <View
             className={`deposit-btn ok${canConfirm ? '' : ' disabled'}`}
             onClick={canConfirm ? handleConfirm : undefined}
           >
-            确认退租
+            保存并完成退租
+          </View>
+          <View className="deposit-btn cancel" onClick={onCancel}>
+            返回，不退租
           </View>
         </View>
       </View>

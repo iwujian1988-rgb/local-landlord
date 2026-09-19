@@ -39,7 +39,7 @@ export class Bill {
   paidAmount: number;
 
   // 0: pending (未收), 1: paid (已收), 2: overdue (逾期), 3: partial (部分付款),
-  // 4: cancelled (退租作废 — 租客退租时未付清的账单被关闭，不再催收/统计)
+  // 4: cancelled (明确减免或人工作废，不再催收/统计；普通退租不会自动作废)
   @Column({ type: 'tinyint', unsigned: true, default: 0 })
   status: number;
 

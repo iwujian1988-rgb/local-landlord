@@ -64,20 +64,28 @@ export default function BillPage() {
 
   if (!data) return null;
 
-  const remaining = Math.max(0, data.totalAmount - data.paidAmount);
+  return <BillDetails data={data} />;
+}
+
+export function BillDetails({ data }: { data: ShareBillPayload }) {
+  const remaining = data.isPaid ? 0 : Math.max(0, Math.round((data.totalAmount - data.paidAmount) * 100) / 100);
+  const isPaid = remaining === 0;
+  const period = data.periodEnd && data.periodEnd !== data.period
+    ? `${formatPeriod(data.period)}—${formatPeriod(data.periodEnd)}`
+    : formatPeriod(data.period);
 
   return (
     <div className="page">
       <div className="header">
         <div className="header-room">{data.roomName}</div>
-        <div className="header-period">{formatPeriod(data.period)} 账单</div>
+        <div className="header-period">{period} 账单</div>
         {data.tenantName && <div className="header-tenant">租客：{data.tenantName}</div>}
       </div>
 
       <div className="amount-card">
-        <div className="amount-label">应付金额</div>
+        <div className="amount-label">{isPaid ? '已付清' : '本次应付'}</div>
         <div className="amount-value">
-          <span className="amount-number">{data.totalAmount.toLocaleString()}</span>
+          <span className="amount-number">{remaining.toLocaleString()}</span>
           <span className="amount-unit">元</span>
         </div>
         {data.paidAmount > 0 && (
@@ -98,7 +106,11 @@ export default function BillPage() {
         ))}
       </div>
 
-      {data.qrCodes.length > 0 ? (
+      {isPaid ? (
+        <div className="qr-card">
+          <div className="qr-title">账单已结清，无需付款</div>
+        </div>
+      ) : data.qrCodes.length > 0 ? (
         <div className="qr-card">
           <div className="qr-title">长按二维码识别付款</div>
           {data.qrCodes.map((code, idx) => (

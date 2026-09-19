@@ -42,8 +42,23 @@ export const directRequest = async <T = unknown>(
       ...((options.header as Record<string, string>) || {}),
     },
   });
-  return res.data as ApiResponse<T>;
+  return readResponse<T>(res);
 };
+
+function readResponse<T>(res: { statusCode?: number; data: unknown }): ApiResponse<T> {
+  const data = typeof res.data === 'string' ? safeJsonParse(res.data) : res.data;
+  const body = data as ApiResponse<T> | null;
+  if (res.statusCode === 401) {
+    return { code: 401, data: null as T, message: body?.message || '登录已过期' };
+  }
+  if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+    throw new Error(body?.message || `请求失败（${res.statusCode}）`);
+  }
+  if (!body || typeof body !== 'object' || typeof body.code !== 'number') {
+    throw new Error('服务端返回格式错误，请稍后重试');
+  }
+  return body;
+}
 
 const request = async <T = unknown>(
   options: Taro.request.Option,
@@ -71,7 +86,8 @@ const request = async <T = unknown>(
       // Never silently exchange wx.login for a landlord token while the user
       // explicitly chose guest mode. That would expose the previous WeChat
       // account's cloud data without a visible login action.
-      if (!guestMode && allowRelogin && !useAuthStore.getState().loginLoading) {
+      if (!guestMode && allowRelogin && !options.url.startsWith('/auth/')
+        && (isRefreshing || !useAuthStore.getState().loginLoading)) {
         const ok = await tryReLogin();
         if (ok) {
           return request<T>(options, false);
@@ -88,7 +104,7 @@ const request = async <T = unknown>(
 
     // Taro.request and cloud.callContainer resolve normally for HTTP 4xx/5xx.
     // Reject non-success envelopes so mutation pages cannot report false success.
-    if (typeof data?.code === 'number' && data.code !== 0) {
+    if (data.code !== 0) {
       throw new Error(data.message || `请求失败（${data.code}）`);
     }
 
@@ -123,8 +139,11 @@ function callContainerCompat<T>(
       data: options.data,
       header: containerHeader,
       success: (res: any) => {
-        const raw = typeof res.data === 'string' ? safeJsonParse(res.data) : res.data;
-        resolve(raw as ApiResponse<T>);
+        try {
+          resolve(readResponse<T>(res));
+        } catch (error) {
+          reject(error);
+        }
       },
       fail: (err: any) => {
         const msg = err.errMsg || 'callContainer 请求失败';

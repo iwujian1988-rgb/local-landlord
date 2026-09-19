@@ -3,6 +3,8 @@ export interface CheckoutSettlement {
   refundAmount: number;
   deductReason: string;
   moveOutReading?: string;
+  debtAction?: 'keep' | 'waive';
+  debtReason?: string;
 }
 
 /** Translate the modal's UI field names to the backend UpdateRoomDto contract. */
@@ -17,5 +19,7 @@ export function buildCheckoutPayload(settlement?: CheckoutSettlement) {
     depositRefundAmount: settlement.refundAmount,
     depositDeductReason: settlement.deductReason,
     ...(settlement.moveOutReading ? { moveOutReading: settlement.moveOutReading } : {}),
+    debtAction: settlement.debtAction || 'keep',
+    ...(settlement.debtReason ? { debtReason: settlement.debtReason } : {}),
   };
 }

@@ -134,6 +134,28 @@ describe('WeChat OAuth 全链路 (mocked)', () => {
         restore();
       }
     });
+
+    it('TC-WX-006: 已登录用户可单独绑定微信手机号', async () => {
+      const openId = 'wx-bind-phone-' + Date.now();
+      const restore = mockWx({ openid: openId });
+      const login = await authService.wechatLogin({ code: 'login-first' });
+      restore();
+
+      const phoneSpy = jest.spyOn(wechatApiService, 'getPhoneNumber').mockResolvedValue('13712345678');
+      try {
+        const response = await request(app.getHttpServer())
+          .post('/api/auth/wechat/bind-phone')
+          .set('Authorization', `Bearer ${login.token}`)
+          .send({ phoneCode: 'bind-phone-code' })
+          .expect(201);
+        expect(phoneSpy).toHaveBeenCalledWith('bind-phone-code');
+        expect(response.body.phone).toBe('13712345678');
+        const saved = await app.get(getRepositoryToken(Landlord)).findOneByOrFail({ id: login.user.id });
+        expect(saved.phone).toBe('13712345678');
+      } finally {
+        phoneSpy.mockRestore();
+      }
+    });
   });
 
   describe('WeChat 错误响应', () => {

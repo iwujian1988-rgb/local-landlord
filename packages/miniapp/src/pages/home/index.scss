@@ -707,7 +707,8 @@
   border-radius: var(--radius-sm);
   padding: 24px 28px;
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex-direction: column;
   justify-content: space-between;
   gap: 16px;
   box-shadow: 0 4px 16px rgba(255, 139, 69, 0.15);
@@ -732,14 +733,14 @@
 }
 
 .guest-banner-btn {
-  width: auto;
-  min-height: 0;
+  width: 100%;
+  min-height: 80px;
   margin: 0;
   border: 0;
-  line-height: 1;
+  line-height: 80px;
   background: var(--accent);
   border-radius: var(--radius-xs);
-  padding: 14px 32px;
+  padding: 0 24px;
   flex-shrink: 0;
 }
 

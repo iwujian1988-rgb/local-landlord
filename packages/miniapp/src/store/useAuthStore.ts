@@ -16,6 +16,7 @@ interface AuthState {
   loginError: string;
   loginSilently: () => Promise<string>;
   login: (phoneCode?: string) => Promise<void>;
+  bindPhone: (phoneCode: string) => Promise<string>;
   logout: () => void;
   enterGuestMode: () => void;
 }
@@ -123,6 +124,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         activeLoginPromise = null;
       }
     }
+  },
+
+  bindPhone: async (phoneCode: string) => {
+    if (!phoneCode) throw new Error('没有获得手机号授权，请重新点击“绑定手机号”');
+    const resp = await post<any>('/auth/wechat/bind-phone', { phoneCode });
+    const user = resp.data;
+    if (!user?.phone) throw new Error('服务端没有返回手机号，请重新再试');
+    Taro.setStorageSync('landlord_info', user);
+    set({ user });
+    return user.phone;
   },
 
   logout: () => {

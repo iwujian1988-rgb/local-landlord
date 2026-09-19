@@ -13,8 +13,9 @@ import { RentRecord } from '../rent/rent-record.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { MoveOutDto } from './dto/move-out.dto';
-import { FeeRule, feeRuleInitialAmount, feeRuleInitialMonths, feeRulesToResponse, normalizeFeeRules, resolveFeeRules } from '../fee/fee-rules';
+import { FeeRule, feeRuleAmountForMonths, feeRuleBillingMonths, feeRuleDueMonths, feeRuleInitialAmount, feeRuleInitialMonths, feeRulesToResponse, normalizeFeeRules, normalizeUpdatedFeeRules, resolveFeeRules } from '../fee/fee-rules';
 import { retryMalformedMysqlPacket } from '../../common/database/mysql-retry';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class TenantService {
@@ -77,6 +78,7 @@ export class TenantService {
       if (this.dataSource.options.type === 'mysql') roomQuery.setLock('pessimistic_write');
       const room = await roomQuery.getOne();
       if (!room) throw new NotFoundException('房间不存在');
+      if (room.status === 2) throw new BadRequestException('请先让这个房间重新显示，再登记租客');
 
       const tenantRepo = manager.getRepository(Tenant);
       const existingTenant = await tenantRepo.findOne({ where: { roomId, status: 1 } });
@@ -167,8 +169,8 @@ export class TenantService {
     // clients backward compatible, while correctly representing a smaller
     // recorded amount as partial instead of falsely marking the full bill paid.
     const explicitAmount = Number(tenant.initialPaymentAmount) || 0;
-    const recordedAmount = explicitAmount > 0
-      ? Math.min(explicitAmount, totalAmount)
+    const recordedAmount = tenant.initialPaymentAmount != null
+      ? Math.min(Math.max(0, explicitAmount), totalAmount)
       : (tenant.initialPaymentMethod && tenant.initialDepositAmount == null ? totalAmount : 0);
     const paymentStatus = recordedAmount >= totalAmount && totalAmount > 0
       ? 1
@@ -240,13 +242,81 @@ export class TenantService {
     return savedBill;
   }
 
+  private async buildFeePreview(tenant: Tenant, dto: UpdateTenantDto) {
+    const room = await this.roomRepository.findOneByOrFail({ id: tenant.roomId });
+    const legacyFees = await this.feeItemRepository.findBy({ roomId: tenant.roomId });
+    const previous = resolveFeeRules(tenant.feeRules, legacyFees, Number(room.rent) || 0);
+    const payMonths = dto.payMonths ?? tenant.payMonths;
+    let next = dto.feeItems !== undefined
+      ? normalizeUpdatedFeeRules(dto.feeItems, previous, tenant.payMonths)
+      : previous.map(rule => ({ ...rule,
+          ...(rule.collectionTiming !== 'arrears' ? { initialMonths: feeRuleInitialMonths(rule, tenant.payMonths) } : {}),
+          ...(rule.isRent && dto.payMonths != null ? { billingMonths: payMonths } : {}),
+        }));
+    const bills = await this.billRepository.find({ where: { tenantId: tenant.id }, relations: ['items'] });
+    const current = dayjs().format('YYYY-MM');
+    next = next.map(rule => {
+      const old = previous.find(item => rule.isRent ? !!item.isRent : !item.isRent && item.name === rule.name);
+      const changed = !old || Number(old.amount) !== Number(rule.amount) || old.enabled !== rule.enabled
+        || old.type !== rule.type || old.collectionTiming !== rule.collectionTiming
+        || feeRuleBillingMonths(old, tenant.payMonths) !== feeRuleBillingMonths(rule, payMonths);
+      if (!changed) return { ...rule, effectivePeriod: old?.effectivePeriod };
+      let effective = current;
+      if (rule.isRent) {
+        for (const bill of bills) {
+          const covered = bill.periodEnd || bill.period;
+          if (covered >= effective) effective = dayjs(`${covered}-01`).add(1, 'month').format('YYYY-MM');
+        }
+      } else {
+        while (bills.some(b => b.period === effective && b.items?.some(item => item.feeName === (old?.name || rule.name)))) {
+          effective = dayjs(`${effective}-01`).add(1, 'month').format('YYYY-MM');
+        }
+      }
+      return { ...rule, effectivePeriod: effective };
+    });
+    const rows = next.filter(rule => rule.enabled).map(rule => {
+      let period = rule.effectivePeriod || current;
+      for (let i = 0; i < 120 && feeRuleDueMonths(rule, payMonths, tenant.moveInDate, period) === 0; i++) {
+        period = dayjs(`${period}-01`).add(1, 'month').format('YYYY-MM');
+      }
+      const months = feeRuleDueMonths(rule, payMonths, tenant.moveInDate, period);
+      return { name: rule.name, period, dueDate: dueDateString(period, dto.rentDay ?? tenant.rentDay),
+        amount: feeRuleAmountForMonths(rule, months), manual: rule.type === 1 };
+    });
+    const token = createHash('sha256').update(JSON.stringify({ next, rows,
+      bills: bills.map(b => [b.id, b.period, b.periodEnd, b.updatedAt]) })).digest('hex');
+    return { rules: next, rows, token };
+  }
+
+  async previewFees(id: number, dto: UpdateTenantDto) {
+    const tenant = await this.tenantRepository.findOne({ where: { id } });
+    if (!tenant) throw new NotFoundException('租客不存在');
+    const { rows, token } = await this.buildFeePreview(tenant, dto);
+    return { rows, token };
+  }
+
   /** Update tenant info */
   async update(id: number, dto: UpdateTenantDto): Promise<Tenant> {
     const tenant = await this.tenantRepository.findOne({ where: { id } });
     if (!tenant) throw new NotFoundException('租客不存在');
-    const { feeItems, ...tenantFields } = dto;
+    const { feeItems, feePreviewToken, ...tenantFields } = dto;
+    const preview = (feeItems !== undefined || dto.payMonths !== undefined)
+      ? await this.buildFeePreview(tenant, dto) : null;
+    if (preview && feePreviewToken && feePreviewToken !== preview.token) {
+      throw new BadRequestException('保存前账单发生了变化，请返回后重新打开，再保存一次');
+    }
+    if (feeItems !== undefined) {
+      const room = await this.roomRepository.findOneByOrFail({ id: tenant.roomId });
+      const legacyFees = await this.feeItemRepository.findBy({ roomId: tenant.roomId });
+      const previous = resolveFeeRules(tenant.feeRules, legacyFees, Number(room.rent) || 0);
+      tenant.feeRules = preview!.rules;
+    }
+    if (feeItems === undefined && dto.payMonths != null && dto.payMonths !== tenant.payMonths) {
+      const room = await this.roomRepository.findOneByOrFail({ id: tenant.roomId });
+      const legacyFees = await this.feeItemRepository.findBy({ roomId: tenant.roomId });
+      tenant.feeRules = preview!.rules;
+    }
     Object.assign(tenant, tenantFields);
-    if (feeItems !== undefined) tenant.feeRules = normalizeFeeRules(feeItems);
     return retryMalformedMysqlPacket(
       () => this.tenantRepository.save(tenant),
       () => this.logger.warn(`Retrying idempotent tenant update ${id} after malformed MySQL packet`),
@@ -283,15 +353,23 @@ export class TenantService {
 
       const saved = await manager.getRepository(Tenant).save(tenant);
 
-      // Close the remaining receivable. Actual cash already collected is kept
-      // in rent_record and therefore remains visible in cash reports.
-      await manager.getRepository(Bill)
+      // Moving out ends the tenancy, not the landlord's receivable.
+      if (dto.debtAction === 'waive') {
+        if (!dto.debtReason?.trim()) throw new BadRequestException('减免欠款请填写原因');
+        const outstanding = await manager.getRepository(Bill).findBy({ tenantId: saved.id });
+        const waived = outstanding.filter(b => [0, 2, 3].includes(b.status))
+          .reduce((sum, b) => sum + Math.max(0, Number(b.totalAmount) - Number(b.paidAmount)), 0);
+        await manager.save(manager.create(RentRecord, { roomId: saved.roomId, type: 8,
+          title: '退租欠款减免', description: `${saved.name}：减免${waived.toFixed(2)}元；${dto.debtReason.trim()}`,
+          amount: 0, paymentAt: new Date() }));
+        await manager.getRepository(Bill)
         .createQueryBuilder()
         .update(Bill)
         .set({ status: 4 })
         .where('tenant_id = :tid', { tid: saved.id })
         .andWhere('status IN (:...statuses)', { statuses: [0, 2, 3] })
         .execute();
+      }
 
       const room = await manager.findOne(Room, { where: { id: tenant.roomId } });
       if (room) {
@@ -317,79 +395,55 @@ export class TenantService {
   }
 
   /**
-   * Compute prepaid rent refund for early move-out.
-   *
-   * Algorithm: find the latest paid (status=1) bill for this tenant, look at
-   * its [period..periodEnd] cycle (the months of prepayment). The refund covers
-   * TWO classes of days that the tenant paid for but didn't actually use:
-   *
-   *   1. overpaidBeforeMoveIn — days between period start and moveInDate when
-   *      the tenant moved in mid-month but the bill charged for the whole month.
-   *      E.g. moveIn=4/15, period='2026-04' → landlord charged 4/1-4/14 unfairly.
-   *
-   *   2. unusedAfterMoveOut — days between moveOutDate and end of periodEnd
-   *      month (the original logic; covers early move-out at the tail).
-   *
-   * Refund = (overpaidBeforeMoveIn + unusedAfterMoveOut) × (monthly rent / 30).
-   *
-   * Returns 0 if no paid bill exists, or moveOutDate is at/after end of
-   * periodEnd month AND moveInDate was on/before period start.
+   * Refund unearned rent receipts across the tenant's paid/partial bills.
+   * Partial receipts pay rent first (up to that bill's rent charge). Occupied
+   * rent is earned before any refund; unpaid rent is never refundable cash.
+   * Preserve the existing monthly-rent / 30 convention for unused days and
+   * treat move-out day as the first refundable day.
    */
   async computePrepaidRefund(tenant: Tenant, manager?: EntityManager): Promise<number> {
     if (!tenant.moveOutDate) return 0;
 
     const billRepository = manager?.getRepository(Bill) || this.billRepository;
     const roomRepository = manager?.getRepository(Room) || this.roomRepository;
-    const latestPaidBill = await billRepository
+    const paidBills = await billRepository
       .createQueryBuilder('bill')
       .leftJoinAndSelect('bill.items', 'items')
       .where('bill.tenant_id = :tenantId', { tenantId: tenant.id })
-      .andWhere('bill.status IN (:...statuses)', { statuses: [1, 3] })
+      .andWhere('bill.status IN (:...statuses)', { statuses: [1, 2, 3] })
       .andWhere('bill.paid_amount > 0')
       .orderBy('COALESCE(bill.period_end, bill.period)', 'DESC')
-      .getOne();
-    if (!latestPaidBill) return 0;
-
-    // Use periodEnd if set, else period (legacy single-month bills)
-    const effectivePeriodEnd = latestPaidBill.periodEnd || latestPaidBill.period;
-    const periodStart = dayjs(latestPaidBill.period + '-01').startOf('day');
-    const periodEndDate = dayjs(effectivePeriodEnd + '-01').endOf('month');
-
-    const moveOutDay = dayjs(tenant.moveOutDate);
-    const moveInDay = tenant.moveInDate ? dayjs(tenant.moveInDate) : null;
-
-    // Days charged for but tenant hadn't moved in yet (move-in was mid-cycle)
-    const overpaidBeforeMoveIn =
-      moveInDay && moveInDay.isAfter(periodStart)
-        ? moveInDay.diff(periodStart, 'day')
-        : 0;
-
-    // Days charged for but tenant has already moved out (tail of cycle)
-    // The recorded move-out date is the first non-occupied/refundable day.
-    const unusedAfterMoveOut = moveOutDay.isAfter(periodEndDate)
-      ? 0
-      : Math.max(0, periodEndDate.diff(moveOutDay, 'day') + 1);
-
-    const totalUnusedDays = overpaidBeforeMoveIn + unusedAfterMoveOut;
-    if (totalUnusedDays <= 0) return 0;
-
+      .getMany();
     const room = await roomRepository.findOne({ where: { id: tenant.roomId } });
     if (!room) return 0;
-    const coverageMonths = Math.max(
-      1,
-      (dayjs(effectivePeriodEnd + '-01').year() - dayjs(latestPaidBill.period + '-01').year()) * 12
-        + dayjs(effectivePeriodEnd + '-01').month() - dayjs(latestPaidBill.period + '-01').month() + 1,
-    );
-    const historicalRentItem = latestPaidBill.items?.find(item => item.feeName === '房租');
-    const monthlyRent = historicalRentItem
-      ? Number(historicalRentItem.amount) / coverageMonths
-      : Number(room.rent) || 0;
-    if (monthlyRent <= 0) return 0;
+    const moveOutDay = dayjs(tenant.moveOutDate).startOf('day');
+    const moveInDay = dayjs(tenant.moveInDate).startOf('day');
+    const rentNames = new Set(['房租', ...(tenant.feeRules || []).filter(rule => rule.isRent).map(rule => rule.name)]);
+    let refundCents = 0;
+    for (const bill of paidBills) {
+      const periodStart = dayjs(bill.period + '-01').startOf('day');
+      const endMonth = dayjs((bill.periodEnd || bill.period) + '-01');
+      const periodEnd = endMonth.add(1, 'month').startOf('month');
+      const coverageMonths = Math.max(1, endMonth.diff(periodStart, 'month') + 1);
+      const rentItems = (bill.items || []).filter(item => rentNames.has(item.feeName));
+      // A populated snapshot without rent is a utility/other-fee bill. Only
+      // truly legacy bills lacking all items may use the room rent fallback.
+      const rentTotal = rentItems.length
+        ? rentItems.reduce((sum, item) => sum + Number(item.amount), 0)
+        : (bill.items?.length ? 0 : (Number(room.rent) || 0) * coverageMonths);
+      if (rentTotal <= 0) continue;
 
-    // Standard landlord convention: 日租金 = 月租 / 30 (not / 实际天数)
-    const dailyRate = monthlyRent / 30;
-    const refund = Math.round(dailyRate * totalUnusedDays * 100) / 100;
-    return Math.max(0, Math.min(refund, Number(latestPaidBill.paidAmount) || 0));
+      const totalDays = periodEnd.diff(periodStart, 'day');
+      const beforeMoveIn = Math.max(0, Math.min(totalDays, moveInDay.diff(periodStart, 'day')));
+      const afterMoveOut = Math.max(0, Math.min(totalDays, periodEnd.diff(moveOutDay, 'day')));
+      const unusedDays = Math.min(totalDays, beforeMoveIn + afterMoveOut);
+      const rentCents = Math.round(rentTotal * 100);
+      const unusedCents = Math.min(rentCents, Math.round((rentTotal / coverageMonths / 30) * unusedDays * 100));
+      const earnedCents = rentCents - unusedCents;
+      const receivedRentCents = Math.min(rentCents, Math.round(Number(bill.paidAmount) * 100));
+      refundCents += Math.max(0, receivedRentCents - earnedCents);
+    }
+    return refundCents / 100;
   }
 
   /** Get tenant detail */

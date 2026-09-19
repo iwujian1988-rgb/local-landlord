@@ -18,10 +18,12 @@ export interface FeeRule {
   billingMonths?: number;
   /** Months collected on move-in. May differ from billingMonths. */
   initialMonths?: number;
+  /** Revised rules start here; already-issued bill snapshots stay untouched. */
+  effectivePeriod?: string;
   sortOrder: number;
 }
 
-export function normalizeFeeRules(input: unknown): FeeRule[] {
+export function normalizeFeeRules(input: unknown, options: { historicalInitialMonths?: boolean } = {}): FeeRule[] {
   if (!Array.isArray(input)) {
     throw new BadRequestException('收费项目格式不正确');
   }
@@ -79,7 +81,7 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
     if (isRent && collectionTiming === 'arrears') {
       throw new BadRequestException('房租必须在入住时预收，不能设置为后收');
     }
-    if (isRent && billingMonths !== undefined && initialMonths !== undefined
+    if (!options.historicalInitialMonths && isRent && billingMonths !== undefined && initialMonths !== undefined
       && (initialMonths < billingMonths || initialMonths % billingMonths !== 0)) {
       throw new BadRequestException(`房租首次应收月数必须是“付${billingMonths}”的整倍数`);
     }
@@ -100,6 +102,15 @@ export function normalizeFeeRules(input: unknown): FeeRule[] {
   if (!rules.some(rule => rule.enabled)) throw new BadRequestException('请至少启用一个收费项目');
   if (!rules.some(rule => rule.isRent)) throw new BadRequestException('收费项目必须包含房租');
   return rules;
+}
+
+/** Editing future charges must not rewrite coverage already set at move-in. */
+export function normalizeUpdatedFeeRules(input: unknown, previous: FeeRule[], payMonths: number): FeeRule[] {
+  return normalizeFeeRules(input, { historicalInitialMonths: true }).map(rule => {
+    const existing = previous.find(old => rule.isRent ? !!old.isRent : !old.isRent && old.name === rule.name);
+    if (!existing || existing.collectionTiming === 'arrears' || rule.collectionTiming === 'arrears') return rule;
+    return { ...rule, initialMonths: feeRuleInitialMonths(existing, payMonths) };
+  });
 }
 
 export function feeEntitiesToRules(items: FeeItem[]): FeeRule[] {
@@ -187,6 +198,14 @@ export function feeRuleDueMonths(
   moveInDate: string,
   targetPeriod: string,
 ): number {
+  if (!rule.enabled) return 0;
+  if (rule.effectivePeriod) {
+    const [startYear, startMonth] = rule.effectivePeriod.split('-').map(Number);
+    const [targetYear, targetMonth] = targetPeriod.split('-').map(Number);
+    const offset = (targetYear - startYear) * 12 + targetMonth - startMonth;
+    const months = feeRuleBillingMonths(rule, payMonths);
+    return offset >= 0 && offset % months === 0 ? months : 0;
+  }
   const start = new Date(`${moveInDate.slice(0, 7)}-01T00:00:00`);
   const target = new Date(`${targetPeriod}-01T00:00:00`);
   const offset = (target.getFullYear() - start.getFullYear()) * 12 + target.getMonth() - start.getMonth();

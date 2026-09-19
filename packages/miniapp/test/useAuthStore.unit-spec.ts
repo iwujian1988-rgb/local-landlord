@@ -238,6 +238,39 @@ describe('login (USE_CLOUD=false) — wx.login → /auth/wechat/login', () => {
   });
 });
 
+describe('bindPhone — 已登录账号绑定微信手机号', () => {
+  beforeEach(resetStore);
+
+  it('TC-AUTH-BIND-001: 绑定成功后立即更新页面状态和本地缓存', async () => {
+    useAuthStore.setState({
+      token: 'logged-in-token',
+      isLoggedIn: true,
+      user: { id: 7, name: '王房东', phone: '' },
+    });
+    mockRequest().mockResolvedValueOnce({
+      statusCode: 200,
+      data: { code: 0, data: { id: 7, name: '王房东', phone: '13612345678' }, message: 'success' },
+    });
+
+    const phone = await useAuthStore.getState().bindPhone('phone-code');
+
+    expect(phone).toBe('13612345678');
+    expect(useAuthStore.getState().user?.phone).toBe('13612345678');
+    expect(Taro.getStorageSync('landlord_info')).toEqual({ id: 7, name: '王房东', phone: '13612345678' });
+    expect(mockRequest()).toHaveBeenLastCalledWith(expect.objectContaining({
+      method: 'POST',
+      data: { phoneCode: 'phone-code' },
+      header: expect.objectContaining({ Authorization: 'Bearer logged-in-token' }),
+    }));
+  });
+
+  it('TC-AUTH-BIND-002: 没有授权 code 时明确报错且不发请求', async () => {
+    const requestCount = mockRequest().mock.calls.length;
+    await expect(useAuthStore.getState().bindPhone('')).rejects.toThrow(/没有获得手机号授权/);
+    expect(mockRequest()).toHaveBeenCalledTimes(requestCount);
+  });
+});
+
 /**
  * shouldFallbackToWechatLogin — private helper, but reachable via cloud-login
  * error path. Mirror the regex here as a regression sentinel.

@@ -93,7 +93,7 @@ export class UtilityReadingService {
         throw new BadRequestException('提交的水电项目不属于当前租约');
       }
       const bill = await manager.findOne(Bill, { where: { roomId, tenantId: tenant.id, period: dto.period } });
-      if (bill && [1, 3, 4].includes(bill.status)) {
+      if (bill && ([1, 3, 4].includes(bill.status) || Number(bill.paidAmount) > 0)) {
         throw new BadRequestException('该月账单已收款或已作废，不能再修改水电记录');
       }
 
@@ -114,7 +114,9 @@ export class UtilityReadingService {
         const allMonthlyReadings = await manager.find(UtilityReading, {
           where: { roomId, tenantId: tenant.id, period: dto.period },
         });
-        await this.syncBillUtilities(manager, bill, allMonthlyReadings);
+        const fixedUtilityNames = new Set(resolveFeeRules(tenant.feeRules, legacyFeeItems, Number(room.rent) || 0)
+          .filter(rule => rule.type === 0 && isUtilityFeeName(rule.name)).map(rule => rule.name));
+        await this.syncBillUtilities(manager, bill, allMonthlyReadings, fixedUtilityNames);
       }
       return Promise.all(saved.map(record => this.toResponse(record)));
     });
@@ -176,9 +178,10 @@ export class UtilityReadingService {
     };
   }
 
-  private async syncBillUtilities(manager: EntityManager, bill: Bill, saved: UtilityReading[]) {
+  private async syncBillUtilities(manager: EntityManager, bill: Bill, saved: UtilityReading[], fixedUtilityNames: Set<string>) {
     const items = await manager.find(BillItem, { where: { billId: bill.id } });
-    const retained = items.filter(item => !isUtilityFeeName(item.feeName));
+    const retained = items.filter(item => !item.utilityReadingId
+      && (!isUtilityFeeName(item.feeName) || fixedUtilityNames.has(item.feeName)));
     await manager.delete(BillItem, { billId: bill.id });
     const utilityItems = saved
       .filter(record => record.chargeMode !== 0)

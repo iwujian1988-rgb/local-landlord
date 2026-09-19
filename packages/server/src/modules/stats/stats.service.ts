@@ -655,7 +655,7 @@ export class StatsService {
 
       const legacyFees = await this.feeItemRepository.find({ where: { roomId: room.id } });
       const fees = resolveFeeRules(tenant.feeRules, legacyFees, Number(room.rent) || 0);
-      if (!fees.some(fee => feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr) > 0)) continue;
+      const isDueMonth = fees.some(fee => fee.enabled && feeRuleDueMonths(fee, payMonths, tenant.moveInDate, monthStr) > 0);
 
       // Find the bill issued in this collection month.
       const bill = allRoomIds.length > 0
@@ -668,8 +668,6 @@ export class StatsService {
             .getOne()
         : null;
 
-      if (bill && bill.status === 1) continue; // already paid, skip
-
       // Check if overdue or due (exclude cancelled bills)
       const hasPriorOverdue = allRoomIds.length > 0
         ? (await this.billRepository
@@ -681,26 +679,26 @@ export class StatsService {
             .getCount()) > 0
         : false;
 
+      if (!hasPriorOverdue && (bill?.status === 1 || (!bill && !isDueMonth))) continue;
+      const dueDate = bill?.dueDate ? dayjs(bill.dueDate).startOf('day') : dueDateForPeriod(monthStr, rentDay);
+      const daysUntil = dueDate.diff(dayjs(now).startOf('day'), 'day');
+
       if (hasPriorOverdue) {
         todoCount++;
         pendingHouseholds++;
         descParts.push(`${tenant?.name || room.name}已逾期`);
-      } else if (bill && bill.status !== 1 && today > dueDay) {
+      } else if (daysUntil < 0) {
         todoCount++;
         pendingHouseholds++;
-        descParts.push(`${tenant?.name || room.name}已逾期${today - dueDay}天`);
-      } else if (!bill && today > dueDay) {
-        todoCount++;
-        pendingHouseholds++;
-        descParts.push(`${tenant?.name || room.name}已逾期${today - dueDay}天`);
-      } else if (today === dueDay) {
+        descParts.push(`${tenant?.name || room.name}已逾期${-daysUntil}天`);
+      } else if (daysUntil === 0) {
         todoCount++;
         pendingHouseholds++;
         descParts.push(`${tenant?.name || room.name}今天该收`);
-      } else if (dueDay > today && dueDay - today <= 3) {
+      } else if (daysUntil <= 3) {
         todoCount++;
         pendingHouseholds++;
-        descParts.push(`${tenant?.name || room.name}还有${dueDay - today}天`);
+        descParts.push(`${tenant?.name || room.name}还有${daysUntil}天`);
       }
     }
 
@@ -744,7 +742,7 @@ export class StatsService {
     let firstVacantRoomId = 0;
     if (!showRoomGuide && allRoomIds.length > 0) {
       // Trigger when ANY room lacks an active tenant (vacant or rented-but-missing-tenant-record)
-      showTenantGuide = allRooms.some(r => !tenantedRoomIds.has(r.id));
+      showTenantGuide = allRooms.some(r => r.status !== 2 && !tenantedRoomIds.has(r.id));
       if (showTenantGuide) {
         // Priority: room marked rented but missing tenant record > first vacant room
         const rentedWithoutTenant = allRooms.find(r => r.status === 1 && !tenantedRoomIds.has(r.id));

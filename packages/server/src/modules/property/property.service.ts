@@ -12,6 +12,9 @@ import { resolveFeeRules } from '../fee/fee-rules';
 import { Document } from '../document/document.entity';
 import { RentRecord } from '../rent/rent-record.entity';
 import { SingleCharge } from '../rent/single-charge.entity';
+import { UtilityReading } from '../utility-reading/utility-reading.entity';
+import { dueDateForPeriod } from '../bill/bill-due-date';
+import dayjs from 'dayjs';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 
@@ -142,6 +145,13 @@ export class PropertyService {
         select: ['id'],
       });
       const roomIds = rooms.map(r => r.id);
+      if (roomIds.length) {
+        for (const entity of [Bill, Tenant, RentRecord, SingleCharge, Document, UtilityReading]) {
+          if (await manager.count(entity, { where: { roomId: In(roomIds) } })) {
+            throw new BadRequestException('这里有以前的账，不能永久删除。请在房间里选择“暂时不管理这个房间”');
+          }
+        }
+      }
 
       if (roomIds.length > 0) {
         const bills = await manager.find(Bill, {
@@ -156,6 +166,7 @@ export class PropertyService {
 
         await manager.delete(RentRecord, { roomId: In(roomIds) });
         await manager.delete(SingleCharge, { roomId: In(roomIds) });
+        await manager.delete(UtilityReading, { roomId: In(roomIds) });
         await manager.delete(Bill, { roomId: In(roomIds) });
         await manager.delete(Document, { roomId: In(roomIds) });
         await manager.delete(FeeItem, { roomId: In(roomIds) });
@@ -170,7 +181,7 @@ export class PropertyService {
   /** Calculate property statistics */
   private async getPropertyStats(propertyId: number) {
     const rooms = await this.roomRepository.find({ where: { propertyId } });
-    const roomCount = rooms.length;
+    const roomCount = rooms.filter(r => r.status !== 2).length;
 
     const rentedCount = rooms.filter(r => r.status === 1).length;
     const vacantCount = rooms.filter(r => r.status === 0).length;
@@ -178,14 +189,19 @@ export class PropertyService {
     // Overdue bills
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const overdueCount = await this.billRepository
+    const unpaidBills = await this.billRepository
       .createQueryBuilder('bill')
       .innerJoin('bill.room', 'room')
+      .leftJoinAndSelect('bill.tenant', 'tenant')
       .where('room.propertyId = :propertyId', { propertyId })
       .andWhere('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
       .andWhere('bill.period <= :period', { period: monthStr })
-      .andWhere('COALESCE(bill.period_end, bill.period) <= :period', { period: monthStr })
-      .getCount();
+      .getMany();
+    const overdueCount = unpaidBills.filter(bill => {
+      const due = bill.dueDate ? dayjs(bill.dueDate) : dueDateForPeriod(bill.period, bill.tenant?.rentDay ?? 10);
+      return Number(bill.totalAmount) > Number(bill.paidAmount || 0)
+        && dayjs(now).startOf('day').isAfter(due.startOf('day'));
+    }).length;
 
     // Monthly expected income for active rented rooms only. This is not
     // theoretical capacity; vacant rooms must not inflate "本月应收".

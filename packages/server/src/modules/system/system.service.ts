@@ -393,26 +393,15 @@ export class SystemService {
 
   async confirmAdminBill(id: number, paidAt?: string) {
     return this.entityManager.transaction(async (manager) => {
-      const bill = await manager.findOne(Bill, { where: { id } });
+      const bill = await this.lockAdminBill(manager, id);
       if (!bill) throw new NotFoundException('账单不存在');
       if (bill.status === 1) {
         throw new BadRequestException('该账单已确认收款');
       }
-      bill.status = 1;
-      bill.paidAt = paidAt ? new Date(paidAt) : new Date();
-      const savedBill = await manager.save(bill);
-
-      const rentRecord = manager.create(RentRecord, {
-        roomId: bill.roomId,
-        billId: bill.id,
-        type: 1,
-        title: `收租-${bill.period}`,
-        description: `管理员确认收款: ${bill.totalAmount}`,
-        amount: bill.totalAmount,
-      });
-      await manager.save(rentRecord);
-
-      return savedBill;
+      if (bill.status === 4) {
+        throw new BadRequestException('该账单已退租作废，无法收款');
+      }
+      return this.settleAdminBill(manager, bill, paidAt ? new Date(paidAt) : new Date());
     });
   }
 
@@ -420,29 +409,50 @@ export class SystemService {
     return this.entityManager.transaction(async (manager) => {
       const resolvedPaidAt = paidAt ? new Date(paidAt) : new Date();
       let confirmedCount = 0;
-      for (const id of ids) {
-        const bill = await manager.findOne(Bill, { where: { id } });
+      // Stable lock order also handles overlapping batches without lock inversion.
+      for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
+        const bill = await this.lockAdminBill(manager, id);
         if (bill) {
-          if (bill.status === 1) {
+          if (bill.status === 1 || bill.status === 4) {
             continue;
           }
-          bill.status = 1;
-          bill.paidAt = resolvedPaidAt;
-          await manager.save(bill);
-          const rentRecord = manager.create(RentRecord, {
-            roomId: bill.roomId,
-            billId: bill.id,
-            type: 1,
-            title: `收租-${bill.period}`,
-            description: `管理员批量确认收款: ${bill.totalAmount}`,
-            amount: bill.totalAmount,
-          });
-          await manager.save(rentRecord);
+          await this.settleAdminBill(manager, bill, resolvedPaidAt);
           confirmedCount++;
         }
       }
       return { success: true, count: confirmedCount, total: ids.length };
     });
+  }
+
+  private async lockAdminBill(manager: EntityManager, id: number): Promise<Bill | null> {
+    const query = manager.getRepository(Bill).createQueryBuilder('bill')
+      .where('bill.id = :id', { id });
+    if (manager.connection.options.type === 'mysql') query.setLock('pessimistic_write');
+    return query.getOne();
+  }
+
+  private async settleAdminBill(manager: EntityManager, bill: Bill, paidAt: Date): Promise<Bill> {
+    const totalCents = Math.round(Number(bill.totalAmount) * 100);
+    const paidCents = Math.round((Number(bill.paidAmount) || 0) * 100);
+    const remaining = Math.max(0, totalCents - paidCents) / 100;
+    bill.status = 1;
+    bill.paidAmount = totalCents / 100;
+    bill.paidAt = paidAt;
+    const saved = await manager.save(bill);
+    // A prior partial payment already has its own cash record. Only the balance
+    // moves now; repair fully-covered legacy rows without inventing extra cash.
+    if (remaining > 0) {
+      await manager.save(manager.create(RentRecord, {
+        roomId: bill.roomId,
+        billId: bill.id,
+        type: 1,
+        title: `收租-${bill.period}`,
+        description: `管理员确认收款: ${remaining}`,
+        amount: remaining,
+        paymentAt: paidAt,
+      }));
+    }
+    return saved;
   }
 
   async batchRemindAdminBills(ids: number[]) {
@@ -453,12 +463,10 @@ export class SystemService {
         results.push({ billId: id, reminded: false, reason: '账单不存在' });
         continue;
       }
-      // B5 fix: only paid bills (status=1) should be skipped.
-      // Previously this rejected anything that wasn't status=0, which silently
-      // swallowed overdue bills (status=2) — exactly the bills admins most need
-      // to chase down via batch remind.
-      if (bill.status === 1) {
-        results.push({ billId: id, reminded: false, reason: '账单已确认收款，无需催缴' });
+      const remaining = Math.max(0, Math.round(Number(bill.totalAmount) * 100)
+        - Math.round((Number(bill.paidAmount) || 0) * 100)) / 100;
+      if (![0, 2, 3].includes(bill.status) || remaining === 0) {
+        results.push({ billId: id, reminded: false, reason: bill.status === 4 ? '账单已作废，无需催缴' : '账单已确认收款，无需催缴' });
         continue;
       }
       const title = `催缴提醒-${bill.period}`;
@@ -471,7 +479,7 @@ export class SystemService {
           billId: bill.id,
           type: 3,
           title,
-          description: `管理员催缴: 账单 ${bill.period}，金额 ${bill.totalAmount}`,
+          description: `管理员催缴: 账单 ${bill.period}，待收 ${remaining}`,
           amount: 0,
         });
         await this.rentRecordRepository.save(rentRecord);
@@ -482,7 +490,7 @@ export class SystemService {
         tenantName: bill.tenant?.name,
         roomName: bill.room?.name,
         period: bill.period,
-        amount: bill.totalAmount,
+        amount: remaining,
         sentAt: new Date().toISOString(),
       });
     }
@@ -743,7 +751,7 @@ export class SystemService {
       if (type !== undefined && type !== null && !isNaN(type)) {
         qb.andWhere('doc.type = :type', { type });
       } else {
-        qb.andWhere('doc.type = :type', { type: 1 });
+        qb.andWhere('doc.type = :type', { type: 0 });
       }
 
       if (roomId) {
@@ -768,7 +776,7 @@ export class SystemService {
     }
     const doc = this.documentRepository.create({
       roomId: data.roomId,
-      type: 1,
+      type: 0,
       name: data.name,
       imageUrl: data.imageUrl,
       note: data.note || '',

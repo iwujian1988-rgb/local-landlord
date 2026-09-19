@@ -14,6 +14,16 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
+  @Post('tenants/:id/fee-preview')
+  async previewFees(
+    @CurrentUser() user: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTenantDto,
+  ) {
+    await this.tenantService.verifyTenantOwnership(id, user.id);
+    return this.tenantService.previewFees(id, dto);
+  }
+
   @Post('rooms/:roomId/tenant')
   async create(
     @CurrentUser() user: any,

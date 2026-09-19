@@ -4,6 +4,7 @@ import ConfirmModal from '../../components/ConfirmModal';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import Icon from '../../components/Icon';
+import PaymentCorrectionModal from '../../components/PaymentCorrectionModal';
 import { useState, useCallback, useMemo } from 'react';
 import { get, post, put } from '../../services/request';
 import { uploadFiles } from '../../services/upload';
@@ -49,6 +50,7 @@ interface PageData {
   uploading: boolean;
   submitting: boolean;
   confirmVisible: boolean;
+  correctionVisible: boolean;
 }
 
 const emptyPageData: PageData = {
@@ -67,6 +69,7 @@ const emptyPageData: PageData = {
   uploading: false,
   submitting: false,
   confirmVisible: false,
+  correctionVisible: false,
 };
 
 function formatPeriodRange(period: string, periodEnd: string | null): string {
@@ -281,6 +284,20 @@ export default function Bill() {
     }
   }, [roomId, tenantId, data.billId, data.period, data.billItems, totalAmount, data.photos, data.submitting, findCurrentBillId]);
 
+  const handleCorrectPayment = useCallback(async (amount: number, reason: string) => {
+    if (!data.billId || data.submitting) return;
+    setData(prev => ({ ...prev, submitting: true }));
+    try {
+      await put(`/bills/${data.billId}/correct-payment`, { paidAmount: amount,
+        expectedPaidAmount: data.paidAmount, reason });
+      setData(prev => ({ ...prev, correctionVisible: false }));
+      Taro.showToast({ title: '金额已经改好了', icon: 'none' });
+      await loadData();
+    } catch (err: any) {
+      Taro.showToast({ title: err?.message || '没有改成功，请再试一次', icon: 'none' });
+    } finally { setData(prev => ({ ...prev, submitting: false })); }
+  }, [data.billId, data.paidAmount, totalAmount, loadData]);
+
   return (
     <View className="page-bill">
       <ScrollView className="bill-scroll" scrollY>
@@ -387,6 +404,9 @@ export default function Bill() {
               <View className={`bill-action-btn paid-btn${data.submitting ? ' disabled' : ''}`} onClick={data.submitting ? undefined : () => setData(prev => ({ ...prev, confirmVisible: true }))}>
                 <Text className="bill-action-text paid">{data.submitting ? '处理中...' : '我已收到钱'}</Text>
               </View>
+              {data.paidAmount > 0 && <View className="bill-action-btn secondary" onClick={() => setData(prev => ({ ...prev, correctionVisible: true }))}>
+                <Text className="bill-action-text secondary">收款金额记错了</Text>
+              </View>}
             </View>
 
             <View style={{ height: 40 }} />
@@ -404,6 +424,10 @@ export default function Bill() {
         onConfirm={handleConfirmPaid}
         onCancel={() => setData(prev => ({ ...prev, confirmVisible: false }))}
       />
+      <PaymentCorrectionModal visible={data.correctionVisible} currentAmount={data.paidAmount}
+        totalAmount={totalAmount} submitting={data.submitting}
+        onCancel={() => setData(prev => ({ ...prev, correctionVisible: false }))}
+        onConfirm={handleCorrectPayment} />
     </View>
   );
 }

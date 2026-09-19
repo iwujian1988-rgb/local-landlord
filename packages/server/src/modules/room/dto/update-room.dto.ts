@@ -3,6 +3,14 @@ import { Type } from 'class-transformer';
 
 export class UpdateRoomDto {
   @IsOptional()
+  @IsIn(['keep', 'waive'])
+  debtAction?: 'keep' | 'waive';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  debtReason?: string;
+  @IsOptional()
   @IsString()
   @MaxLength(32)
   name?: string;

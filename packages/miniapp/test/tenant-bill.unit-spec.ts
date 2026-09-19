@@ -9,15 +9,17 @@ import {
 const payload = (overrides: Partial<TenantBillPayload> = {}): TenantBillPayload => ({
   roomName: '101', tenantName: '王大力', period: '2026-08',
   items: [{ name: '房租', amount: 3000 }, { name: '物业费', amount: 600 }],
-  totalAmount: 9999, paidAmount: 0, qrCodes: [], payeeName: '', landlordName: '', paymentNote: '',
+  totalAmount: 3600, paidAmount: 0, qrCodes: [], payeeName: '', landlordName: '', paymentNote: '',
   ...overrides,
 });
 
 describe('normalizeTenantBill', () => {
-  it('TC-TENANT-BILL-001: 明细为真源，防止页面合计与明细不一致', () => {
-    const result = normalizeTenantBill(payload());
-    expect(result.totalAmount).toBe(3600);
-    expect(result.outstandingAmount).toBe(3600);
+  it('historical item mismatch must not hide a remaining payment', () => {
+    const result = normalizeTenantBill(payload({ totalAmount: 4000, paidAmount: 3600 }));
+    expect(result.totalAmount).toBe(4000);
+    expect(result.outstandingAmount).toBe(400);
+    expect(result.isPaid).toBe(false);
+    expect(buildTenantBillCopyText(result)).toContain('本次应付：400元');
   });
 
   it('TC-TENANT-BILL-002: 部分付款只要求支付剩余金额', () => {
@@ -36,6 +38,7 @@ describe('normalizeTenantBill', () => {
 
   it('TC-TENANT-BILL-004: 金额统一保留到分，避免浮点误差', () => {
     const result = normalizeTenantBill(payload({
+      totalAmount: 0.3,
       items: [{ name: '水费', amount: 0.1 }, { name: '电费', amount: 0.2 }],
     }));
     expect(result.totalAmount).toBe(0.3);

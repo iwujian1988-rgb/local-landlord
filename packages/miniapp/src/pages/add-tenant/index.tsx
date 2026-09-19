@@ -453,6 +453,25 @@ export default function AddTenant() {
         requestNotification();
       }
       if (isEdit) {
+        const preview = await post<{ rows: Array<{ name: string; period: string; dueDate: string; amount: number; manual: boolean }>; token: string }>(
+          `/tenants/${tenantId}/fee-preview`, tenantData,
+        );
+        const rows = preview.data?.rows || [];
+        const confirmed = await Taro.showModal({
+          title: '请确认以后怎么收费',
+          content: (rows.map(row => {
+            const [year, month] = row.period.split('-');
+            return `从${year}年${Number(month)}月开始，${row.name}${row.manual ? '每次按实际金额填写' : `每次收${row.amount}元`}`;
+          }).join('\n') || '收费时间和金额都没有变化') + '\n\n以前已经出的账单不会改变。',
+          confirmText: '确认保存',
+          cancelText: '返回修改',
+        });
+        if (!confirmed.confirm) {
+          saveInFlightRef.current = false;
+          setSaving(false);
+          return;
+        }
+        tenantData.feePreviewToken = preview.data?.token;
         await put(`/tenants/${tenantId}`, tenantData);
       } else {
         await post(`/rooms/${urlRoomId}/tenant`, tenantData);
@@ -481,7 +500,7 @@ export default function AddTenant() {
       }
     } catch (err: any) {
       console.error('[AddTenant] 保存租客失败:', err);
-      Taro.showToast({ title: err?.message || '保存失败', icon: 'none' });
+      Taro.showToast({ title: '没有保存成功，请再试一次', icon: 'none' });
       saveInFlightRef.current = false;
       setSaving(false);
     }

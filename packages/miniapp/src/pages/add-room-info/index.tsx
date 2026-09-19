@@ -29,7 +29,11 @@ export default function AddRoomInfo() {
 
   const [showMore, setShowMore] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<string[]>(() => {
+    if (roomId || routerParams.fromPhotos !== '1') return [];
+    const saved = Taro.getStorageSync('tempRoomPhotos');
+    return Array.isArray(saved) ? saved.filter((url): url is string => typeof url === 'string' && !!url) : [];
+  });
   const [uploading, setUploading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -64,7 +68,7 @@ export default function AddRoomInfo() {
         Taro.setNavigationBarTitle({ title: '编辑房间信息' });
         setIsEdit(true);
         setName(found.name || '');
-        setRent(String(found.rent || ''));
+        setRent(String(found.rent ?? ''));
         setArea(found.area || '');
         setFloor(found.floor || '');
         setOrientation(found.orientation || '');

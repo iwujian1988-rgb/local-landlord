@@ -9,7 +9,7 @@ describe('room list filters', () => {
   ];
 
   it('counts vacant and all occupied states consistently', () => {
-    expect(countRooms(rooms)).toEqual({ all: 4, vacant: 1, rented: 3 });
+    expect(countRooms(rooms)).toEqual({ all: 4, vacant: 1, rented: 3, archived: 0 });
   });
 
   it('treats rented, approaching and overdue rooms as occupied', () => {

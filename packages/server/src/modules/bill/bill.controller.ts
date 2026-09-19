@@ -2,6 +2,7 @@ import { Controller, Post, Get, Put, Body, Param, UseGuards, ParseIntPipe } from
 import { BillService } from './bill.service';
 import { CreateBillDto } from './dto/create-bill.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { CorrectPaymentDto } from './dto/correct-payment.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -12,6 +13,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 @Roles(1)
 export class BillController {
   constructor(private readonly billService: BillService) {}
+
+  @Put('bills/:id/correct-payment')
+  async correctPayment(@CurrentUser() user: any, @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CorrectPaymentDto) {
+    await this.billService.verifyBillOwnership(id, user.id);
+    return this.billService.correctPayment(id, dto);
+  }
 
   @Post('rooms/:roomId/bills')
   async create(

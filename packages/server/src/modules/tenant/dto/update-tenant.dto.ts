@@ -5,6 +5,11 @@ import { TenantFeeRuleDto } from './tenant-fee-rule.dto';
 export class UpdateTenantDto {
   @IsOptional()
   @IsString()
+  @MaxLength(64)
+  feePreviewToken?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(32)
   name?: string;
 

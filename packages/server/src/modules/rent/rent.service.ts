@@ -138,6 +138,21 @@ export class RentService {
    *   completed   — current bill (covering this month) paid
    *   upcoming    — current month is NOT a due-month (押X付Y cycle off), show next due month
    */
+  async getDepartedDebts(landlordId: number) {
+    const bills = await this.billRepository.createQueryBuilder('bill')
+      .innerJoinAndSelect('bill.tenant', 'tenant')
+      .innerJoinAndSelect('bill.room', 'room')
+      .innerJoin('room.property', 'property')
+      .where('property.landlordId = :landlordId', { landlordId })
+      .andWhere('tenant.status = 0')
+      .andWhere('bill.status IN (:...statuses)', { statuses: [0, 2, 3] })
+      .andWhere('bill.totalAmount > bill.paidAmount')
+      .orderBy('bill.period', 'ASC').getMany();
+    return bills.map(b => ({ billId: b.id, roomId: b.roomId, roomName: b.room.name,
+      tenantName: b.tenant.name, period: b.period, totalAmount: Number(b.totalAmount),
+      paidAmount: Number(b.paidAmount), remainingAmount: Math.round((Number(b.totalAmount) - Number(b.paidAmount)) * 100) / 100 }));
+  }
+
   async getPendingRent(landlordId: number): Promise<PendingRentGroup> {
     const properties = await this.propertyRepository.find({ where: { landlordId } });
     if (properties.length === 0) {
@@ -238,7 +253,7 @@ export class RentService {
         : 0;
 
       // Cycle check: is current month a due-month?
-      let isDueMonth = estimatedTotal > 0 || resolvedRules.some(rule =>
+      let isDueMonth = !!bill || estimatedTotal > 0 || resolvedRules.some(rule =>
         tenant ? feeRuleDueMonths(rule, payMonths, tenant.moveInDate, monthStr) > 0 : false,
       );
       let nextDueMonth: string | null = null;
@@ -273,7 +288,7 @@ export class RentService {
         billStatus: bill?.status ?? 0,
         billPeriod: bill?.period || null,
         billPeriodEnd: bill?.periodEnd || null,
-        totalAmount: Number(bill?.totalAmount) || estimatedTotal,
+        totalAmount: bill ? Number(bill.totalAmount) : estimatedTotal,
         paidAmount: Number(bill?.paidAmount) || 0,
         overdueDays,
         daysUntil,
@@ -286,7 +301,7 @@ export class RentService {
       // silently disappears from every bucket. Point the entry at the oldest
       // unpaid bill so 催一下/确认收款 act on the money actually owed.
       if (hasPriorOverdue) {
-        const target = bill && bill.status !== 1 ? bill : priorUnpaidBillMap.get(room.id);
+        const target = priorUnpaidBillMap.get(room.id);
         if (target) {
           entry.billId = target.id;
           entry.billStatus = target.status;
@@ -305,6 +320,7 @@ export class RentService {
             0,
             dayjs().startOf('day').diff(targetDueDate, 'day'),
           );
+          entry.daysUntil = 0;
         }
         overdueList.push(entry);
         continue;

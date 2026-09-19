@@ -25,15 +25,14 @@ function money(value: unknown): number {
   return Math.round(amount * 100) / 100;
 }
 
-/** The visible total always comes from visible line items, preventing detail/total drift. */
+/** Settlement uses the server's stored total, including historical item/total mismatches. */
 export function normalizeTenantBill(payload: TenantBillPayload) {
   const items = Array.isArray(payload.items)
     ? payload.items
       .filter(item => item && typeof item.name === 'string')
       .map(item => ({ name: item.name.trim() || '费用', amount: money(item.amount) }))
     : [];
-  const itemTotal = money(items.reduce((sum, item) => sum + item.amount, 0));
-  const totalAmount = items.length > 0 ? itemTotal : money(payload.totalAmount);
+  const totalAmount = money(payload.totalAmount);
   const rawPaid = payload.isPaid ? totalAmount : money(payload.paidAmount);
   const paidAmount = money(Math.min(totalAmount, rawPaid));
   const outstandingAmount = money(Math.max(0, totalAmount - paidAmount));

@@ -157,6 +157,7 @@ describe('Stats module — overdue logic (e2e)', () => {
       rentDay: clampDay(todayDay() - 5), // would be overdue if checked
       payMonths: 3,
       moveInDate: `${lastMonthStr}-01`,
+      paid: true, // Off-cycle is quiet only when the earlier collection was paid.
     });
     const data = await getHome();
     // Tenant is mid-cycle, should NOT appear in today's todo

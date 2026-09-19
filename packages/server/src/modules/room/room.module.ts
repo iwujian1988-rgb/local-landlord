@@ -7,9 +7,10 @@ import { Property } from '../property/property.entity';
 import { Tenant } from '../tenant/tenant.entity';
 import { FeeItem } from '../fee/fee-item.entity';
 import { Bill } from '../bill/bill.entity';
+import { TenantModule } from '../tenant/tenant.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Room, Property, Tenant, FeeItem, Bill])],
+  imports: [TypeOrmModule.forFeature([Room, Property, Tenant, FeeItem, Bill]), TenantModule],
   controllers: [RoomController],
   providers: [RoomService],
   exports: [RoomService],

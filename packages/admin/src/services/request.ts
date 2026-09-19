@@ -1,4 +1,10 @@
 import axios from 'axios';
+import { useAuthStore } from '../store/useAuthStore';
+
+function expireSession() {
+  useAuthStore.getState().clearAuth();
+  window.location.href = '/login';
+}
 
 const request = axios.create({
   baseURL: '/api',
@@ -15,6 +21,7 @@ request.interceptors.request.use((config) => {
 
 request.interceptors.response.use(
   (res) => {
+    if (res.data?.code === 401) expireSession();
     if (res.data?.code !== 0) {
       return Promise.reject(new Error(res.data?.message || '请求失败'));
     }
@@ -22,8 +29,7 @@ request.interceptors.response.use(
   },
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      expireSession();
     }
     return Promise.reject(err);
   },

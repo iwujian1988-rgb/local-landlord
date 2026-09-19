@@ -314,6 +314,23 @@ export class AuthService {
     };
   }
 
+  /** Bind the phone authorized by the current logged-in WeChat user. */
+  async bindWechatPhone(userId: number, phoneCode: string) {
+    let phone: string;
+    try {
+      phone = await this.wechatApiService.getPhoneNumber(phoneCode);
+    } catch (error) {
+      this.logger.warn(`WeChat phone binding rejected: ${this.describeWechatRequestError(error)}`);
+      throw new BadRequestException('没有绑定成功，请重新点击“绑定手机号”再试一次');
+    }
+
+    const landlord = await this.landlordRepository.findOne({ where: { id: userId } });
+    if (!landlord) throw new BadRequestException('用户不存在');
+    landlord.phone = phone;
+    await this.landlordRepository.save(landlord);
+    return this.getMe({ id: userId, isAdmin: false });
+  }
+
   /** Update profile - supports both landlord and admin */
   async updateProfile(userId: number, dto: UpdateProfileDto, isAdmin: boolean) {
     if (isAdmin) {

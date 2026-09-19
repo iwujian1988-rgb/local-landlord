@@ -113,6 +113,8 @@
   border-radius: var(--radius-md);
   padding: 20px 24px;
   border: 2px solid transparent;
+  min-height: 88px;
+  box-sizing: border-box;
 }
 
 .deposit-option.active {
@@ -175,11 +177,13 @@
 
 .deposit-actions {
   display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
 .deposit-btn {
-  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
   border-radius: var(--radius-lg);
   font-size: var(--font-sm);
   font-weight: 700;
@@ -187,11 +191,11 @@
   align-items: center;
   justify-content: center;
   padding: 20px;
-  min-height: 80px;
+  min-height: 92px;
 }
 
 .deposit-btn.cancel {
-  background: var(--bg-soft);
+  background: transparent;
   color: var(--text-secondary);
 }
 

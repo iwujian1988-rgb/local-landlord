@@ -2,7 +2,6 @@ import { View, Text, ScrollView } from '@tarojs/components';
 import Taro, { useDidShow } from '@tarojs/taro';
 import Icon from '../../components/Icon';
 import ConfirmModal from '../../components/ConfirmModal';
-import EmptyState from '../../components/EmptyState';
 import Loading from '../../components/Loading';
 import ErrorState from '../../components/ErrorState';
 import { useCallback, useState } from 'react';
@@ -13,6 +12,8 @@ import { DEMO_BILLS, DEMO_PENDING, DEMO_SINGLE_CHARGES, DEMO_SUMMARY, promptDemo
 import { requestNotification } from '../../services/notification';
 import { forwardBillShare } from '../../services/share';
 import { RENT_LIST_TAB_INDEX } from '../../constants/app';
+import { rentSection } from '../../utils/rent-load';
+import { rentEmptyView } from '../../utils/rent-view';
 import './index.scss';
 
 interface PendingEntry {
@@ -51,6 +52,7 @@ interface RentStatsSummary {
   totalCollected: number;
   totalPending: number;
 }
+interface DepartedDebt { billId: number; roomId: number; roomName: string; tenantName: string; period: string; totalAmount: number; paidAmount: number; remainingAmount: number }
 
 interface BillRow {
   billId: number;
@@ -153,6 +155,9 @@ export default function RentList() {
   const [upcomingItems, setUpcomingItems] = useState<DisplayItem[]>([]);
   const [allBills, setAllBills] = useState<BillRow[]>([]);
   const [singleCharges, setSingleCharges] = useState<SingleChargeRow[]>([]);
+  const [departedDebts, setDepartedDebts] = useState<DepartedDebt[]>([]);
+  const [debtsError, setDebtsError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [summary, setSummary] = useState<RentStatsSummary>({
     totalExpected: 0,
     totalCollected: 0,
@@ -162,10 +167,15 @@ export default function RentList() {
   const [error, setError] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
   const [singleConfirmId, setSingleConfirmId] = useState(0);
+  const [roomCount, setRoomCount] = useState<number | null>(null);
+  const [billsExpanded, setBillsExpanded] = useState(false);
+  const [debtConfirmingId, setDebtConfirmingId] = useState(0);
 
   const loadData = useCallback(async (): Promise<{ items: DisplayItem[]; bills: BillRow[] }> => {
     setLoading(true);
     setError(false);
+    setDebtsError('');
+    setLoadError('');
     try {
       if (!useAuthStore.getState().isLoggedIn) {
         // Demo browsing for guests/reviewers: the full real UI rendered from
@@ -173,20 +183,28 @@ export default function RentList() {
         setSummary(DEMO_SUMMARY);
         setAllBills(DEMO_BILLS);
         setSingleCharges(DEMO_SINGLE_CHARGES);
+        setDepartedDebts([]);
+        setRoomCount(null);
         const demoItems = buildDisplayItems(DEMO_PENDING);
         setActiveItems(demoItems.filter(i => i.bucket !== 'upcoming'));
         setUpcomingItems(demoItems.filter(i => i.bucket === 'upcoming'));
         return { items: demoItems, bills: DEMO_BILLS };
       }
-      const [res, statsRes, billsRes] = await Promise.all([
+      const [res, statsRes, billsRes, debtsRes, roomsRes] = await Promise.all([
         get<PendingResponse>('/rent/pending'),
         get<RentStatsSummary>('/stats/rent', { period: 'month' }),
         get<AllBillsResponse>('/rent/bills'),
+        rentSection(get<DepartedDebt[]>('/rent/departed-debts')),
+        rentSection(get<unknown[]>('/rooms?includeArchived=true')),
       ]);
       const data = res.data || { today: [], approaching: [], overdue: [], completed: [], upcoming: [] };
       setSummary(statsRes.data || { totalExpected: 0, totalCollected: 0, totalPending: 0 });
       setAllBills(billsRes.data?.bills || []);
       setSingleCharges(billsRes.data?.singleCharges || []);
+      setDepartedDebts(debtsRes.data || []);
+      setDebtsError(debtsRes.error);
+      setRoomCount(roomsRes.data?.length ?? null);
+      if (debtsRes.error) console.warn('[RentList] /rent/departed-debts:', debtsRes.error);
       const allItems = buildDisplayItems(data);
       setActiveItems(allItems.filter(i => i.bucket !== 'upcoming'));
       setUpcomingItems(allItems.filter(i => i.bucket === 'upcoming'));
@@ -203,8 +221,9 @@ export default function RentList() {
         // ignore
       }
       return { items: allItems, bills: billsRes.data?.bills || [] };
-    } catch (err) {
+    } catch (err: any) {
       console.error('[RentList] 加载数据失败:', err);
+      setLoadError(err?.message || '网络连接没有完成');
       setError(true);
       return { items: [], bills: [] };
     } finally {
@@ -219,7 +238,6 @@ export default function RentList() {
 
   useDidShow(() => {
     Taro.setNavigationBarTitle({ title: '收租' });
-    if (!useAuthStore.getState().isLoggedIn) return;
     // Use the data returned from loadData directly — closures over `activeItems`
     // state would see stale (empty) values on first mount, breaking deep-link
     // auto-open of the confirm modal when arriving from a bill notification.
@@ -357,35 +375,76 @@ export default function RentList() {
   const totalExpected = Number(summary.totalExpected) || 0;
   const totalCollected = Number(summary.totalCollected) || 0;
   const totalPending = Number(summary.totalPending) || 0;
+  const emptyView = rentEmptyView({ incomplete: !!debtsError, roomCount,
+    records: activeItems.length + upcomingItems.length + allBills.length + singleCharges.length + departedDebts.length,
+    pending: totalPending });
 
   return (
     <View className="page-rent-list">
       <ScrollView className="rent-scroll" scrollY>
         {!isLoggedIn && <DemoBanner />}
         {loading && <Loading />}
-        {error && <ErrorState description="加载失败，请稍后重试" onRetry={loadData} />}
+        {error && <ErrorState title="暂时看不了收租记录" description="请检查网络后再试一次" onRetry={loadData} />}
         {!loading && !error && (
           <>
 
         {/* Summary card */}
         <View className="rent-summary-card">
+          <Text className="rent-overline">本月收租</Text>
+          <Text className="rent-hero-label">本月还要收（元）</Text>
+          <Text className="rent-hero-amount">{totalPending.toLocaleString()}</Text>
+          <Text className="rent-hero-note">这里只算本月账单，不代表以前的欠款已收清</Text>
           <View className="rent-summary-row">
             <View className="rent-summary-item">
               <Text className="rent-summary-number">{totalExpected.toLocaleString()}</Text>
-              <Text className="rent-summary-label">本月应收</Text>
+              <Text className="rent-summary-label">本月一共要收</Text>
             </View>
             <View className="rent-summary-divider" />
             <View className="rent-summary-item">
               <Text className="rent-summary-number green">{totalCollected.toLocaleString()}</Text>
-              <Text className="rent-summary-label">已收</Text>
-            </View>
-            <View className="rent-summary-divider" />
-            <View className="rent-summary-item">
-              <Text className="rent-summary-number orange">{totalPending.toLocaleString()}</Text>
-              <Text className="rent-summary-label">待收</Text>
+              <Text className="rent-summary-label">本月已收到</Text>
             </View>
           </View>
         </View>
+
+        {!!debtsError && !emptyView && <View className="rent-section-warning">
+          <Text className="rent-section-warning-title">暂时看不了退租租客的欠款</Text>
+          <Text className="rent-section-warning-desc">其他账单可继续操作。</Text>
+          <View className="rent-section-retry" onClick={loadData}><Text>再试一次</Text></View>
+        </View>}
+        {emptyView && <View className={`rent-state-panel${emptyView.retry ? ' incomplete' : ''}`}>
+          <Text className="rent-state-title">{emptyView.title}</Text>
+          <Text className="rent-state-description">{emptyView.description}</Text>
+          <View className="rent-btn primary" onClick={() => emptyView.retry ? loadData() : Taro.switchTab({ url: '/pages/rooms/index' })}>
+            <Text className="rent-btn-text">{emptyView.action}</Text>
+          </View>
+        </View>}
+        {departedDebts.length > 0 && <>
+          <View className="rent-section-header"><Text className="rent-section-title">退租后还没收到的钱</Text>
+            <Text className="rent-section-count">{departedDebts.length}笔</Text></View>
+          {departedDebts.map(debt => <View key={debt.billId} className="rent-item-card">
+            <View className="rent-item-top"><View className="rent-item-info">
+              <Text className="rent-item-name">{debt.roomName} · {debt.tenantName}</Text>
+              <Text className="rent-item-amount">待收 {debt.remainingAmount.toLocaleString()} 元</Text>
+              <Text className="rent-item-period">{debt.period} · 租客已退租，这笔钱还要收</Text>
+            </View><View className="rent-tag tag-red"><Text className="rent-tag-text">还没收到</Text></View></View>
+            <View className="rent-item-actions"><View className={`rent-action-btn primary${debtConfirmingId === debt.billId ? ' disabled' : ''}`} onClick={async () => {
+              if (debtConfirmingId) return;
+              const result = await Taro.showModal({ title: '确认已经收到这笔钱？', content: `将登记收到 ${debt.remainingAmount} 元`, confirmText: '确认收到了' });
+              if (!result.confirm) return;
+              setDebtConfirmingId(debt.billId);
+              try {
+                await put(`/bills/${debt.billId}/confirm`, { actualAmount: debt.remainingAmount });
+                Taro.showToast({ title: '这笔收款已经记好了', icon: 'none' });
+                await loadData();
+              } catch {
+                Taro.showToast({ title: '没有记成功，请再试一次', icon: 'none' });
+              } finally {
+                setDebtConfirmingId(0);
+              }
+            }}><Text>{debtConfirmingId === debt.billId ? '正在记录...' : '记录收款'}</Text></View></View>
+          </View>)}
+        </>}
 
         {activeItems.length > 0 && (
           <View className="rent-section-header">
@@ -401,13 +460,13 @@ export default function RentList() {
           const isPartial = item.entry.paidAmount > 0;
           const remainingAmt = item.entry.totalAmount - (item.entry.paidAmount || 0);
           const needsSettle = isPartial && remainingAmt <= 0 && item.entry.billStatus !== 1;
-          const buttonLabel = needsSettle ? '标记已收清' : isPartial ? '补齐尾款' : '已收到';
+          const buttonLabel = needsSettle ? '标记已收清' : '记录收款';
           return (
             <View key={idx} className="rent-item-card">
               <View className="rent-item-top">
                 <View className="rent-item-info">
                   <Text className="rent-item-name">{item.entry.roomName} · {item.entry.tenantName}</Text>
-                  <Text className="rent-item-amount">{item.entry.totalAmount.toLocaleString()} 元</Text>
+                  <Text className="rent-item-amount">还需收 {Math.max(0, remainingAmt).toLocaleString()} 元</Text>
                   {periodLabel(item.entry) && (
                     <Text className="rent-item-period">{periodLabel(item.entry)}</Text>
                   )}
@@ -460,7 +519,7 @@ export default function RentList() {
               onClick={batchLoading ? undefined : handleBatchRemind}
             >
               <Text className="batch-btn-text">
-                {batchLoading ? '生成中...' : `批量发送提醒（${overdueItems.length}笔）`}
+                {batchLoading ? '生成中...' : `复制催租清单（${overdueItems.length}笔）`}
               </Text>
             </View>
           </View>
@@ -468,11 +527,11 @@ export default function RentList() {
 
         {allBills.length > 0 && (
           <>
-            <View className="rent-section-header">
+            <View className="rent-section-header rent-bills-toggle" onClick={() => setBillsExpanded(!billsExpanded)}>
               <Text className="rent-section-title">本月全部账单</Text>
-              <Text className="rent-section-count">{allBills.length}笔</Text>
+              <Text className="rent-section-count">{allBills.length}笔 · {billsExpanded ? '收起' : '展开'}</Text>
             </View>
-            {allBills.map((bill) => {
+            {billsExpanded && allBills.map((bill) => {
               const payable = bill.status === 0 || bill.status === 2 || bill.status === 3;
               return (
                 <View
@@ -563,7 +622,7 @@ export default function RentList() {
         {upcomingItems.length > 0 && (
           <>
             <View className="rent-section-header">
-              <Text className="rent-section-title">下次收款（非本月周期）</Text>
+              <Text className="rent-section-title">还没到收租日</Text>
               <Text className="rent-section-count">{upcomingItems.length}间</Text>
             </View>
             {upcomingItems.map((item, idx) => (
@@ -583,9 +642,6 @@ export default function RentList() {
           </>
         )}
 
-        {!loading && activeItems.length === 0 && allBills.length === 0 && singleCharges.length === 0 && totalExpected === 0 && (
-          <EmptyState title="本月没有待收租" description="添加房间和租客后，到日子会在这里提醒你" actionText="去添加房间" onAction={() => Taro.switchTab({ url: '/pages/rooms/index' })} />
-        )}
 
         {/* Quick links */}
         <View className="rent-links">

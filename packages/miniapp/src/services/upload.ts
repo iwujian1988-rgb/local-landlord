@@ -32,7 +32,8 @@ function uploadViaHttp(filePath: string): Promise<UploadResult> {
       success: (uploadRes) => {
         try {
           const data = JSON.parse(uploadRes.data);
-          if (data.code === 0) {
+          if (uploadRes.statusCode >= 200 && uploadRes.statusCode < 300
+            && data.code === 0 && typeof data.data?.url === 'string' && data.data.url.trim()) {
             resolve({
               url: data.data?.url || '',
               fileID: data.data?.fileID || data.data?.url || '',
@@ -86,7 +87,7 @@ async function uploadViaCloudStorage(filePath: string): Promise<UploadResult> {
   const res = await post<any>('/upload/cloud-path', { cloudPath });
   console.log('[upload] cloud-path response:', JSON.stringify(res));
 
-  if (res.code !== 0) {
+  if (res.code !== 0 || typeof res.data?.url !== 'string' || !res.data.url.trim()) {
     throw new Error(`[code=${res.code}] ${res.message || '获取永久 URL 失败'}`);
   }
 

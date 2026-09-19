@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { WechatLoginDto } from './dto/wechat-login.dto';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { BindPhoneDto } from './dto/bind-phone.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -19,6 +20,17 @@ export class AuthController {
       return this.authService.devLogin(dto.code);
     }
     return this.authService.wechatLogin(dto);
+  }
+
+  @Post('wechat/bind-phone')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async bindWechatPhone(
+    @CurrentUser() user: any,
+    @Body() dto: BindPhoneDto,
+  ) {
+    if (user.isAdmin) throw new BadRequestException('管理员账号不能绑定微信手机号');
+    return this.authService.bindWechatPhone(user.id, dto.phoneCode);
   }
 
   @Post('cloud-login')

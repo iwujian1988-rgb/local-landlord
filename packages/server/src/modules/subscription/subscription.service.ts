@@ -170,7 +170,7 @@ export class SubscriptionService {
     if (!room) return null;
     const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
     if (!property) return null;
-    return this.landlordRepository.findOne({ where: { id: property.landlordId } });
+    return this.landlordRepository.findOne({ where: { id: property.landlordId, status: 1 } });
   }
 
   /** Truncate string to fit WeChat thing field (max 20 chars) */
@@ -194,7 +194,8 @@ export class SubscriptionService {
     const now = dayjs();
     // Recheck the previous month as well. This repairs a missed month-end run
     // after an outage without backfilling an unbounded amount of history.
-    const candidatePeriods = [now.subtract(1, 'month').format('YYYY-MM'), now.format('YYYY-MM')];
+    const remindDays = await this.configuredRemindDays();
+    const candidatePeriods = [-1, 0, 1].map(offset => now.add(offset, 'month').format('YYYY-MM'));
 
     const tenants = await this.tenantRepository.find({ where: { status: 1 } });
 
@@ -206,7 +207,7 @@ export class SubscriptionService {
         const monthDate = dayjs(monthStr + '-01');
         const rentDay = tenant.rentDay ?? 1;
         const dueDay = rentDay === 0 ? monthDate.endOf('month').date() : Math.min(rentDay, monthDate.endOf('month').date());
-        if (now.startOf('day').isBefore(monthDate.date(dueDay).startOf('day'))) continue;
+        if (now.startOf('day').isBefore(monthDate.date(dueDay).subtract(remindDays, 'day').startOf('day'))) continue;
 
         const created = await this.dataSource.transaction(async manager => {
           const tenantQuery = manager.getRepository(Tenant).createQueryBuilder('tenant')
@@ -285,7 +286,7 @@ export class SubscriptionService {
     for (const [landlordId, info] of landlordBillMap) {
       const landlord = await this.landlordRepository.findOne({ where: { id: landlordId } });
       if (!landlord) continue;
-      if (!landlord.openId) { skipped++; continue; }
+      if (landlord.status !== 1 || !landlord.openId) { skipped++; continue; }
 
       const ok = await this.sendSubscribeMessage(
         landlord.openId,
@@ -313,30 +314,31 @@ export class SubscriptionService {
     }
     const templateId = rentTemplateId();
 
-    const now = dayjs();
-    const today = now.date();
-    const monthStr = now.format('YYYY-MM');
+    const now = dayjs().startOf('day');
     const remindDays = await this.configuredRemindDays();
 
-    const tenants = await this.tenantRepository.find({ where: { status: 1 } });
+    // Existing bills own their due dates. Looking up just the current month and
+    // current tenant rentDay loses edited, partial, and next-month receivables.
+    const bills = await this.billRepository.find({
+      where: { status: In([0, 2, 3]) },
+      relations: ['tenant', 'room'],
+    });
 
     let sent = 0;
     let failed = 0;
     let skipped = 0;
-    for (const tenant of tenants) {
-      const rentDay = tenant.rentDay ?? 1;
-      const dueDay = rentDay === 0 ? now.endOf('month').date() : Math.min(rentDay, now.endOf('month').date());
-      const daysUntil = dueDay - today;
+    for (const bill of bills) {
+      const tenant = bill.tenant;
+      const room = bill.room;
+      if (!tenant || tenant.status !== 1 || !room) continue;
+      const dueDate = bill.dueDate
+        ? dayjs(bill.dueDate).startOf('day')
+        : dueDateForPeriod(bill.period, tenant.rentDay);
+      const daysUntil = dueDate.diff(now, 'day');
       const shouldNotify = daysUntil === 0 || daysUntil === remindDays;
       if (!shouldNotify) continue;
-
-      const bill = await this.billRepository.findOne({
-        where: { roomId: tenant.roomId, tenantId: tenant.id, period: monthStr },
-      });
-      if (!bill || bill.status !== 0) continue;
-
-      const room = await this.roomRepository.findOne({ where: { id: tenant.roomId } });
-      if (!room) continue;
+      const outstanding = this.outstandingAmount(bill);
+      if (outstanding <= 0) continue;
 
       const landlord = await this.findLandlordByRoom(room.id);
       if (!landlord) continue;
@@ -352,7 +354,7 @@ export class SubscriptionService {
         {
           thing7: { value: this.truncate(`${monthLabel}房租·${label}`) },
           thing11: { value: this.truncate(daysUntil === 0 ? '今天该收房租了，别忘了' : `还有${daysUntil}天该收房租`) },
-          amount6: { value: amountValue(bill.totalAmount) },
+          amount6: { value: amountValue(outstanding) },
         },
         `pages/bill/index?roomId=${room.id}&billId=${bill.id}`,
       );
@@ -459,6 +461,8 @@ export class SubscriptionService {
     }> = [];
     for (const bill of overdueBills) {
       if (!bill.tenant || !bill.room) continue;
+      const outstanding = this.outstandingAmount(bill);
+      if (outstanding <= 0) continue;
 
       const dueDate = bill.dueDate
         ? dayjs(bill.dueDate).startOf('day')
@@ -507,7 +511,7 @@ export class SubscriptionService {
         {
           thing7: { value: this.truncate(`${monthLabel}房租·${label}`) },
           thing11: { value: this.truncate(contextMsg) },
-          amount6: { value: amountValue(Math.max(0, Number(bill.totalAmount) - (Number(bill.paidAmount) || 0))) },
+          amount6: { value: amountValue(outstanding) },
         },
         `pages/bill/index?roomId=${bill.room.id}&billId=${bill.id}`,
       );
@@ -684,7 +688,7 @@ export class SubscriptionService {
     const templateId = rentTemplateId();
 
     const monthStr = now.format('YYYY-MM');
-    const landlords = await this.landlordRepository.find();
+    const landlords = await this.landlordRepository.find({ where: { status: 1 } });
 
     let sent = 0;
     let failed = 0;
@@ -740,6 +744,11 @@ export class SubscriptionService {
 
     this.logger.log(`Monthly summary: sent=${sent}, failed=${failed}, skipped(no openId)=${skipped}`);
     return { sent, failed, skipped };
+  }
+
+  private outstandingAmount(bill: Bill): number {
+    return Math.max(0, Math.round(Number(bill.totalAmount) * 100)
+      - Math.round((Number(bill.paidAmount) || 0) * 100)) / 100;
   }
 
   /** API: manually trigger auto bill generation */

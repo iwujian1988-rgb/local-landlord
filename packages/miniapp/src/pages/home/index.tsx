@@ -111,7 +111,7 @@ export default function Home() {
       setLoginLoading(false);
       Taro.showModal({
         title: '登录失败',
-        content: err?.message || '网络可能有点问题，请检查后重试',
+        content: '请检查网络后再试一次。房间和账目不会丢失。',
         confirmText: '重试',
         cancelText: '稍后再说',
         success: (res) => {
@@ -309,7 +309,7 @@ export default function Home() {
         <View className="guest-banner">
           <View className="guest-banner-body">
             <Text className="guest-banner-title">{Taro.getStorageSync('guest_mode') ? '访客模式' : `欢迎使用${APP_NAME}`}</Text>
-            <Text className="guest-banner-desc">可以先逛逛，登录后可管理房间、收租</Text>
+            <Text className="guest-banner-desc">登录后，才能管理自己的房间和账目</Text>
           </View>
           <Button
             className="guest-banner-btn"
@@ -317,7 +317,7 @@ export default function Home() {
             disabled={loginLoading}
             onGetPhoneNumber={handlePhoneLogin}
           >
-            <Text className="guest-banner-btn-text">{loginLoading ? '登录中...' : '登录'}</Text>
+            <Text className="guest-banner-btn-text">{loginLoading ? '正在登录...' : '用微信手机号登录'}</Text>
           </Button>
         </View>
       )}

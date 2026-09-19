@@ -2,9 +2,11 @@ export interface ShareBillPayload {
   roomName: string;
   tenantName: string;
   period: string;
+  periodEnd?: string | null;
   items: { name: string; amount: number }[];
   totalAmount: number;
   paidAmount: number;
+  isPaid?: boolean;
   qrCodes: { type: string; imageUrl: string; payeeName: string }[];
   payeeName: string;
   landlordName: string;
@@ -13,11 +15,10 @@ export interface ShareBillPayload {
 
 /**
  * Resolve the share token by calling the public share endpoint.
- * API base is same origin in production; falls back to localhost in dev.
+ * Use the same origin; Vite proxies /api during development.
  */
 export async function fetchBillByToken(token: string): Promise<ShareBillPayload> {
-  const apiBase = import.meta.env.DEV ? 'http://localhost:3000' : '';
-  const res = await fetch(`${apiBase}/api/share/bill/${encodeURIComponent(token)}`, {
+  const res = await fetch(`/api/share/bill/${encodeURIComponent(token)}`, {
     headers: { Accept: 'application/json' },
   });
   if (!res.ok) {
@@ -31,5 +32,8 @@ export async function fetchBillByToken(token: string): Promise<ShareBillPayload>
     throw new Error(msg);
   }
   const json = await res.json();
-  return json.data || json;
+  if (json?.code !== 0 || !json.data) {
+    throw new Error(json?.message || '加载失败');
+  }
+  return json.data;
 }

@@ -1,0 +1,11 @@
+.debt-mask { position: fixed; inset: 0; z-index: 1200; background: rgba(0,0,0,.46); display: flex; align-items: flex-end; }
+.debt-sheet { width: 100%; box-sizing: border-box; padding: 36px 32px calc(28px + env(safe-area-inset-bottom)); border-radius: 28px 28px 0 0; background: #fff; }
+.debt-step { display: block; color: #6b7280; font-size: 26px; margin-bottom: 14px; }
+.debt-title { display: block; color: #111827; font-size: 40px; line-height: 1.35; font-weight: 700; }
+.debt-amount { display: block; color: #b45309; font-size: 32px; font-weight: 600; margin: 18px 0 30px; }
+.debt-main-btn { min-height: 112px; padding: 22px 24px; border-radius: 18px; background: #1677ff; color: #fff; }
+.debt-main-title,.debt-main-desc { display: block; }.debt-main-title { font-size: 34px; font-weight: 700; }.debt-main-desc { font-size: 25px; margin-top: 6px; opacity: .94; }
+.debt-minor-btn,.debt-danger-btn,.debt-cancel { min-height: 88px; margin-top: 18px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 31px; }
+.debt-minor-btn { border: 2px solid #d1d5db; color: #374151; }.debt-danger-btn { background: #b91c1c; color: #fff; font-weight: 700; }.debt-danger-btn.disabled { opacity: .42; }
+.debt-cancel { color: #6b7280; }.debt-warning { display:block; margin: 22px 0; color:#b91c1c; font-size:28px; }.debt-label { display:block; font-size:29px; color:#111827; margin-bottom:12px; }
+.debt-input { height: 92px; padding: 0 20px; border: 2px solid #9ca3af; border-radius: 14px; font-size: 30px; background:#fff; }

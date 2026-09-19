@@ -64,6 +64,7 @@ jest.mock('axios', () => ({
 
 import { localStorageMock, locationMock } from './setup';
 import request from '../src/services/request';
+import { useAuthStore } from '../src/store/useAuthStore';
 
 describe('services/request — axios instance 配置', () => {
   it('TC-AREQ-INIT-001: axios.create 收到 baseURL=/api, timeout=10000', () => {
@@ -111,6 +112,14 @@ describe('services/request — request interceptor', () => {
 });
 
 describe('services/request — response interceptor (fulfilled)', () => {
+  it('expired session envelope clears stored admin and active permissions', async () => {
+    useAuthStore.getState().setAuth('expired', { id: 1, role: 0 } as any);
+    await expect(fake.responseFulfilled!({ data: { code: 401, message: 'expired' } } as AxiosResponse)).rejects.toThrow('expired');
+    expect(localStorageMock.getItem('admin')).toBeNull();
+    expect(useAuthStore.getState().isSuperAdmin).toBe(false);
+    expect(useAuthStore.getState().isLoggedIn).toBe(false);
+    expect(locationMock.href).toBe('/login');
+  });
   it('TC-AREQ-RES-001: code=0 → 返回 res.data（解包）', async () => {
     const res = { data: { code: 0, data: { id: 1 }, message: 'ok' } } as AxiosResponse;
     const out = await fake.responseFulfilled!(res);

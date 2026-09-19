@@ -32,9 +32,10 @@ export default function AddRoomPhoto() {
   });
 
   const goNext = useCallback(() => {
-    Taro.setStorageSync('tempRoomPhotos', photos.map((p) => p.fileID || p.url));
-    Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${propertyId}` });
-  }, [photos, propertyId]);
+    if (uploading) return;
+    Taro.setStorageSync('tempRoomPhotos', photos.map((p) => p.url));
+    Taro.navigateTo({ url: `/pages/add-room-info/index?propertyId=${propertyId}&fromPhotos=1` });
+  }, [photos, propertyId, uploading]);
 
   const handleAddPhoto = useCallback(async () => {
     setUploadError(false);

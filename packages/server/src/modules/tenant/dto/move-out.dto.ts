@@ -1,7 +1,15 @@
-import { IsOptional, IsString, IsNumber, Min, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsNumber, Min, MaxLength, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class MoveOutDto {
+  @IsOptional()
+  @IsIn(['keep', 'waive'])
+  debtAction?: 'keep' | 'waive';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  debtReason?: string;
   @IsOptional()
   @IsString()
   moveOutDate?: string;
