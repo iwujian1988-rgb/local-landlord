@@ -133,3 +133,18 @@ describe('home page — background refresh without flashing', () => {
     expect(HOME_SOURCE).toContain('sequence !== loadSequenceRef.current');
   });
 });
+
+describe('home page — guest login entry', () => {
+  it('TC-HOME-GUEST-001: 登录入口不再占据首页顶部', () => {
+    const greetingIndex = HOME_SOURCE.indexOf('<View className="greeting">');
+    const loginIndex = HOME_SOURCE.indexOf('<View className="guest-banner">');
+    expect(greetingIndex).toBeGreaterThan(-1);
+    expect(loginIndex).toBeGreaterThan(greetingIndex);
+  });
+
+  it('TC-HOME-GUEST-002: 登录入口只保留一个任务和一个动作', () => {
+    expect(HOME_SOURCE).toContain('管理我的房间');
+    expect(HOME_SOURCE).not.toContain('guest-banner-desc');
+    expect(HOME_SOURCE).not.toContain("? '访客模式'");
+  });
+});

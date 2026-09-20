@@ -702,45 +702,34 @@
 
 /* ===== Guest Mode Banner ===== */
 .guest-banner {
-  margin: 24px 24px 0;
-  background: linear-gradient(135deg, #fff5e6 0%, #ffe8cc 100%);
-  border-radius: var(--radius-sm);
-  padding: 24px 28px;
+  margin: 0 34px 24px;
+  min-height: 92px;
+  background: rgba(255, 253, 248, .94);
+  border-radius: 28px;
+  padding: 12px 14px 12px 28px;
   display: flex;
-  align-items: stretch;
-  flex-direction: column;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  box-shadow: 0 4px 16px rgba(255, 139, 69, 0.15);
-}
-
-.guest-banner-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 20px;
+  box-shadow: 0 8px 24px rgba(94, 72, 49, .06);
+  border: 2px solid rgba(94, 72, 49, .05);
 }
 
 .guest-banner-title {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 800;
   color: var(--text-primary);
 }
 
-.guest-banner-desc {
-  font-size: 24px;
-  color: var(--text-secondary);
-}
-
 .guest-banner-btn {
-  width: 100%;
-  min-height: 80px;
+  width: 164px;
+  min-height: 68px;
   margin: 0;
   border: 0;
-  line-height: 80px;
+  line-height: 68px;
   background: var(--accent);
-  border-radius: var(--radius-xs);
-  padding: 0 24px;
+  border-radius: 999px;
+  padding: 0 18px;
   flex-shrink: 0;
 }
 
@@ -750,8 +739,8 @@
 
 .guest-banner-btn-text {
   color: #fff;
-  font-size: 26px;
-  font-weight: 600;
+  font-size: 28px;
+  font-weight: 800;
 }
 
 /* ===== Guest intro cards (feature highlights for visitors) ===== */

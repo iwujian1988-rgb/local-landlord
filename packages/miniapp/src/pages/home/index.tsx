@@ -306,22 +306,6 @@ export default function Home() {
   return (
     <ScrollView className="page-home" scrollY>
       {!isLoggedIn && (
-        <View className="guest-banner">
-          <View className="guest-banner-body">
-            <Text className="guest-banner-title">{Taro.getStorageSync('guest_mode') ? '访客模式' : `欢迎使用${APP_NAME}`}</Text>
-            <Text className="guest-banner-desc">登录后，才能管理自己的房间和账目</Text>
-          </View>
-          <Button
-            className="guest-banner-btn"
-            openType="getPhoneNumber"
-            disabled={loginLoading}
-            onGetPhoneNumber={handlePhoneLogin}
-          >
-            <Text className="guest-banner-btn-text">{loginLoading ? '正在登录...' : '用微信手机号登录'}</Text>
-          </Button>
-        </View>
-      )}
-      {!isLoggedIn && (
         <>
           <View className="greeting">
             <View className="greeting-name-wrap">
@@ -353,6 +337,18 @@ export default function Home() {
                 <Text style={{ fontSize: '24px', color: 'var(--text-hint)', lineHeight: 1 }}>›</Text>
               </View>
             </View>
+          </View>
+
+          <View className="guest-banner">
+            <Text className="guest-banner-title">管理我的房间</Text>
+            <Button
+              className="guest-banner-btn"
+              openType="getPhoneNumber"
+              disabled={loginLoading}
+              onGetPhoneNumber={handlePhoneLogin}
+            >
+              <Text className="guest-banner-btn-text">{loginLoading ? '登录中…' : '登录'}</Text>
+            </Button>
           </View>
 
           <View className="monthly-card" onClick={handleStatsTap}>
