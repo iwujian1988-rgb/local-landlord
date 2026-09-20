@@ -137,9 +137,11 @@ describe('home page — background refresh without flashing', () => {
 describe('home page — guest login entry', () => {
   it('TC-HOME-GUEST-001: 登录入口不再占据首页顶部', () => {
     const greetingIndex = HOME_SOURCE.indexOf('<View className="greeting">');
+    const functionIndex = HOME_SOURCE.indexOf('<View className="function-section">');
     const loginIndex = HOME_SOURCE.indexOf('<View className="guest-banner">');
     expect(greetingIndex).toBeGreaterThan(-1);
-    expect(loginIndex).toBeGreaterThan(greetingIndex);
+    expect(functionIndex).toBeGreaterThan(greetingIndex);
+    expect(loginIndex).toBeGreaterThan(functionIndex);
   });
 
   it('TC-HOME-GUEST-002: 登录入口只保留一个任务和一个动作', () => {

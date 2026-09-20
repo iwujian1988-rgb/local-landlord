@@ -339,18 +339,6 @@ export default function Home() {
             </View>
           </View>
 
-          <View className="guest-banner">
-            <Text className="guest-banner-title">管理我的房间</Text>
-            <Button
-              className="guest-banner-btn"
-              openType="getPhoneNumber"
-              disabled={loginLoading}
-              onGetPhoneNumber={handlePhoneLogin}
-            >
-              <Text className="guest-banner-btn-text">{loginLoading ? '登录中…' : '登录'}</Text>
-            </Button>
-          </View>
-
           <View className="monthly-card" onClick={handleStatsTap}>
             <View className="monthly-row">
               <View className="monthly-left">
@@ -625,6 +613,20 @@ export default function Home() {
           </View>
         </View>
       </View>
+
+      {!isLoggedIn && (
+        <View className="guest-banner">
+          <Text className="guest-banner-title">管理我的房间</Text>
+          <Button
+            className="guest-banner-btn"
+            openType="getPhoneNumber"
+            disabled={loginLoading}
+            onGetPhoneNumber={handlePhoneLogin}
+          >
+            <Text className="guest-banner-btn-text">{loginLoading ? '登录中…' : '登录'}</Text>
+          </Button>
+        </View>
+      )}
 
       <View style={{ height: '120px' }} />
     </ScrollView>
