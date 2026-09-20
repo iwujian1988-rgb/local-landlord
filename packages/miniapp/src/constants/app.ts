@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.0.6';
+export const APP_VERSION = '1.0.7';
 
 export const POLICY_UPDATED_AT = '2026年9月';
 

@@ -390,14 +390,15 @@ export default function RentList() {
 
         {/* Summary card */}
         <View className="rent-summary-card">
-          <Text className="rent-overline">本月收租</Text>
-          <Text className="rent-hero-label">本月还要收（元）</Text>
-          <Text className="rent-hero-amount">{totalPending.toLocaleString()}</Text>
-          <Text className="rent-hero-note">这里只算本月账单，不代表以前的欠款已收清</Text>
+          <Text className="rent-hero-label">本月待收</Text>
+          <View className="rent-hero-value">
+            <Text className="rent-hero-amount">{totalPending.toLocaleString()}</Text>
+            <Text className="rent-hero-unit">元</Text>
+          </View>
           <View className="rent-summary-row">
             <View className="rent-summary-item">
               <Text className="rent-summary-number">{totalExpected.toLocaleString()}</Text>
-              <Text className="rent-summary-label">本月一共要收</Text>
+              <Text className="rent-summary-label">本月应收</Text>
             </View>
             <View className="rent-summary-divider" />
             <View className="rent-summary-item">
@@ -408,13 +409,11 @@ export default function RentList() {
         </View>
 
         {!!debtsError && !emptyView && <View className="rent-section-warning">
-          <Text className="rent-section-warning-title">暂时看不了退租租客的欠款</Text>
-          <Text className="rent-section-warning-desc">其他账单可继续操作。</Text>
-          <View className="rent-section-retry" onClick={loadData}><Text>再试一次</Text></View>
+          <Text className="rent-section-warning-title">退租欠款未显示</Text>
+          <View className="rent-section-retry" onClick={loadData}><Text>重新加载</Text></View>
         </View>}
         {emptyView && <View className={`rent-state-panel${emptyView.retry ? ' incomplete' : ''}`}>
           <Text className="rent-state-title">{emptyView.title}</Text>
-          <Text className="rent-state-description">{emptyView.description}</Text>
           <View className="rent-btn primary" onClick={() => emptyView.retry ? loadData() : Taro.switchTab({ url: '/pages/rooms/index' })}>
             <Text className="rent-btn-text">{emptyView.action}</Text>
           </View>

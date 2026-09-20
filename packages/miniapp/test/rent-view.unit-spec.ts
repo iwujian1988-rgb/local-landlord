@@ -3,7 +3,7 @@ import { rentEmptyView } from '../src/utils/rent-view';
 describe('收租页空状态', () => {
   const empty = { incomplete: false, roomCount: 0, records: 0, pending: 0 };
   it('查询失败时不能提示没有欠款或添加房间', () => {
-    expect(rentEmptyView({ ...empty, incomplete: true })).toMatchObject({ title: '暂时看不了退租租客的欠款', action: '再试一次', retry: true });
+    expect(rentEmptyView({ ...empty, incomplete: true })).toMatchObject({ title: '账单没有加载完整', action: '重新加载', retry: true });
   });
   it('确认没有房间才能显示首次添加', () => {
     expect(rentEmptyView(empty)?.action).toBe('添加房间');
