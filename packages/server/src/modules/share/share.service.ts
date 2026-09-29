@@ -14,6 +14,18 @@ import { SingleCharge } from '../rent/single-charge.entity';
 const SHARE_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 const SHARE_TOKEN_KIND = 'share-bill-v1';
 const SHARE_TOKEN_KIND_SINGLE = 'share-single-v1';
+const SHARE_ROOM_TOKEN_KIND = 'share-room-v1';
+const SHARE_ROOM_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+export interface ShareRoomPayload {
+  name: string;
+  rent: number;
+  area: string;
+  floor: string;
+  orientation: string;
+  facilities: string[];
+  images: string[];
+}
 
 export interface ShareBillPayload {
   roomName: string;
@@ -91,6 +103,47 @@ export class ShareService {
 
     const expiresAt = Math.floor(Date.now() / 1000) + SHARE_TOKEN_TTL_SECONDS;
     return { token, expiresAt: new Date(expiresAt * 1000).toISOString() };
+  }
+
+  /** Ownership is verified by the authenticated controller before signing. */
+  async generateForRoom(roomId: number): Promise<{ token: string; expiresAt: string }> {
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room || room.status === 2) throw new NotFoundException('房间不存在或已归档');
+    const token = this.jwtService.sign(
+      { rid: roomId, kind: SHARE_ROOM_TOKEN_KIND },
+      { expiresIn: SHARE_ROOM_TOKEN_TTL_SECONDS },
+    );
+    return { token, expiresAt: new Date((Date.now() + SHARE_ROOM_TOKEN_TTL_SECONDS * 1000)).toISOString() };
+  }
+
+  /** Public preview: deliberately excludes tenants, phone numbers, notes and billing data. */
+  async resolveRoom(token: string): Promise<ShareRoomPayload> {
+    let payload: { rid?: number; kind?: string };
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new ForbiddenException('房间分享已过期，请让房东重新发送');
+    }
+    const roomId = Number(payload.rid);
+    if (payload.kind !== SHARE_ROOM_TOKEN_KIND || !Number.isSafeInteger(roomId) || roomId <= 0) {
+      throw new BadRequestException('无效的房间分享');
+    }
+    const room = await this.roomRepository.findOne({ where: { id: roomId } });
+    if (!room || room.status === 2) throw new NotFoundException('房间已下架');
+    const property = await this.propertyRepository.findOne({ where: { id: room.propertyId } });
+    if (!property) throw new NotFoundException('房源不存在');
+    const landlord = await this.landlordRepository.findOne({ where: { id: property.landlordId } });
+    if (!landlord || landlord.status === 0) throw new ForbiddenException('房间分享已失效');
+
+    return {
+      name: room.name,
+      rent: Number(room.rent) || 0,
+      area: room.area || '',
+      floor: room.floor || '',
+      orientation: room.orientation || '',
+      facilities: Array.isArray(room.facilities) ? room.facilities.filter(item => typeof item === 'string') : [],
+      images: Array.isArray(room.images) ? room.images.filter(item => typeof item === 'string' && !!item) : [],
+    };
   }
 
   /** Verify a share token and return its underlying financial record. */

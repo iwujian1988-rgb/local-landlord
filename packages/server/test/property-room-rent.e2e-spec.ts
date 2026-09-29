@@ -167,6 +167,33 @@ describe('Property / Room / Rent edge cases (e2e)', () => {
       const room = await apiCall(app, 'get', `/api/rooms/${rId}`, auth);
       expect(room.body?.data?.status).toBe(0);
     });
+
+    it('TC-ROOM-EDGE-010: 自定义房间信息可回显，编辑清空后旧值不残留', async () => {
+      const rId = await createRoom(app, auth, propertyId, { name: '自定义房间' });
+      expectOk(await apiCall(app, 'put', `/api/rooms/${rId}`, auth, {
+        area: '35 平米', floor: '3 楼', orientation: '朝花园',
+        facilities: ['洗衣机', 'LOFT复式', '自定义露台'],
+        images: ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
+        note: '门口有台阶', availableDate: '2026-10-15',
+      }));
+      const filled = expectOk(await apiCall(app, 'get', `/api/rooms/${rId}`, auth));
+      expect(filled).toEqual(expect.objectContaining({
+        area: '35 平米', floor: '3 楼', orientation: '朝花园',
+        facilities: ['洗衣机', 'LOFT复式', '自定义露台'],
+        images: ['https://example.com/a.jpg', 'https://example.com/b.jpg'],
+        note: '门口有台阶',
+      }));
+      expect(String(filled.availableDate)).toContain('2026-10-15');
+
+      expectOk(await apiCall(app, 'put', `/api/rooms/${rId}`, auth, {
+        area: null, floor: null, orientation: null, facilities: [],
+        images: [], note: null, availableDate: null,
+      }));
+      const cleared = expectOk(await apiCall(app, 'get', `/api/rooms/${rId}`, auth));
+      expect(cleared).toEqual(expect.objectContaining({
+        area: '', floor: '', orientation: '', facilities: [], images: [], note: '', availableDate: null,
+      }));
+    });
   });
 
   describe('rent 单独收款', () => {

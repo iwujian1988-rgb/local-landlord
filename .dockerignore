@@ -3,8 +3,13 @@ dist
 .git
 .github
 .env
+.env*
 .env.local
 .env.*.local
+backups
+.codex-tmp
+outputs
+packages/admin/dist-frontend-review
 *.log
 .pnpm-store
 .DS_Store

@@ -127,14 +127,16 @@ describe('Stats module — overdue logic (e2e)', () => {
     await setupRentedRoom({ rentDay: clampDay(todayDay()) });
     const data = await getHome();
     expect(data.todoCount).toBe(1);
-    expect(data.pendingDesc).toContain('今天该收');
+    // On the 29th-31st clampDay(today) is 28: that due date has passed.
+    expect(data.pendingDesc).toContain(todayDay() <= 28 ? '今天该收' : '已逾期');
   });
 
   it('TC-STATS-006: 已租+未付+rentDay=today+2 → "还有 2 天"', async () => {
     await setupRentedRoom({ rentDay: clampDay(todayDay() + 2) });
     const data = await getHome();
     expect(data.todoCount).toBe(1);
-    expect(data.pendingDesc).toContain('还有');
+    const dueDay = clampDay(todayDay() + 2);
+    expect(data.pendingDesc).toContain(dueDay > todayDay() ? '还有' : dueDay === todayDay() ? '今天该收' : '已逾期');
   });
 
   it('TC-STATS-007: 已租+未付+rentDay=today-2 → "已逾期"', async () => {

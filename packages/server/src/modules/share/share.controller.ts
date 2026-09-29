@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, BadRequestException, Req } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, BadRequestException, Req, ParseIntPipe } from '@nestjs/common';
 import type { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { ShareService } from './share.service';
@@ -9,6 +9,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { BillService } from '../bill/bill.service';
 import { RentService } from '../rent/rent.service';
+import { RoomService } from '../room/room.service';
 
 @Controller('share')
 export class ShareController {
@@ -16,7 +17,24 @@ export class ShareController {
     private readonly shareService: ShareService,
     private readonly billService: BillService,
     private readonly rentService: RentService,
+    private readonly roomService: RoomService,
   ) {}
+
+  @Post('room/:roomId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(1)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async generateRoom(@CurrentUser() user: any, @Param('roomId', ParseIntPipe) roomId: number) {
+    await this.roomService.verifyRoomOwnership(roomId, user.id);
+    return this.shareService.generateForRoom(roomId);
+  }
+
+  @Get('room/:token')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async resolveRoom(@Param('token') token: string) {
+    if (!token) throw new BadRequestException('缺少房间分享参数');
+    return this.shareService.resolveRoom(token);
+  }
 
   private buildShareUrl(req: Request, token: string): string {
     const configuredBaseUrl = process.env.PUBLIC_BASE_URL || process.env.BASE_URL;

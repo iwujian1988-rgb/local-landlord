@@ -39,6 +39,7 @@ export class CreateRoomDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(16)
   orientation?: string;
 
   @IsOptional()

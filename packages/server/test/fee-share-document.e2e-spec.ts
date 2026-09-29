@@ -134,6 +134,32 @@ describe('Fee / Document / Share / Payment-qr / Subscription / Health / Landlord
     let billId: number;
     let shareToken: string;
 
+    it('TC-SHARE-ROOM-001: 房东生成公开房间介绍，访客能看房间信息但看不到租客资料', async () => {
+      const updated = await apiCall(app, 'put', `/api/rooms/${roomId}`, auth, {
+        orientation: '朝南', facilities: ['洗衣机', 'LOFT复式'], images: ['/uploads/room-photo.jpg'], note: '仅房东可见',
+      });
+      expect(updated.body?.code).toBe(0);
+      const generated = await apiCall(app, 'post', `/api/share/room/${roomId}`, auth);
+      expect(generated.body?.code).toBe(0);
+      const token = generated.body?.data?.token;
+      expect(token).toBeTruthy();
+      const publicView = await apiCall(app, 'get', `/api/share/room/${token}`, null);
+      expect(publicView.body?.code).toBe(0);
+      expect(publicView.body?.data).toEqual({
+        name: 'long-tail-room', rent: 2000, area: '', floor: '', orientation: '朝南',
+        facilities: ['洗衣机', 'LOFT复式'], images: ['/uploads/room-photo.jpg'],
+      });
+      expect(JSON.stringify(publicView.body)).not.toContain('长尾租客');
+      expect(JSON.stringify(publicView.body)).not.toContain('13900099999');
+      expect(JSON.stringify(publicView.body)).not.toContain('仅房东可见');
+    });
+
+    it('TC-SHARE-ROOM-002: 其他房东不能生成本房间分享', async () => {
+      const otherAuth = await loginAsLandlord(app);
+      const generated = await apiCall(app, 'post', `/api/share/room/${roomId}`, otherAuth);
+      expect(generated.body?.code).not.toBe(0);
+    });
+
     beforeAll(async () => {
       billId = await createBill(app, auth, roomId, { period: '2099-03' });
     });

@@ -48,6 +48,7 @@ export class UpdateRoomDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(16)
   orientation?: string;
 
   @IsOptional()

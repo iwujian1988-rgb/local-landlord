@@ -4,6 +4,7 @@ import { ShareController } from './share.controller';
 import { ShareService } from './share.service';
 import { BillModule } from '../bill/bill.module';
 import { RentModule } from '../rent/rent.module';
+import { RoomModule } from '../room/room.module';
 import { Bill } from '../bill/bill.entity';
 import { BillItem } from '../bill/bill-item.entity';
 import { Tenant } from '../tenant/tenant.entity';
@@ -17,6 +18,7 @@ import { SingleCharge } from '../rent/single-charge.entity';
   imports: [
     BillModule,
     RentModule,
+    RoomModule,
     TypeOrmModule.forFeature([Bill, BillItem, Tenant, Room, Property, Landlord, PaymentQr, SingleCharge]),
   ],
   controllers: [ShareController],
