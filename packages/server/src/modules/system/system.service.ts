@@ -22,6 +22,7 @@ export class SystemService {
     appName: '五联人家',
     maxRoomPerProperty: 100,
     enableAutoRemind: true,
+    enableFirstUseGuide: false,
     remindDays: 3,
     dataRetentionDays: 365,
   };
@@ -649,7 +650,12 @@ export class SystemService {
 
   async getSystemParams() {
     const config = await this.configRepo.findOne({ where: { key: 'system_params' } });
-    return config?.value ?? this.defaultSystemParams;
+    return { ...this.defaultSystemParams, ...(config?.value ?? {}) };
+  }
+
+  async getPublicUsageGuideConfig(): Promise<{ enabled: boolean }> {
+    const config = await this.configRepo.findOne({ where: { key: 'system_params' } });
+    return { enabled: config?.value?.enableFirstUseGuide === true };
   }
 
   async updateSystemParams(data: Record<string, any>) {

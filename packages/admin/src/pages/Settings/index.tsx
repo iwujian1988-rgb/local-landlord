@@ -206,7 +206,7 @@ export default function Settings() {
               <Box key={key} sx={{ mb: 2 }}>
                 {isBoolean ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography>{key}</Typography>
+                    <Typography>{key === 'enableFirstUseGuide' ? '首页使用说明入口' : key}</Typography>
                     <Switch
                       checked={value === true}
                       onChange={(e) => setParams({ ...params, [key]: e.target.checked })}

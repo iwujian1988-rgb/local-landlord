@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SystemController } from './system.controller';
+import { PublicUsageGuideController } from './public-usage-guide.controller';
 import { SystemService } from './system.service';
 import { SeedService } from './seed.service';
 import { Admin } from './admin.entity';
@@ -22,7 +23,7 @@ import { StatsModule } from '../stats/stats.module';
     TypeOrmModule.forFeature([Admin, SystemConfig, Property, Room, Tenant, Bill, BillItem, FeeItem, Document, RentRecord, SingleCharge, Landlord]),
     StatsModule,
   ],
-  controllers: [SystemController],
+  controllers: [SystemController, PublicUsageGuideController],
   providers: [SystemService, SeedService],
   exports: [SystemService],
 })

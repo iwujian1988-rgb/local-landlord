@@ -8,7 +8,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UpdateTenantDto } from '../tenant/dto/update-tenant.dto';
 import { UpdatePropertyDto } from '../property/dto/update-property.dto';
-import { IsOptional, IsString, IsNumber, IsInt, IsArray, IsDateString, ValidateNested, IsIn, Min, Max, IsNotEmpty, MaxLength } from 'class-validator';
+import { IsOptional, IsString, IsNumber, IsInt, IsArray, IsDateString, ValidateNested, IsIn, Min, Max, IsNotEmpty, MaxLength, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 /** DTOs for admin endpoints that previously used `any` */
@@ -363,6 +363,10 @@ class UpdateSystemParamsDto {
 
   @IsOptional()
   enableAutoRemind?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  enableFirstUseGuide?: boolean;
 
   @IsOptional()
   @IsInt()
